@@ -1,0 +1,32 @@
+@import "tailwindcss";
+
+@theme {
+  /* Fonts */
+  --font-display: "Sora", sans-serif;
+  --font-body: "DM Sans", sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
+
+  /* Legacy Colors */
+  --color-electric-blue: #00A4FF;
+  --color-luminous-white: #FFFFFF;
+  --color-accent-neon: #00FFB3;
+  --color-primary: var(--color-electric-blue);
+
+  --animate-pulse-fast: pulse 1s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  --animate-spin-slow: spin 3s linear infinite;
+  --animate-ping-slow: ping 2s cubic-bezier(0, 0, 0.2, 1) infinite;
+  --animate-audit-node-pulse: auditNodePulse 2s infinite ease-in-out;
+  --animate-audit-scan: auditScan 3s infinite ease-in-out;
+  --animate-shard-glimmer: shardGlimmer 4s infinite ease-in-out;
+  --animate-hologram-flicker: hologramFlicker 5s infinite linear;
+  --animate-scanline: scanline 4s infinite cubic-bezier(0.2, 0, 0.8, 1);
+  --animate-text-focus-in: text-focus-in 1s cubic-bezier(0.550, 0.085, 0.680, 0.530) both;
+  --animate-fade-dissolve: fadeDissolve 12s linear forwards;
+  --animate-spiral-draw: spiralDraw 3s ease-out forwards;
+  --animate-node-entropy-pulse: nodeEntropyPulse 2s infinite ease-in-out;
+  --animate-fade-in-up: fadeInUp 0.5s ease-out forwards;
+}
+
+body {
+    background-color: #0A0A1A;
+}

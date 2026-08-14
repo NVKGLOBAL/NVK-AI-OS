@@ -1,0 +1,6 @@
+{
+  "name": "NVK OS",
+  "description": "Angelic Business Operations OS with multi-model AI orchestration, spatial 3D interfaces, and autonomous agent workflows.",
+  "requestFramePermissions": ["microphone", "camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

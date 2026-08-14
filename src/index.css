@@ -1,0 +1,7 @@
+
+.css3d-renderer {
+    pointer-events: none;
+}
+.css3d-renderer > div {
+    pointer-events: auto;
+}

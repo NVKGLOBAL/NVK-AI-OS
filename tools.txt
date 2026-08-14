@@ -1,0 +1,37 @@
+    tools: [{
+      functionDeclarations: [
+        {
+          name: "changeOrbMode",
+          description: "Changes the visual mode of the 3D central Orb",
+          parameters: {
+            type: "OBJECT",
+            properties: {
+              mode: { type: "STRING", description: "Mode name (holographic, zen, quantum, tactical, dreambloom)" }
+            },
+            required: ["mode"]
+          }
+        },
+        {
+          name: "openPanel",
+          description: "Opens a UI panel in the workspace by its name or ID",
+          parameters: {
+            type: "OBJECT",
+            properties: {
+              panelName: { type: "STRING", description: "The name of the panel to open (e.g. Messaging, Sentinel Core, Tactical, Files)" }
+            },
+            required: ["panelName"]
+          }
+        },
+        {
+          name: "closePanel",
+          description: "Closes a UI panel in the workspace by its name or ID",
+          parameters: {
+            type: "OBJECT",
+            properties: {
+              panelName: { type: "STRING", description: "The name of the panel to close" }
+            },
+            required: ["panelName"]
+          }
+        }
+      ]
+    }],
