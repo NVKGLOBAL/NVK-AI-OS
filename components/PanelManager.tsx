@@ -150,7 +150,7 @@ export const PanelManager: React.FC<PanelManagerProps> = ({
                   onCloseAll();
                 }}
                 disabled={activePanels.length === 0}
-                className="flex-1 py-1.5 px-2 bg-rose-950/20 border border-rose-900/30 hover:border-rose-500/50 text-rose-500/80 hover:text-rose-400 rounded text-[9px] font-mono uppercase tracking-wider transition-all disabled:opacity-40"
+                className="flex-1 py-1.5 px-2 bg-rose-600/30 border border-rose-500/60 hover:bg-rose-600 hover:text-white text-rose-300 font-bold rounded text-[9px] font-mono uppercase tracking-wider transition-all disabled:opacity-40 shadow-[0_0_8px_rgba(244,63,94,0.3)]"
               >
                 Close All
               </button>
@@ -225,10 +225,10 @@ export const PanelManager: React.FC<PanelManagerProps> = ({
                           CyberSynth.playClick();
                           onClosePanel(panel.id);
                         }}
-                        className="p-1 rounded hover:bg-red-500/20 text-[10px] text-slate-500 hover:text-red-400 transition-colors"
-                        title="Decommission Node"
+                        className="w-5 h-5 rounded-full bg-rose-600/90 text-white hover:bg-rose-500 border border-rose-400/80 flex items-center justify-center shadow-[0_0_6px_rgba(244,63,94,0.4)] transition-all font-bold shrink-0 ml-1 cursor-pointer"
+                        title="Close / Decommission Node"
                       >
-                        <i className="ri-close-line"></i>
+                        <i className="ri-close-line text-xs font-bold"></i>
                       </button>
                     </div>
                   </div>

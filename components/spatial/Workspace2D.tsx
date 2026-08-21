@@ -772,9 +772,10 @@ export const Workspace2D: React.FC<Workspace2DProps> = ({
                         </button>
                         <button
                           onClick={() => updateActiveCluster({ openNodeIds: activeCluster.openNodeIds.filter(pid => pid !== nodeId) })}
-                          className="text-slate-500 hover:text-red-400 cursor-pointer"
+                          className="w-5 h-5 rounded-full bg-rose-600/90 text-white hover:bg-rose-500 border border-rose-400/80 flex items-center justify-center shadow-[0_0_6px_rgba(244,63,94,0.4)] transition-all font-bold shrink-0 ml-1 cursor-pointer"
+                          title="Close Subsystem"
                         >
-                          <i className="ri-close-line text-xs"></i>
+                          <i className="ri-close-line text-xs font-bold"></i>
                         </button>
                       </div>
                     </div>
@@ -844,10 +845,10 @@ export const Workspace2D: React.FC<Workspace2DProps> = ({
                       </button>
                       <button
                         onClick={() => updateActiveCluster({ openNodeIds: activeCluster.openNodeIds.filter(pid => pid !== nodeId) })}
-                        className="text-slate-500 hover:text-red-400 cursor-pointer"
+                        className="w-5 h-5 rounded-full bg-rose-600/90 text-white hover:bg-rose-500 border border-rose-400/80 flex items-center justify-center shadow-[0_0_6px_rgba(244,63,94,0.4)] transition-all font-bold shrink-0 ml-1 cursor-pointer"
                         title="Close Subsystem"
                       >
-                        <i className="ri-close-line text-xs" />
+                        <i className="ri-close-line text-xs font-bold" />
                       </button>
                     </div>
                   </div>
@@ -962,10 +963,10 @@ export const Workspace2D: React.FC<Workspace2DProps> = ({
                         </button>
                         <button
                           onClick={() => updateActiveCluster({ openNodeIds: activeCluster.openNodeIds.filter(pid => pid !== selectedNodeId) })}
-                          className="text-slate-500 hover:text-red-400 cursor-pointer"
+                          className="w-5 h-5 rounded-full bg-rose-600/90 text-white hover:bg-rose-500 border border-rose-400/80 flex items-center justify-center shadow-[0_0_6px_rgba(244,63,94,0.4)] transition-all font-bold shrink-0 ml-1 cursor-pointer"
                           title="Close Subsystem"
                         >
-                          <i className="ri-close-line text-xs" />
+                          <i className="ri-close-line text-xs font-bold" />
                         </button>
                       </div>
                     </div>
@@ -1033,10 +1034,10 @@ export const Workspace2D: React.FC<Workspace2DProps> = ({
                         </button>
                         <button
                           onClick={() => updateActiveCluster({ openNodeIds: activeCluster.openNodeIds.filter(pid => pid !== nodeId) })}
-                          className="text-slate-500 hover:text-red-400 cursor-pointer"
+                          className="w-5 h-5 rounded-full bg-rose-600/90 text-white hover:bg-rose-500 border border-rose-400/80 flex items-center justify-center shadow-[0_0_6px_rgba(244,63,94,0.4)] transition-all font-bold shrink-0 ml-1 cursor-pointer"
                           title="Close Panel"
                         >
-                          <i className="ri-close-line text-xs" />
+                          <i className="ri-close-line text-xs font-bold" />
                         </button>
                       </div>
                     </div>

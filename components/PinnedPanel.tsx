@@ -282,7 +282,7 @@ export const PinnedPanel: React.FC<PinnedPanelProps> = ({
                 transition={{ type: 'spring', stiffness: 300, damping: 30 }}
             >
                 <motion.div 
-                    className="panel-title-bar border-b border-slate-600/30 select-none" 
+                    className="panel-title-bar border-b border-slate-600/30 select-none flex items-center justify-between gap-2 px-3 py-2 shrink-0 relative z-20" 
                     onPointerDown={(e) => !isMaximized && !isFocused && dragControls.start(e)}
                     onDoubleClick={handleMaximizeToggle}
                     style={{ 
@@ -293,24 +293,55 @@ export const PinnedPanel: React.FC<PinnedPanelProps> = ({
                     }}
                     whileTap={{ cursor: isMaximized || isFocused ? 'default' : 'grabbing' }}
                 >
-                    <div className="flex items-center gap-2">
+                    {/* Left: Window Dots + Icon + Title */}
+                    <div className="flex items-center gap-2.5 min-w-0 flex-1 overflow-hidden">
+                        {/* OS Traffic Light Dots for Quick Actions */}
+                        <div className="flex items-center gap-1.5 shrink-0 pr-1 border-r border-slate-700/60">
+                            <button 
+                                onClick={onClose} 
+                                title="Close Panel (X)"
+                                className="w-3.5 h-3.5 rounded-full bg-rose-500 hover:bg-rose-400 border border-rose-300/60 flex items-center justify-center transition-transform hover:scale-110 cursor-pointer shadow-[0_0_6px_rgba(244,63,94,0.6)] group"
+                            >
+                                <i className="ri-close-line text-[9px] text-rose-950 opacity-0 group-hover:opacity-100 font-extrabold transition-opacity"></i>
+                            </button>
+                            <button 
+                                onClick={handleMinimizeToggle} 
+                                title={isMinimized ? "Restore Panel" : "Minimize Panel"}
+                                className="w-3.5 h-3.5 rounded-full bg-amber-500 hover:bg-amber-400 border border-amber-300/60 flex items-center justify-center transition-transform hover:scale-110 cursor-pointer shadow-[0_0_6px_rgba(245,158,11,0.5)] group"
+                            >
+                                <i className="ri-subtract-line text-[9px] text-amber-950 opacity-0 group-hover:opacity-100 font-bold transition-opacity"></i>
+                            </button>
+                            <button 
+                                onClick={handleMaximizeToggle} 
+                                title={isMaximized ? "Restore Size" : "Maximize Panel"}
+                                className="w-3.5 h-3.5 rounded-full bg-emerald-500 hover:bg-emerald-400 border border-emerald-300/60 flex items-center justify-center transition-transform hover:scale-110 cursor-pointer shadow-[0_0_6px_rgba(16,185,129,0.5)] group"
+                            >
+                                <i className="ri-add-line text-[9px] text-emerald-950 opacity-0 group-hover:opacity-100 font-bold transition-opacity"></i>
+                            </button>
+                        </div>
+
+                        {panelDef?.icon && (
+                            <i className={`${panelDef.icon} text-cyan-400 text-sm shrink-0`}></i>
+                        )}
+
                         {isFocused && (
-                            <span className="flex h-2 w-2 relative">
+                            <span className="flex h-2 w-2 relative shrink-0">
                                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
                                 <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
                             </span>
                         )}
-                        <h3 className={`panel-title-text text-sm font-semibold tracking-wide ${isFocused ? 'text-amber-400 font-bold' : ''}`}>
+                        <h3 className={`panel-title-text text-xs sm:text-sm font-semibold tracking-wide truncate ${isFocused ? 'text-amber-400 font-bold' : ''}`}>
                             {panelDef?.name || 'Pinned Panel'}
-                            {isFocused && <span className="ml-2 text-[9px] font-mono font-normal text-amber-500/80 tracking-widest uppercase">[DEEP FOCUS ACTIVE]</span>}
+                            {isFocused && <span className="ml-2 text-[9px] font-mono font-normal text-amber-500/80 tracking-widest uppercase hidden sm:inline">[DEEP FOCUS]</span>}
                         </h3>
                     </div>
                     
-                    <div className="panel-controls">
-                        {/* Dynamic Sizing Controls */}
-                        <div className="flex items-center gap-1.5 px-2 mr-2 border-r border-slate-700">
+                    {/* Right Controls: Utilities + Primary Prominent Window Actions */}
+                    <div className="panel-controls flex items-center gap-1 sm:gap-2 shrink-0 z-30 ml-auto">
+                        {/* Secondary Utilities */}
+                        <div className="hidden md:flex items-center gap-1.5 px-2 border-r border-slate-700/80">
                             <button
-                                className={`panel-control text-xs ${autoScale ? 'text-cyan-400' : 'text-slate-500 hover:text-cyan-400'}`}
+                                className={`panel-control text-xs ${autoScale ? 'text-cyan-400' : 'text-slate-400 hover:text-cyan-400'}`}
                                 onClick={() => setAutoScale(!autoScale)}
                                 title="Toggle Auto Scale / fit container"
                             >
@@ -338,7 +369,7 @@ export const PinnedPanel: React.FC<PinnedPanelProps> = ({
                                 </div>
                             )}
                             {autoScale && (
-                                <span className="text-[10px] font-mono select-none text-emerald-400 animate-pulse-slow">
+                                <span className="text-[9px] font-mono select-none text-emerald-400 animate-pulse-slow">
                                     AUTO: {Math.round(calculatedZoom * 100)}%
                                 </span>
                             )}
@@ -391,15 +422,33 @@ export const PinnedPanel: React.FC<PinnedPanelProps> = ({
                         <button className="panel-control hover:text-emerald-400" onClick={onUnpin} title="Unpin to 3D Cluster">
                             <i className="ri-pushpin-2-line"></i>
                         </button>
-                        <button className="panel-control" onClick={handleMinimizeToggle} title={isMinimized ? "Restore" : "Minimize"}>
-                            <i className="ri-subtract-line"></i>
-                        </button>
-                        <button className="panel-control" onClick={handleMaximizeToggle} title={isMaximized ? "Restore" : "Maximize"}>
-                            <i className={isMaximized ? "ri-fullscreen-exit-line" : "ri-fullscreen-line"}></i>
-                        </button>
-                         <button className="panel-control hover:bg-red-500/80" onClick={onClose} title="Close panel">
-                            <i className="ri-close-line"></i>
-                        </button>
+
+                        {/* Primary Window Control Cluster (Minimize, Maximize, CLOSE) */}
+                        <div className="flex items-center gap-1 pl-1 sm:pl-2 border-l border-slate-700/80 shrink-0">
+                            <button 
+                                className="px-2 py-1 bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-600/80 rounded-md text-xs transition-all flex items-center justify-center shrink-0" 
+                                onClick={handleMinimizeToggle} 
+                                title={isMinimized ? "Restore Panel" : "Minimize Panel"}
+                            >
+                                <i className="ri-subtract-line"></i>
+                            </button>
+                            <button 
+                                className="px-2 py-1 bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-600/80 rounded-md text-xs transition-all flex items-center justify-center shrink-0" 
+                                onClick={handleMaximizeToggle} 
+                                title={isMaximized ? "Restore Panel" : "Maximize Panel"}
+                            >
+                                <i className={isMaximized ? "ri-fullscreen-exit-line" : "ri-fullscreen-line"}></i>
+                            </button>
+                            {/* PROMINENT CLOSE BUTTON */}
+                            <button 
+                                className="px-2.5 py-1 bg-rose-600 hover:bg-rose-500 active:bg-rose-700 text-white font-extrabold border border-rose-400/90 rounded-md text-xs transition-all flex items-center gap-1 shrink-0 shadow-[0_0_12px_rgba(244,63,94,0.7)] hover:shadow-[0_0_18px_rgba(244,63,94,0.9)] cursor-pointer" 
+                                onClick={onClose} 
+                                title="Close Panel (X)"
+                            >
+                                <i className="ri-close-line text-sm font-black"></i>
+                                <span className="hidden lg:inline text-[10px] font-mono uppercase tracking-wider font-bold">Close</span>
+                            </button>
+                        </div>
                     </div>
                 </motion.div>
                 <div 

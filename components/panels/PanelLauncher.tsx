@@ -51,7 +51,7 @@ const PanelLauncher: React.FC<PanelLauncherProps> = ({ panels, onPanelSelect }) 
         aria-label="Search Panels"
       />
       <a
-        href="https://nvk-808043325057.us-west1.run.app/"
+        href="https://www.nvkglobal.com"
         target="_blank"
         rel="noopener noreferrer"
         className="w-full text-center p-2 mb-4 rounded-md bg-purple-600 hover:bg-purple-500 text-white font-cinzel tracking-wider transition-all duration-200 flex items-center justify-center gap-2"

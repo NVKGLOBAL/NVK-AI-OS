@@ -834,10 +834,10 @@ Output:
             </button>
             <button
               onClick={() => setIsOpen(false)}
-              className="w-7 h-7 rounded-lg bg-slate-900 border border-slate-800 flex items-center justify-center text-slate-400 hover:text-rose-400 hover:border-rose-500/30 transition-all"
+              className="w-7 h-7 rounded-lg bg-rose-600/90 hover:bg-rose-500 border border-rose-400 text-white shadow-[0_0_8px_rgba(244,63,94,0.4)] flex items-center justify-center transition-all font-bold shrink-0 cursor-pointer"
               title="Close logic core interface"
             >
-              <i className="ri-close-line text-xs"></i>
+              <i className="ri-close-line text-sm font-bold"></i>
             </button>
           </div>
         </div>

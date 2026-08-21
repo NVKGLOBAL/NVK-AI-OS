@@ -198,44 +198,69 @@
 
     /* Panel Styles */
     .panel-title-bar {
-        background: rgba(30, 41, 59, 0.02); /* slate-800 */
-        padding: 10px 14px;
+        background: rgba(30, 41, 59, 0.85); /* slate-800 */
+        padding: 8px 12px;
         cursor: grab;
         user-select: none;
         display: flex;
         justify-content: space-between;
         align-items: center;
         flex-shrink: 0;
+        gap: 8px;
+        position: relative;
+        z-index: 20;
     }
     .panel-title-text {
         font-family: 'Orbitron', sans-serif;
-        font-size: 14px;
+        font-size: 13px;
         color: var(--luminous-white);
         text-shadow: 0 0 5px var(--electric-blue);
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
+        flex: 1;
+        min-width: 0;
     }
     .panel-controls {
         display: flex;
-        gap: 8px;
+        align-items: center;
+        gap: 6px;
+        flex-shrink: 0;
+        z-index: 30;
     }
     .panel-control {
-        width: 24px;
-        height: 24px;
+        width: 26px;
+        height: 26px;
         border-radius: 50%;
-        background-color: rgba(71, 85, 105, 0.6); /* slate-700 */
+        background-color: rgba(51, 65, 85, 0.7); /* slate-700 */
         border: 1px solid rgba(100, 116, 139, 0.8); /* slate-600 */
         color: var(--luminous-white);
         display: flex;
         align-items: center;
         justify-content: center;
         cursor: pointer;
-        transition: background-color 0.2s;
-        font-size: 12px;
+        transition: all 0.2s ease-in-out;
+        font-size: 13px;
+        flex-shrink: 0;
     }
     .panel-control:hover {
         background-color: rgba(100, 116, 139, 1); /* slate-600 */
+        transform: scale(1.05);
+    }
+    .panel-control-close {
+        background-color: rgba(225, 29, 72, 0.9) !important; /* rose-600 */
+        border: 1px solid rgba(251, 113, 133, 0.9) !important; /* rose-400 */
+        color: #ffffff !important;
+        font-weight: 700 !important;
+        box-shadow: 0 0 10px rgba(225, 29, 72, 0.6) !important;
+        flex-shrink: 0 !important;
+        z-index: 40 !important;
+    }
+    .panel-control-close:hover {
+        background-color: rgba(244, 63, 94, 1) !important; /* rose-500 */
+        border-color: #ffffff !important;
+        box-shadow: 0 0 15px rgba(244, 63, 94, 0.9) !important;
+        transform: scale(1.12) !important;
     }
     .panel-resize-handle {
         position: absolute;

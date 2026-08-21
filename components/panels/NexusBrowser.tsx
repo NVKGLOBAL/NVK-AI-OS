@@ -13,18 +13,20 @@ interface NexusBrowserProps {
   initialUrl?: string;
 }
 
+const DEFAULT_NEXUS_URL = 'https://www.nvkglobal.com/';
+
 const NexusBrowser: React.FC<NexusBrowserProps> = ({ onOpenNewWindow, initialUrl }) => {
   const [tabs, setTabs] = useState<Tab[]>([
     { 
       id: 'tab-1', 
-      url: initialUrl || 'https://nvkglobal.com/', 
+      url: initialUrl || DEFAULT_NEXUS_URL, 
       title: 'Nexus Home',
-      history: [initialUrl || 'https://nvkglobal.com/'],
+      history: [initialUrl || DEFAULT_NEXUS_URL],
       historyIndex: 0
     }
   ]);
   const [activeTabId, setActiveTabId] = useState('tab-1');
-  const [inputValue, setInputValue] = useState(initialUrl || 'https://nvkglobal.com/');
+  const [inputValue, setInputValue] = useState(initialUrl || DEFAULT_NEXUS_URL);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isDurableMode, setIsDurableMode] = useState(true);
@@ -102,9 +104,9 @@ const NexusBrowser: React.FC<NexusBrowserProps> = ({ onOpenNewWindow, initialUrl
     const newId = `tab-${Date.now()}`;
     setTabs(prev => [...prev, {
       id: newId,
-      url: 'https://nvkglobal.com/',
+      url: DEFAULT_NEXUS_URL,
       title: 'New Tab',
-      history: ['https://nvkglobal.com/'],
+      history: [DEFAULT_NEXUS_URL],
       historyIndex: 0
     }]);
     setActiveTabId(newId);
@@ -310,11 +312,11 @@ const NexusBrowser: React.FC<NexusBrowserProps> = ({ onOpenNewWindow, initialUrl
                 onClick={() => {
                   setTabs(prev => prev.map(t => t.id === activeTabId ? {
                     ...t,
-                    url: 'https://nvkglobal.com/',
-                    history: ['https://nvkglobal.com/'],
+                    url: DEFAULT_NEXUS_URL,
+                    history: [DEFAULT_NEXUS_URL],
                     historyIndex: 0
                   } : t));
-                  setInputValue('https://nvkglobal.com/');
+                  setInputValue(DEFAULT_NEXUS_URL);
                   setError(null);
                 }}
                 className="px-6 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-300 rounded transition-all text-xs font-bold uppercase tracking-widest"

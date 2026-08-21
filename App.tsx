@@ -101,6 +101,8 @@ import { voiceProfiles } from './lib/whisper/VoiceRegistry';
 import PanelLauncher from './components/panels/PanelLauncher';
 import NexusBrowser from './components/panels/NexusBrowser';
 import { Dock } from './components/Dock';
+import { Header } from './components/Header';
+import { OmniSearchModal } from './components/ui/OmniSearchModal';
 import { BootSequence } from './components/core/BootSequence'; 
 import Watermark from './components/ui/Watermark'; 
 import { GlobalControlHub } from './components/GlobalControlHub';
@@ -158,22 +160,9 @@ export const App: React.FC = () => {
     }
     return 'high';
   });
-  const [workspaceMode, setWorkspaceMode] = useState<'3d' | '2d'>(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const saved = localStorage.getItem('nvk_workspace_mode');
-        if (saved === '3d' || saved === '2d') {
-          return saved as '3d' | '2d';
-        }
-      } catch (e) {
-        console.warn("Storage access restricted:", e);
-      }
-      const mobile = window.innerWidth < 768 || /Mobi|Android/i.test(navigator.userAgent);
-      if (mobile) return '2d';
-    }
-    return '3d';
-  });
+  const [workspaceMode, setWorkspaceMode] = useState<'3d' | '2d'>('3d');
   const [active2dNodeId, setActive2dNodeId] = useState<string | null>(null);
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
 
   // Drag and drop / Auto-recenter states
   const [isDragging, setIsDragging] = useState(false);
@@ -555,7 +544,10 @@ export const App: React.FC = () => {
   }, [activeCluster, generateText, addEchoMessage]);
 
   const handleCloseAllPanels = useCallback(() => {
-    updateActiveCluster({ openNodeIds: [] });
+    updateActiveCluster({ openNodeIds: [], pinnedPanelIds: [] });
+    setMinimizedPanelIds([]);
+    setMaximizedPanelIds([]);
+    setFocusedPanelId(null);
     addEchoMessage(AgentName.SystemControl, 'All neural panels collapsed.', 'text-red-400');
   }, [updateActiveCluster, addEchoMessage]);
 
@@ -1407,7 +1399,7 @@ const mockShatterpointData = {
   return (
     <SystemStateProvider value={systemState}>
       <div 
-        className="app-container w-full h-screen bg-black overflow-hidden relative"
+        className="app-container w-full h-screen bg-black overflow-hidden relative flex flex-col"
         onDragOver={(e) => e.preventDefault()}
         onDrop={handleGlobalDrop}
         onMouseMove={handleContainerMouseMove}
@@ -1496,653 +1488,231 @@ const mockShatterpointData = {
           />
         )}
 
-        {showOrbTooltip && workspaceMode === '3d' && (
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-[120px] pointer-events-none z-[2000]">
-            <div className="bg-slate-900/90 border border-cyan-500/50 rounded-lg p-4 shadow-[0_0_20px_rgba(0,255,255,0.3)] backdrop-blur-md animate-bounce relative">
-              <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 w-4 h-4 bg-slate-900 border-b border-r border-cyan-500/50 transform rotate-45"></div>
-              <p className="text-cyan-400 font-mono text-sm font-bold tracking-wider text-center px-4">
-                Click the orb to talk with NVK
-              </p>
-            </div>
-          </div>
-        )}
-
-        <Watermark />
-
-        {/* Dynamic Workspace Mode Toggle Switch */}
-        <div className={`fixed top-[56px] md:top-3 right-3 z-[1100] flex items-center bg-slate-950/80 backdrop-blur-md border border-slate-800 rounded-full p-0.5 shadow-2xl ${
-          workspaceMode === '2d' ? 'hidden md:flex' : 'flex'
-        }`}>
-          <button
-            onClick={() => {
-              setWorkspaceMode('3d');
-              CyberSynth.playClick();
-            }}
-            className={`px-3 py-1.5 rounded-full text-[10px] font-mono uppercase tracking-widest transition-all duration-300 flex items-center gap-1.5 cursor-pointer ${
-              workspaceMode === '3d'
-                ? 'bg-cyan-500/15 border border-cyan-500/80 text-cyan-300 shadow-[0_0_12px_rgba(6,182,212,0.3)] font-bold'
-                : 'text-slate-500 hover:text-slate-300 border border-transparent'
-            }`}
-          >
-            <i className={`ri-shape-2-line ${workspaceMode === '3d' ? 'text-cyan-400' : 'text-slate-500'}`}></i>
-            3D MATRIX
-          </button>
-          <button
-            onClick={() => {
-              setWorkspaceMode('2d');
-              CyberSynth.playClick();
-            }}
-            className={`px-3 py-1.5 rounded-full text-[10px] font-mono uppercase tracking-widest transition-all duration-300 flex items-center gap-1.5 cursor-pointer ${
-              workspaceMode === '2d'
-                ? 'bg-emerald-500/15 border border-emerald-500/80 text-emerald-300 shadow-[0_0_12px_rgba(16,185,129,0.3)] font-bold'
-                : 'text-slate-500 hover:text-slate-300 border border-transparent'
-            }`}
-          >
-            <i className={`ri-layout-grid-line ${workspaceMode === '2d' ? 'text-emerald-400' : 'text-slate-500'}`}></i>
-            2D BENTO BOX
-          </button>
-        </div>
-
-        {/* Absolute elements */}
-        {workspaceMode === '3d' && (
-          <div className="absolute top-16 left-4 z-50 flex flex-col gap-2">
-            <div className="flex gap-2 overflow-x-auto max-w-[80vw] pb-2 scrollbar-hide items-center">
-              {clusters.map(cluster => (
-                <div key={cluster.id} className="relative group">
-                  <button
-                    onClick={() => setActiveClusterId(cluster.id)}
-                    className={`px-3 py-1 font-mono text-[10px] uppercase tracking-widest border transition-all rounded flex items-center gap-2 ${
-                      activeClusterId === cluster.id 
-                        ? 'bg-cyan-500/20 border-cyan-500 text-cyan-400 shadow-[0_0_10px_rgba(0,255,179,0.3)]' 
-                        : 'bg-slate-900/50 border-slate-700 text-slate-500 hover:border-slate-500'
-                    }`}
+        <AnimatePresence>
+          {swappingNodeId && (
+            <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm">
+              <motion.div 
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.9 }}
+                className="bg-slate-900 border border-cyan-500/50 rounded-xl p-6 w-full max-w-2xl max-h-[80vh] flex flex-col gap-4 shadow-[0_0_50px_rgba(0,255,255,0.2)]"
+              >
+                <div className="flex justify-between items-center border-b border-slate-800 pb-4">
+                  <h3 className="text-cyan-400 font-mono text-lg uppercase tracking-widest">Select Replacement Panel</h3>
+                  <button 
+                    onClick={() => setSwappingNodeId(null)} 
+                    className="w-7 h-7 rounded-full bg-rose-600/90 hover:bg-rose-500 border border-rose-400 text-white shadow-[0_0_8px_rgba(244,63,94,0.5)] flex items-center justify-center transition-all font-bold shrink-0 cursor-pointer"
+                    title="Close replacement panel selector"
                   >
-                    {cluster.name}
-                    {clusters.length > 1 && (
-                      <i 
-                        className="ri-close-line hover:text-red-400 transition-colors" 
-                        onClick={(e) => { e.stopPropagation(); handleDeleteCluster(cluster.id); }}
-                      />
-                    )}
+                    <i className="ri-close-line text-lg font-bold"></i>
                   </button>
                 </div>
-              ))}
-              
-              <div className="relative ml-2">
-                <button 
-                  onClick={() => setShowClusterMenu(!showClusterMenu)}
-                  className={`w-8 h-8 border rounded-full flex items-center justify-center transition-all active:scale-95 ${
-                    showClusterMenu 
-                      ? 'bg-purple-500 text-white border-purple-400 shadow-[0_0_15px_rgba(168,85,247,0.5)]' 
-                      : 'bg-purple-900/20 border-purple-500/30 text-purple-400 hover:bg-purple-900/40'
-                  }`}
-                >
-                  <i className={showClusterMenu ? "ri-close-line" : "ri-add-line"}></i>
-                </button>
-                <AnimatePresence>
-                  {showClusterMenu && (
-                    <motion.div 
-                      initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                      animate={{ opacity: 1, y: 0, scale: 1 }}
-                      exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                      className="absolute top-full left-0 mt-2 flex flex-col bg-slate-900/95 backdrop-blur-xl border border-purple-500/30 rounded-lg shadow-2xl p-2 min-w-[160px] z-[60]"
+                
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 overflow-y-auto pr-2 custom-scrollbar">
+                  {PANEL_DEFINITIONS.map(panel => (
+                    <button
+                      key={panel.id}
+                      onClick={() => handlePerformSwap(panel.id)}
+                      className="flex flex-col items-center gap-2 p-4 bg-slate-800/50 hover:bg-cyan-900/30 border border-slate-700 hover:border-cyan-500/50 rounded-lg transition-all group"
                     >
-                      <div className="text-[8px] font-mono text-purple-400/70 uppercase px-2 mb-2 border-b border-purple-500/20 pb-1">Initialize New System</div>
-                      {Object.values(ClusterType).map(type => (
-                        <button
-                          key={type}
-                          onClick={() => {
-                            handleSpawnOrbSystem(type);
-                            setShowClusterMenu(false);
-                          }}
-                          className="px-3 py-2 text-left text-[10px] font-mono uppercase text-slate-300 hover:bg-purple-500/20 hover:text-purple-300 transition-all rounded flex items-center justify-between group/item"
-                        >
-                          <span className="flex items-center gap-2">
-                            <i className="ri-instance-line text-purple-500/50 group-hover/item:text-purple-400"></i>
-                            {type}
-                          </span>
-                          <i className="ri-arrow-right-s-line opacity-0 group-hover/item:opacity-100 transition-opacity"></i>
-                        </button>
-                      ))}
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
+                      <i className={`${panel.icon} text-2xl text-slate-400 group-hover:text-cyan-400 transition-colors`}></i>
+                      <span className="text-[10px] font-mono text-slate-300 group-hover:text-white text-center">{panel.title}</span>
+                    </button>
+                  ))}
+                </div>
+                
+                <div className="text-[10px] font-mono text-slate-500 italic text-center pt-2">
+                  Swapping content for node: {swappingNodeId}
+                </div>
+              </motion.div>
             </div>
-          </div>
-        )}
+          )}
+        </AnimatePresence>
 
-        {/* GlobalControlHub (shared, rendered absolute) */}
-        {workspaceMode === '3d' && (
-          <GlobalControlHub 
-            currentLayout={activeCluster.layout}
-            onLayoutChange={(l) => updateActiveCluster({ layout: l })}
-            onSynthesize={handleSynthesize}
-            isSynthesizing={isSynthesizing}
-            onSpawnOrbSystem={() => handleSpawnOrbSystem(ClusterType.Standard)}
-            masterPanelSize={activeCluster.masterPanelSize}
-            nodeSpacing={activeCluster.nodeSpacing}
-            nodeFlow={activeCluster.nodeFlow}
-            panelOpacity={activeCluster.panelOpacity}
-            orbMode={activeCluster.orbMode}
-            particleMode={activeCluster.particleMode}
-            workspaceMode={workspaceMode}
-            onWorkspaceModeChange={setWorkspaceMode}
-            onUpdateSettings={(settings) => updateActiveCluster(settings)}
-            onCloseAllPanels={handleCloseAllPanels}
-            onOpenAllPanels={handleOpenAllPanels}
-          />
-        )}
+        {activeCluster.pinnedPanelIds.map((instanceId, idx) => {
+          const [panelId] = instanceId.split('::');
+          const panelDef = PANEL_DEFINITIONS.find(p => p.id === panelId);
+          const opacity = activeCluster.panelOpacities?.[instanceId] ?? activeCluster.panelOpacity;
+          const isMinimized = minimizedPanelIds.includes(instanceId);
+          const isMaximized = maximizedPanelIds.includes(instanceId);
+          const isFocused = focusedPanelId === instanceId;
+          const zIndex = panelZIndices[instanceId] ?? (1050 + idx);
 
-      <AnimatePresence>
-        {swappingNodeId && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          return (
+            <PinnedPanel 
+              key={instanceId} 
+              index={idx}
+              panelId={instanceId} 
+              getPanelContent={getPanelContent}
+              panelOpacity={opacity}
+              onOpacityChange={(val) => {
+                const newOpacities = {
+                  ...(activeCluster.panelOpacities || {}),
+                  [instanceId]: val
+                };
+                updateActiveCluster({ panelOpacities: newOpacities });
+              }}
+              onClose={() => {
+                updateActiveCluster({ pinnedPanelIds: activeCluster.pinnedPanelIds.filter(id => id !== instanceId) });
+                setMinimizedPanelIds(prev => prev.filter(id => id !== instanceId));
+                setMaximizedPanelIds(prev => prev.filter(id => id !== instanceId));
+                if (focusedPanelId === instanceId) setFocusedPanelId(null);
+              }}
+              onUnpin={() => handleUnpinPanel(instanceId)}
+              onSwap={(newId) => handleSwapPinnedPanel(instanceId, newId)}
+              panelDef={panelDef}
+              availablePanels={PANEL_DEFINITIONS}
+              isFocused={isFocused}
+              onToggleFocus={() => handleToggleFocus(instanceId)}
+              somePanelFocused={focusedPanelId !== null}
+              isMinimized={isMinimized}
+              isMaximized={isMaximized}
+              onToggleMinimize={() => handleToggleMinimize(instanceId)}
+              onToggleMaximize={() => handleToggleMaximize(instanceId)}
+              zIndex={zIndex}
+              onBringToFront={() => handleBringToFront(instanceId)}
+            />
+          );
+        })}
+
+        {/* Dynamic Window & Panel Controller */}
+        <PanelManager
+          pinnedPanelIds={activeCluster.pinnedPanelIds}
+          minimizedPanelIds={minimizedPanelIds}
+          maximizedPanelIds={maximizedPanelIds}
+          focusedPanelId={focusedPanelId}
+          onToggleFocus={handleToggleFocus}
+          onClosePanel={(id) => {
+            updateActiveCluster({ pinnedPanelIds: activeCluster.pinnedPanelIds.filter(pid => pid !== id) });
+            setMinimizedPanelIds(prev => prev.filter(pid => pid !== id));
+            setMaximizedPanelIds(prev => prev.filter(pid => pid !== id));
+            if (focusedPanelId === id) setFocusedPanelId(null);
+          }}
+          onBringToFront={handleBringToFront}
+          onToggleMinimize={handleToggleMinimize}
+          onMinimizeAll={handleMinimizeAll}
+          onRestoreAll={handleRestoreAll}
+          onCloseAll={handleCloseAll}
+          onTilePanels={handleTilePanels}
+          panelDefinitions={PANEL_DEFINITIONS}
+        />
+
+        {/* Core Controls Overlay */}
+        <AnimatePresence>
+          {isCoreControlsOpen && (
             <motion.div 
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.9 }}
-              className="bg-slate-900 border border-cyan-500/50 rounded-xl p-6 w-full max-w-2xl max-h-[80vh] flex flex-col gap-4 shadow-[0_0_50px_rgba(0,255,255,0.2)]"
+              className="fixed inset-0 z-[2000] flex items-center justify-center pointer-events-none"
             >
-              <div className="flex justify-between items-center border-b border-slate-800 pb-4">
-                <h3 className="text-cyan-400 font-mono text-lg uppercase tracking-widest">Select Replacement Panel</h3>
-                <button onClick={() => setSwappingNodeId(null)} className="text-slate-500 hover:text-white transition-colors">
-                  <i className="ri-close-line text-2xl"></i>
+              <div className="bg-slate-900/95 backdrop-blur-xl border border-cyan-500/30 rounded-2xl p-6 w-[400px] shadow-[0_0_50px_rgba(0,255,179,0.2)] pointer-events-auto relative">
+                <button 
+                  onClick={() => setIsCoreControlsOpen(false)}
+                  className="absolute top-4 right-4 w-7 h-7 rounded-full bg-rose-600/90 hover:bg-rose-500 border border-rose-400 text-white shadow-[0_0_8px_rgba(244,63,94,0.5)] flex items-center justify-center transition-all font-bold shrink-0 cursor-pointer"
+                  title="Close Orb Controls"
+                >
+                  <i className="ri-close-line text-lg font-bold"></i>
                 </button>
-              </div>
-              
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 overflow-y-auto pr-2 custom-scrollbar">
-                {PANEL_DEFINITIONS.map(panel => (
-                  <button
-                    key={panel.id}
-                    onClick={() => handlePerformSwap(panel.id)}
-                    className="flex flex-col items-center gap-2 p-4 bg-slate-800/50 hover:bg-cyan-900/30 border border-slate-700 hover:border-cyan-500/50 rounded-lg transition-all group"
-                  >
-                    <i className={`${panel.icon} text-2xl text-slate-400 group-hover:text-cyan-400 transition-colors`}></i>
-                    <span className="text-[10px] font-mono text-slate-300 group-hover:text-white text-center">{panel.title}</span>
-                  </button>
-                ))}
-              </div>
-              
-              <div className="text-[10px] font-mono text-slate-500 italic text-center pt-2">
-                Swapping content for node: {swappingNodeId}
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
 
-      {activeCluster.pinnedPanelIds.map((instanceId, idx) => {
-        const [panelId] = instanceId.split('::');
-        const panelDef = PANEL_DEFINITIONS.find(p => p.id === panelId);
-        const opacity = activeCluster.panelOpacities?.[instanceId] ?? activeCluster.panelOpacity;
-        const isMinimized = minimizedPanelIds.includes(instanceId);
-        const isMaximized = maximizedPanelIds.includes(instanceId);
-        const isFocused = focusedPanelId === instanceId;
-        const zIndex = panelZIndices[instanceId] ?? (1050 + idx);
-
-        return (
-          <PinnedPanel 
-            key={instanceId} 
-            index={idx}
-            panelId={instanceId} 
-            getPanelContent={getPanelContent}
-            panelOpacity={opacity}
-            onOpacityChange={(val) => {
-              const newOpacities = {
-                ...(activeCluster.panelOpacities || {}),
-                [instanceId]: val
-              };
-              updateActiveCluster({ panelOpacities: newOpacities });
-            }}
-            onClose={() => {
-              updateActiveCluster({ pinnedPanelIds: activeCluster.pinnedPanelIds.filter(id => id !== instanceId) });
-              setMinimizedPanelIds(prev => prev.filter(id => id !== instanceId));
-              setMaximizedPanelIds(prev => prev.filter(id => id !== instanceId));
-              if (focusedPanelId === instanceId) setFocusedPanelId(null);
-            }}
-            onUnpin={() => handleUnpinPanel(instanceId)}
-            onSwap={(newId) => handleSwapPinnedPanel(instanceId, newId)}
-            panelDef={panelDef}
-            availablePanels={PANEL_DEFINITIONS}
-            isFocused={isFocused}
-            onToggleFocus={() => handleToggleFocus(instanceId)}
-            somePanelFocused={focusedPanelId !== null}
-            isMinimized={isMinimized}
-            isMaximized={isMaximized}
-            onToggleMinimize={() => handleToggleMinimize(instanceId)}
-            onToggleMaximize={() => handleToggleMaximize(instanceId)}
-            zIndex={zIndex}
-            onBringToFront={() => handleBringToFront(instanceId)}
-          />
-        );
-      })}
-
-      {/* Dynamic Window & Panel Controller */}
-      <PanelManager
-        pinnedPanelIds={activeCluster.pinnedPanelIds}
-        minimizedPanelIds={minimizedPanelIds}
-        maximizedPanelIds={maximizedPanelIds}
-        focusedPanelId={focusedPanelId}
-        onToggleFocus={handleToggleFocus}
-        onClosePanel={(id) => {
-          updateActiveCluster({ pinnedPanelIds: activeCluster.pinnedPanelIds.filter(pid => pid !== id) });
-          setMinimizedPanelIds(prev => prev.filter(pid => pid !== id));
-          setMaximizedPanelIds(prev => prev.filter(pid => pid !== id));
-          if (focusedPanelId === id) setFocusedPanelId(null);
-        }}
-        onBringToFront={handleBringToFront}
-        onToggleMinimize={handleToggleMinimize}
-        onMinimizeAll={handleMinimizeAll}
-        onRestoreAll={handleRestoreAll}
-        onCloseAll={handleCloseAll}
-        onTilePanels={handleTilePanels}
-        panelDefinitions={PANEL_DEFINITIONS}
-      />
-
-      {/* Core Controls Overlay */}
-      <AnimatePresence>
-        {isCoreControlsOpen && (
-          <motion.div 
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.9 }}
-            className="fixed inset-0 z-[2000] flex items-center justify-center pointer-events-none"
-          >
-            <div className="bg-slate-900/95 backdrop-blur-xl border border-cyan-500/30 rounded-2xl p-6 w-[400px] shadow-[0_0_50px_rgba(0,255,179,0.2)] pointer-events-auto relative">
-              <button 
-                onClick={() => setIsCoreControlsOpen(false)}
-                className="absolute top-4 right-4 text-slate-400 hover:text-white transition-colors"
-              >
-                <i className="ri-close-line text-xl"></i>
-              </button>
-
-              <div className="text-cyan-400 font-mono text-sm uppercase tracking-widest border-b border-cyan-500/30 pb-3 mb-4 flex items-center gap-2">
-                <i className="ri-bubble-chart-line"></i> Core Orb Controls
-              </div>
-
-              <div className="flex flex-col gap-6">
-                {/* Node Management */}
-                <div className="flex flex-col gap-3">
-                  <div className="text-slate-400 font-mono text-[10px] uppercase tracking-wider">Node Management</div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <button 
-                      onClick={() => {
-                        const randomPanel = PANEL_DEFINITIONS[Math.floor(Math.random() * PANEL_DEFINITIONS.length)];
-                        const id = `node-${Date.now()}`;
-                        updateActiveCluster({ 
-                          nodes: [...activeCluster.nodes, { id, panelId: randomPanel.id, label: randomPanel.name }],
-                          openNodeIds: [...activeCluster.openNodeIds, id]
-                        });
-                        setIsCoreControlsOpen(false);
-                        addEchoMessage(AgentName.SystemControl, `New node ${randomPanel.name} integrated into cluster.`, 'text-cyan-400');
-                      }}
-                      className="bg-cyan-900/20 hover:bg-cyan-900/40 border border-cyan-500/30 text-cyan-300 font-mono text-[10px] py-2 rounded transition-all flex items-center justify-center gap-2"
-                    >
-                      <i className="ri-add-line"></i> Add Node
-                    </button>
-                    <button 
-                      onClick={() => {
-                        updateActiveCluster({ openNodeIds: [] });
-                        setIsCoreControlsOpen(false);
-                        addEchoMessage(AgentName.SystemControl, "All 3D nodes collapsed.", 'text-orange-400');
-                      }}
-                      className="bg-slate-800/40 hover:bg-slate-800/60 border border-slate-700 text-slate-300 font-mono text-[10px] py-2 rounded transition-all flex items-center justify-center gap-2"
-                    >
-                      <i className="ri-close-circle-line"></i> Close All
-                    </button>
-                  </div>
-                  <button 
-                    onClick={() => {
-                      handleDeleteCluster(activeClusterId);
-                      setIsCoreControlsOpen(false);
-                    }}
-                    className="bg-red-900/20 hover:bg-red-900/40 border border-red-500/30 text-red-400 font-mono text-[10px] py-2 rounded transition-all flex items-center justify-center gap-2"
-                  >
-                    <i className="ri-delete-bin-line"></i> Delete Cluster
-                  </button>
+                <div className="text-cyan-400 font-mono text-sm uppercase tracking-widest border-b border-cyan-500/30 pb-3 mb-4 flex items-center gap-2">
+                  <i className="ri-bubble-chart-line"></i> Core Orb Controls
                 </div>
 
-                {/* Cluster Settings */}
-                <div className="flex flex-col gap-4">
-                  <div className="text-slate-400 font-mono text-[10px] uppercase tracking-wider">Cluster Settings</div>
-                  
-                  <div className="flex flex-col gap-2">
-                    <div className="flex justify-between text-[10px] font-mono text-slate-500 uppercase">
-                      <span>Rotation Speed</span>
-                      <span className="text-cyan-400">{(activeCluster.nodeAnimationSpeed || 0.5).toFixed(2)}x</span>
-                    </div>
-                    <input 
-                      type="range" 
-                      min="0" 
-                      max="2" 
-                      step="0.1"
-                      value={activeCluster.nodeAnimationSpeed ?? 0.5}
-                      onChange={(e) => updateActiveCluster({ nodeAnimationSpeed: parseFloat(e.target.value) })}
-                      className="w-full accent-cyan-500 bg-slate-800 h-1 rounded-full appearance-none cursor-pointer"
-                    />
-                  </div>
-
-                  <div className="flex flex-col gap-2">
-                    <div className="flex justify-between text-[10px] font-mono text-slate-500 uppercase">
-                      <span>Master Panel Size</span>
-                      <span className="text-purple-400">{(activeCluster.masterPanelSize || 1.0).toFixed(2)}x</span>
-                    </div>
-                    <input 
-                      type="range" 
-                      min="0.5" 
-                      max="2" 
-                      step="0.1"
-                      value={activeCluster.masterPanelSize ?? 1.0}
-                      onChange={(e) => updateActiveCluster({ masterPanelSize: parseFloat(e.target.value) })}
-                      className="w-full accent-purple-500 bg-slate-800 h-1 rounded-full appearance-none cursor-pointer"
-                    />
-                  </div>
-
-                  <div className="flex flex-col gap-2">
-                    <div className="flex justify-between text-[10px] font-mono text-slate-500 uppercase">
-                      <span>Node Spacing</span>
-                      <span className="text-emerald-400">{(activeCluster.nodeSpacing || 1.0).toFixed(2)}x</span>
-                    </div>
-                    <input 
-                      type="range" 
-                      min="0.5" 
-                      max="3" 
-                      step="0.1"
-                      value={activeCluster.nodeSpacing ?? 1.0}
-                      onChange={(e) => updateActiveCluster({ nodeSpacing: parseFloat(e.target.value) })}
-                      className="w-full accent-emerald-500 bg-slate-800 h-1 rounded-full appearance-none cursor-pointer"
-                    />
-                  </div>
-
-                  <div className="flex flex-col gap-2">
-                    <div className="flex justify-between text-[10px] font-mono text-slate-500 uppercase">
-                      <span>Node Flow</span>
-                      <span className="text-orange-400">{(activeCluster.nodeFlow || 0.5).toFixed(2)}</span>
-                    </div>
-                    <input 
-                      type="range" 
-                      min="0" 
-                      max="1" 
-                      step="0.05"
-                      value={activeCluster.nodeFlow ?? 0.5}
-                      onChange={(e) => updateActiveCluster({ nodeFlow: parseFloat(e.target.value) })}
-                      className="w-full accent-orange-500 bg-slate-800 h-1 rounded-full appearance-none cursor-pointer"
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-3 gap-2">
-                    <div className="flex flex-col gap-2">
-                      <div className="text-[10px] font-mono text-slate-500 uppercase">Layout</div>
-                      <select 
-                        value={activeCluster.layout ?? PanelLayout.TAB_BROWSER}
-                        onChange={(e) => updateActiveCluster({ layout: e.target.value as PanelLayout })}
-                        className="bg-slate-800 border border-slate-700 text-cyan-300 font-mono text-[10px] p-1.5 rounded outline-none"
+                <div className="flex flex-col gap-6">
+                  {/* Node Management */}
+                  <div className="flex flex-col gap-3">
+                    <div className="text-slate-400 font-mono text-[10px] uppercase tracking-wider">Node Management</div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button 
+                        onClick={() => {
+                          const randomPanel = PANEL_DEFINITIONS[Math.floor(Math.random() * PANEL_DEFINITIONS.length)];
+                          const id = `node-${Date.now()}`;
+                          updateActiveCluster({ 
+                            nodes: [...activeCluster.nodes, { id, panelId: randomPanel.id, label: randomPanel.name }],
+                            openNodeIds: [...activeCluster.openNodeIds, id]
+                          });
+                          setIsCoreControlsOpen(false);
+                        }}
+                        className="bg-cyan-900/20 hover:bg-cyan-900/40 border border-cyan-500/30 text-cyan-300 font-mono text-[10px] py-2 rounded transition-all flex items-center justify-center gap-2"
                       >
-                        {Object.values(PanelLayout).map(l => <option key={l} value={l}>{l}</option>)}
-                      </select>
-                    </div>
-                    <div className="flex flex-col gap-2">
-                      <div className="text-[10px] font-mono text-slate-500 uppercase">Orb Mode</div>
-                      <select 
-                        value={activeCluster.orbMode ?? OrbMode.HolographicCore}
-                        onChange={(e) => updateActiveCluster({ orbMode: e.target.value as OrbMode })}
-                        className="bg-slate-800 border border-slate-700 text-purple-300 font-mono text-[10px] p-1.5 rounded outline-none"
+                        <i className="ri-add-line"></i> Add Node
+                      </button>
+                      <button 
+                        onClick={() => {
+                          updateActiveCluster({ openNodeIds: [] });
+                          setIsCoreControlsOpen(false);
+                        }}
+                        className="bg-slate-800/40 hover:bg-slate-800/60 border border-slate-700 text-slate-300 font-mono text-[10px] py-2 rounded transition-all flex items-center justify-center gap-2"
                       >
-                        {Object.values(OrbMode).map(m => <option key={m} value={m}>{m}</option>)}
-                      </select>
+                        <i className="ri-close-circle-line"></i> Close All
+                      </button>
                     </div>
+                  </div>
+
+                  {/* Cluster Settings */}
+                  <div className="flex flex-col gap-4">
+                    <div className="text-slate-400 font-mono text-[10px] uppercase tracking-wider">Cluster Settings</div>
+                    
                     <div className="flex flex-col gap-2">
-                      <div className="text-[10px] font-mono text-slate-500 uppercase">Particles</div>
-                      <select 
-                        value={activeCluster.particleMode ?? ParticleBackgroundMode.Orbital}
-                        onChange={(e) => updateActiveCluster({ particleMode: e.target.value as ParticleBackgroundMode })}
-                        className="bg-slate-800 border border-slate-700 text-emerald-300 font-mono text-[10px] p-1.5 rounded outline-none"
-                      >
-                        {Object.values(ParticleBackgroundMode).map(m => <option key={m} value={m}>{m}</option>)}
-                      </select>
+                      <div className="flex justify-between text-[10px] font-mono text-slate-500 uppercase">
+                        <span>Rotation Speed</span>
+                        <span className="text-cyan-400">{(activeCluster.nodeAnimationSpeed || 0.5).toFixed(2)}x</span>
+                      </div>
+                      <input 
+                        type="range" 
+                        min="0" 
+                        max="2" 
+                        step="0.1"
+                        value={activeCluster.nodeAnimationSpeed ?? 0.5}
+                        onChange={(e) => updateActiveCluster({ nodeAnimationSpeed: parseFloat(e.target.value) })}
+                        className="w-full accent-cyan-500 bg-slate-800 h-1 rounded-full appearance-none cursor-pointer"
+                      />
+                    </div>
+
+                    <div className="flex flex-col gap-2">
+                      <div className="flex justify-between text-[10px] font-mono text-slate-500 uppercase">
+                        <span>Master Panel Size</span>
+                        <span className="text-purple-400">{(activeCluster.masterPanelSize || 1.0).toFixed(2)}x</span>
+                      </div>
+                      <input 
+                        type="range" 
+                        min="0.5" 
+                        max="2" 
+                        step="0.1"
+                        value={activeCluster.masterPanelSize ?? 1.0}
+                        onChange={(e) => updateActiveCluster({ masterPanelSize: parseFloat(e.target.value) })}
+                        className="w-full accent-purple-500 bg-slate-800 h-1 rounded-full appearance-none cursor-pointer"
+                      />
                     </div>
                   </div>
                 </div>
-
-                <button 
-                  onClick={() => {
-                    handleAppClick('ClusterConfigPanel');
-                    setIsCoreControlsOpen(false);
-                  }}
-                  className="mt-2 bg-slate-800/60 hover:bg-slate-700/80 border border-slate-600 text-slate-300 font-mono text-[10px] py-2 rounded transition-all"
-                >
-                  Advanced Cluster Settings
-                </button>
-
-                <button 
-                  onClick={() => {
-                    addEchoMessage(AgentName.SystemControl, "Accessing Logic Core Configuration...", 'text-cyan-400');
-                    handleAppClick('ModelOrchestratorPanel');
-                    setIsCoreControlsOpen(false);
-                  }}
-                  className="mt-2 bg-cyan-900/20 hover:bg-cyan-900/40 border border-cyan-500/30 text-cyan-400 font-mono text-[10px] py-2 rounded transition-all flex items-center justify-center gap-2"
-                >
-                  <i className="ri-cpu-line"></i> LLM Settings
-                </button>
-
-                <button 
-                  onClick={() => {
-                    setShowTutorial(true);
-                    setIsCoreControlsOpen(false);
-                  }}
-                  className="mt-2 bg-cyan-900/20 hover:bg-cyan-900/40 border border-cyan-500/30 text-cyan-400 font-mono text-[10px] py-2 rounded transition-all flex items-center justify-center gap-2"
-                >
-                  <i className="ri-question-line"></i> System Walkthrough
-                </button>
               </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Navigation Controls - Moved to bottom left */}
-      {workspaceMode === '3d' && (
-        <div className="fixed bottom-20 md:bottom-4 left-4 z-[1200] pointer-events-none">
-          <div className="pointer-events-auto">
-            <FlightController 
-              onFlightChange={setFlightInput} 
-              onRecenter={() => setRecenterTrigger(prev => prev + 1)}
-            />
-          </div>
-        </div>
-      )}
-
-      <Dock 
-        apps={PANEL_DEFINITIONS.filter(p => DOCK_APPS.includes(p.id))}
-        openAppIds={activeCluster.pinnedPanelIds}
-        onAppClick={handleAppClick}
-      />
-
-      {/* LLM Settings - Moved to bottom right */}
-      {workspaceMode === '3d' && (
-        <div className="fixed bottom-20 md:bottom-4 right-36 md:right-40 z-[1200]">
-          <button 
-            onClick={() => {
-              addEchoMessage(AgentName.SystemControl, "Accessing Logic Core Configuration...", 'text-cyan-400');
-              handleAppClick('ModelOrchestratorPanel');
-            }}
-            className="w-10 h-10 md:w-12 md:h-12 bg-cyan-900/40 hover:bg-cyan-900/60 border border-cyan-500/50 text-cyan-400 rounded-full shadow-[0_0_15px_rgba(34,211,238,0.3)] flex items-center justify-center transition-all hover:scale-110 active:scale-95 group"
-            title="LLM Settings"
-          >
-            <i className="ri-cpu-line text-lg md:text-xl group-hover:rotate-12 transition-transform"></i>
-          </button>
-        </div>
-      )}
-
-      <TutorialOverlay 
-        isVisible={showTutorial} 
-        onComplete={() => setShowTutorial(false)} 
-      />
-
-      <NVKLogicCore
-        onOpenPanel={(id) => {
-          if (id === 'SYSTEM::CORE_CONTROLS') {
-            setIsCoreControlsOpen(true);
-            return;
-          }
-          // Add a new node for this panel AND spawn an agent node in a single update
-          const panelNodeId = `${activeCluster.id}-node-${Date.now()}`;
-          const agentNodeId = `agent-${Date.now()}`;
-          
-          const panelNode: ClusterNode = { id: panelNodeId, panelId: id, label: id };
-          const agentNode: ClusterNode = { id: agentNodeId, panelId: id, label: `Agent-${id}` };
-
-          updateActiveCluster({
-            nodes: [...activeCluster.nodes, panelNode, agentNode],
-            openNodeIds: [...activeCluster.openNodeIds, panelNodeId, agentNodeId],
-            pinnedPanelIds: activeCluster.pinnedPanelIds.includes(id) ? activeCluster.pinnedPanelIds : [...activeCluster.pinnedPanelIds, id]
-          });
-
-          addEchoMessage(AgentName.SystemControl, `Manifesting Service Node: Agent-${id}`, 'text-fuchsia-400');
-        }}
-        onClosePanel={(id) => {
-          updateActiveCluster({
-            openNodeIds: activeCluster.openNodeIds.filter(nid => {
-              const node = activeCluster.nodes.find(n => n.id === nid);
-              return node?.panelId !== id;
-            }),
-            pinnedPanelIds: activeCluster.pinnedPanelIds.filter(pid => pid !== id)
-          });
-          
-          // Close 3D panel if it exists
-          setAgents3D(prev => prev.map(a => a.panelTitle === PANEL_DEFINITIONS.find(p => p.id === id)?.name ? { ...a, panelContent: undefined } : a));
-        }}
-        onSpawnAgent={(name, task) => spawnAgent(name, task)}
-        onSetLayout={(l) => updateActiveCluster({ layout: l })}
-        onSetOrbMode={(m) => updateActiveCluster({ orbMode: m })}
-        onSetParticleMode={(m) => updateActiveCluster({ particleMode: m })}
-        onSetAnimationSpeed={(s) => updateActiveCluster({ nodeAnimationSpeed: s })}
-        availablePanels={PANEL_DEFINITIONS.map(p => ({ id: p.id, name: p.name }))}
-        onOpenAllPanels={handleOpenAllPanels}
-        onCloseAllPanels={handleCloseAllPanels}
-        onUpdateSettings={(settings) => updateActiveCluster(settings)}
-      />
-
-      {/* Desktop Shortcuts (Only shown in 3D Workspace, acts as a background desktop tier) */}
-      {workspaceMode === '3d' && (
-        <div className="absolute inset-0 pointer-events-none z-[10] select-none">
-          {desktopShortcuts.map((shortcut, i) => (
-            <motion.div
-              key={shortcut.name + i}
-              drag
-              dragMomentum={false}
-              onDragEnd={(_, info) => {
-                setDesktopShortcuts(prev => prev.map((item, idx) => 
-                  idx === i ? { ...item, x: item.x + info.offset.x, y: item.y + info.offset.y } : item
-                ));
-              }}
-              draggable
-              onDragStart={(e) => {
-                const data = { name: shortcut.name, size: shortcut.size, source: 'desktop' };
-                e.dataTransfer?.setData('text/plain', JSON.stringify(data));
-                window.dispatchEvent(new CustomEvent('nvk-drag-start', { detail: data }));
-              }}
-              onDragEndCapture={() => {
-                window.dispatchEvent(new CustomEvent('nvk-drag-end'));
-              }}
-              onClick={(e) => {
-                e.stopPropagation();
-                CyberSynth.playClick();
-                addEchoMessage(AgentName.SystemControl, `Querying desktop item: ${shortcut.name} [Size: ${shortcut.size ? (shortcut.size / 1024).toFixed(1) + ' KB' : '0 B'}]`, 'text-cyan-400');
-              }}
-              onDoubleClick={(e) => {
-                e.stopPropagation();
-                CyberSynth.playClick();
-                handleAppClick('FileSystemPanel');
-              }}
-              style={{ x: shortcut.x, y: shortcut.y }}
-              className="absolute pointer-events-auto flex flex-col items-center justify-center p-2.5 w-20 h-20 bg-slate-950/60 backdrop-blur-md border border-cyan-500/20 hover:border-cyan-400 hover:shadow-[0_0_20px_rgba(34,211,238,0.3)] rounded-xl cursor-grab active:cursor-grabbing group transition-all"
-            >
-              {/* Cyber corner brackets */}
-              <div className="absolute top-0 left-0 w-1.5 h-1.5 border-t border-l border-cyan-400/50 rounded-tl"></div>
-              <div className="absolute bottom-0 right-0 w-1.5 h-1.5 border-b border-r border-cyan-400/50 rounded-br"></div>
-              
-              <i className={`${
-                shortcut.name.endsWith('.bin') || shortcut.name.endsWith('.sys') ? 'ri-cpu-line text-purple-400 animate-pulse' :
-                shortcut.name.endsWith('.json') ? 'ri-file-code-line text-cyan-400' :
-                shortcut.name.endsWith('.jpg') || shortcut.name.endsWith('.png') ? 'ri-image-line text-emerald-400' :
-                'ri-file-text-line text-slate-400'
-              } text-2xl mb-1.5 group-hover:scale-110 transition-transform`}></i>
-              
-              <span className="text-[9px] font-mono text-slate-400 group-hover:text-cyan-300 text-center truncate w-full px-0.5" title={`${shortcut.name} (Double-click to view)`}>
-                {shortcut.name}
-              </span>
             </motion.div>
-          ))}
+          )}
+        </AnimatePresence>
 
-          {/* Elegant floating Auto-Recenter Toggle button on the desktop backdrop */}
-          <div className="absolute bottom-24 left-4 pointer-events-auto flex items-center gap-2 bg-slate-950/60 backdrop-blur-md border border-cyan-500/25 px-3 py-2 rounded-xl text-[9px] font-mono uppercase tracking-wider text-slate-400 shadow-[0_4px_20px_rgba(0,0,0,0.5)]">
-            <span>Auto Recenter:</span>
-            <button 
-              onClick={() => {
-                setAutoRecenter(!autoRecenter);
-                CyberSynth.playClick();
-                addEchoMessage(AgentName.SystemControl, `Dynamic Auto Recenter toggled: ${!autoRecenter ? 'ENABLED' : 'DISABLED'}`, !autoRecenter ? 'text-emerald-400' : 'text-orange-400');
-              }}
-              className={`px-2 py-0.5 rounded text-[8px] font-bold tracking-widest transition-all ${
-                autoRecenter 
-                  ? 'bg-emerald-950/40 text-emerald-400 border border-emerald-500/30' 
-                  : 'bg-slate-800 text-slate-500 border border-slate-700'
-              }`}
-            >
-              {autoRecenter ? 'ON' : 'OFF'}
-            </button>
-          </div>
-        </div>
-      )}
+        {/* Clean Dock at the bottom */}
+        <Dock 
+          apps={PANEL_DEFINITIONS.filter(p => DOCK_APPS.includes(p.id))}
+          openAppIds={activeCluster.pinnedPanelIds}
+          onAppClick={handleAppClick}
+          onOpenSearch={() => setIsSearchOpen(true)}
+        />
 
-      {/* Drag & Drop Visual HUD Overlay */}
-      <AnimatePresence>
-        {isDragging && workspaceMode === '3d' && (
-          <motion.div 
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[50] pointer-events-none flex items-center justify-center bg-black/35 backdrop-blur-[1px]"
-          >
-            {/* Futuristic Grid Overlay */}
-            <div className="absolute inset-0 bg-[linear-gradient(rgba(0,255,255,0.02)_1px,transparent_1px),linear-gradient(90deg,rgba(0,255,255,0.02)_1px,transparent_1px)] bg-[size:32px_32px]"></div>
-            
-            {/* Compass Crosshairs */}
-            <div className="absolute top-12 left-1/2 -translate-x-1/2 font-mono text-[8px] text-cyan-500/50 uppercase tracking-[0.2em]">[ CENTRAL COGNITIVE AXIS ]</div>
-            <div className="absolute left-12 top-1/2 -translate-y-1/2 font-mono text-[8px] text-cyan-500/50 uppercase tracking-[0.2em] [writing-mode:vertical-lr]">[ COGNITIVE LONGITUDE ]</div>
-            
-            {/* The Central Target Ring (Drop over Core) */}
-            <div 
-              onDragOver={(e) => { e.preventDefault(); }}
-              onDragEnter={() => setIsOverCore(true)}
-              onDragLeave={() => setIsOverCore(false)}
-              className={`pointer-events-auto w-[240px] h-[240px] rounded-full border-2 border-dashed flex flex-col items-center justify-center transition-all duration-300 relative ${
-                isOverCore 
-                  ? 'border-emerald-400 bg-emerald-950/20 scale-105 shadow-[0_0_40px_rgba(16,185,129,0.2)]' 
-                  : 'border-cyan-500/50 bg-cyan-950/10'
-              }`}
-            >
-              <div className={`absolute inset-0 rounded-full border border-dashed border-cyan-400/10 animate-spin ${isOverCore ? 'duration-1000' : 'duration-[8000ms]'}`}></div>
-              
-              <i className={`ri-coreos-fill text-4xl mb-3 ${isOverCore ? 'text-emerald-400 scale-110 animate-pulse' : 'text-cyan-400'}`}></i>
-              
-              <span className={`text-[10px] font-mono uppercase tracking-[0.15em] font-bold ${isOverCore ? 'text-emerald-300' : 'text-cyan-300'}`}>
-                {isOverCore ? 'RELEASE TO ENGAGE AI' : 'DROP IN CORE'}
-              </span>
-              <span className="text-[8px] font-mono text-slate-500 mt-1 uppercase">
-                {isOverCore ? 'Initiating Deep Synthesis' : 'CORRELATE ARTIFACT'}
-              </span>
-            </div>
-            
-            {/* Desktop Drop Indicators */}
-            <div className="absolute bottom-24 left-1/2 -translate-x-1/2 px-4 py-2 bg-slate-950/80 border border-cyan-500/20 rounded-full font-mono text-[9px] text-slate-400 tracking-wider">
-              DROP ELSEWHERE ON DESKTOP TO PLACE SHORTCUT
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
+        <OmniSearchModal 
+          isOpen={isSearchOpen}
+          onClose={() => setIsSearchOpen(false)}
+          onSelectPanel={(panelId) => {
+            handleAppClick(panelId);
+            setIsSearchOpen(false);
+          }}
+          workspaceMode={workspaceMode}
+          onWorkspaceModeChange={setWorkspaceMode}
+          onCloseAllPanels={handleCloseAllPanels}
+          onOpenAllPanels={handleOpenAllPanels}
+        />
+      </div>
     </SystemStateProvider>
   );
 };

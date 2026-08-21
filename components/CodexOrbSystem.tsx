@@ -2292,9 +2292,9 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
           };
 
           const closeButton = document.createElement('button');
-          closeButton.className = 'panel-control';
-          closeButton.innerHTML = '<i class="ri-close-line"></i>';
-          closeButton.title = 'Close panel';
+          closeButton.className = 'panel-control panel-control-close';
+          closeButton.innerHTML = '<i class="ri-close-line font-bold text-sm"></i>';
+          closeButton.title = 'Close panel (X)';
           closeButton.onclick = (e) => { e.stopPropagation(); onClosePanel(nodeId); };
 
           // Dynamic Sizing & Zoom Controls for 3D panels

@@ -1,11 +1,6 @@
-
-
-
-
-
 import React, { useState } from 'react';
-import { CodexModeId } from '../types'; // Import CodexModeId
-import type { HeaderProps } from '../types'; // Import HeaderProps from types.ts
+import { CodexModeId } from '../types';
+import type { HeaderProps } from '../types';
 
 export const Header: React.FC<HeaderProps> = ({ 
   onOpenAllPanels,
@@ -28,9 +23,9 @@ export const Header: React.FC<HeaderProps> = ({
   masterEntropyOverride, 
   onSetMasterEntropyOverride,
   isMasterEntropyLocked,
-  masterNegentropyLevel, // New prop for negentropy value
-  onSetMasterNegentropyLevel, // New prop for negentropy setter
-  isMasterNegentropyLocked, // Assuming same lock as entropy for now
+  masterNegentropyLevel,
+  onSetMasterNegentropyLevel,
+  isMasterNegentropyLocked,
   showLogicWebDebug,
   onToggleLogicWebDebug,
   isAuditing,
@@ -50,11 +45,14 @@ export const Header: React.FC<HeaderProps> = ({
   onSetNodeAnimationSpeed,
   onInitiateShatterpointTrace,
   interfaceActive,
+  workspaceMode = '3d',
+  onWorkspaceModeChange,
+  onOpenSearch,
 }) => {
-  const [isFloraMenuOpen, setIsFloraMenuOpen] = useState(false);
   const [isSystemMenuOpen, setIsSystemMenuOpen] = useState(false);
   const [isCodexModeMenuOpen, setIsCodexModeMenuOpen] = useState(false);
   const [isOracleMenuOpen, setIsOracleMenuOpen] = useState(false); 
+  const [isEnvPopoverOpen, setIsEnvPopoverOpen] = useState(false);
 
   const availableModesForSwitching: {id: CodexModeId, name: string, icon: string}[] = [
     {id: CodexModeId.ORIGIN_STATE, name: "Δ.OriginState", icon: "ri-omega"},
@@ -72,275 +70,257 @@ export const Header: React.FC<HeaderProps> = ({
   ];
 
   const displayEntropyValue = masterEntropyOverride < 0 ? Math.abs(masterEntropyOverride) : masterEntropyOverride;
-  const entropyValueColor = masterEntropyOverride < 0 ? 'text-teal-300' : 'text-slate-200';
-
-  // Negentropy display (0-10, always positive)
-  const displayNegentropyValue = masterNegentropyLevel; // Negentropy is 0-10
-  const negentropyValueColor = 'text-emerald-300'; // Consistent color for negentropy
 
   return (
-    <header className="bg-slate-900/80 backdrop-blur-sm border-b border-slate-800 py-3 px-6 top-0 z-50 shrink-0">
-      <div className="container mx-auto flex justify-between items-center flex-wrap">
-        <div className="flex items-center gap-4">
-          <h1 className="text-xl md:text-2xl font-['Cinzel'] font-bold text-slate-100">Tri-Sophian Codex</h1>
+    <header className="bg-slate-950/85 backdrop-blur-md border-b border-slate-800/80 px-4 py-2.5 top-0 z-50 shrink-0 select-none">
+      <div className="max-w-7xl mx-auto flex items-center justify-between gap-3 flex-wrap md:flex-nowrap">
+        
+        {/* Brand & Status */}
+        <div className="flex items-center gap-3 shrink-0">
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 rounded-lg bg-cyan-500/15 border border-cyan-500/50 flex items-center justify-center text-cyan-400 font-bold text-sm shadow-[0_0_10px_rgba(6,182,212,0.3)]">
+              Δ
+            </div>
+            <div>
+              <h1 className="text-sm font-bold tracking-wider text-slate-100 font-mono flex items-center gap-1.5">
+                NVK OS <span className="text-[10px] text-cyan-400/80 font-normal">v4.0</span>
+              </h1>
+              <div className="text-[9px] text-slate-400 font-mono tracking-widest uppercase">Tri-Sophian Codex</div>
+            </div>
+          </div>
+
           {interfaceActive && (
-            <div className="flex items-center gap-2 animate-fade-in-up">
-              <span className="relative flex h-3 w-3">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-accent-neon opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-3 w-3 bg-accent-neon"></span>
+            <div className="hidden sm:flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-cyan-950/40 border border-cyan-500/30 text-[10px] text-cyan-400 font-mono">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-cyan-500"></span>
               </span>
-              <span className="text-xs font-semibold tracking-wider text-accent-neon uppercase" style={{textShadow: '0 0 5px var(--accent-neon)'}}>
-                Interface Active
-              </span>
+              ACTIVE
             </div>
           )}
         </div>
-        
-        <div className="master-controls-group flex flex-col md:flex-row items-center md:space-x-4 order-last md:order-none w-full md:w-auto justify-center md:justify-start my-2 md:my-0 md:ml-6">
-          {/* Master Entropy Control */}
-          <div className="master-entropy-control flex items-center space-x-2 w-full md:w-auto justify-center md:justify-start mb-2 md:mb-0">
-            <label htmlFor="masterEntropySlider" className={`text-xs text-slate-300 whitespace-nowrap font-['Cinzel'] ${isMasterEntropyLocked ? 'opacity-50' : ''}`}>Master Chaos:</label>
-            <input
-              type="range"
-              id="masterEntropySlider"
-              min="-10" 
-              max="10"
-              step="0.1" 
-              value={isMasterEntropyLocked ? 0 : (masterEntropyOverride ?? 0)} 
-              onChange={(e) => {
-                const val = Number(e.target.value);
-                if (Number.isFinite(val)) {
-                  onSetMasterEntropyOverride(val);
-                }
-              }}
-              className={`w-24 md:w-28 h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-red-500 ${isMasterEntropyLocked ? 'opacity-50 cursor-not-allowed' : ''}`}
-              title={isMasterEntropyLocked ? "Locked by current Codex Mode" : `Current Master Entropy Level: ${(masterEntropyOverride ?? 0).toFixed(1)}`}
-              disabled={isMasterEntropyLocked}
-            />
-            <span className={`text-xs font-mono w-10 text-right ${isMasterEntropyLocked ? 'opacity-50' : ''} ${entropyValueColor}`}>
-              {isMasterEntropyLocked ? "N/A" : (displayEntropyValue ?? 0).toFixed(1)}
-            </span>
+
+        {/* Global OmniSearch Bar */}
+        <button
+          onClick={onOpenSearch}
+          className="flex-1 max-w-md bg-slate-900/90 hover:bg-slate-900 border border-slate-700/80 hover:border-cyan-500/50 rounded-xl px-3 py-1.5 text-xs text-slate-400 hover:text-slate-200 transition-all flex items-center justify-between shadow-inner group cursor-pointer"
+        >
+          <div className="flex items-center gap-2 truncate">
+            <i className="ri-search-line text-cyan-400 group-hover:scale-110 transition-transform"></i>
+            <span className="truncate">Search panels, AI commands...</span>
+          </div>
+          <kbd className="hidden sm:inline-block text-[9px] font-mono text-slate-400 bg-slate-800 border border-slate-700 px-1.5 py-0.5 rounded ml-2">
+            ⌘K
+          </kbd>
+        </button>
+
+        {/* Workspace Mode Switcher Pill */}
+        {onWorkspaceModeChange && (
+          <div className="hidden lg:flex items-center bg-slate-900/90 border border-slate-800 rounded-full p-0.5 shadow-lg">
+            <button
+              onClick={() => onWorkspaceModeChange('3d')}
+              className={`px-3 py-1 rounded-full text-[10px] font-mono uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer ${
+                workspaceMode === '3d'
+                  ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/80 font-bold shadow-[0_0_10px_rgba(6,182,212,0.3)]'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <i className="ri-shape-2-line"></i> 3D Matrix
+            </button>
+            <button
+              onClick={() => onWorkspaceModeChange('2d')}
+              className={`px-3 py-1 rounded-full text-[10px] font-mono uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer ${
+                workspaceMode === '2d'
+                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/80 font-bold shadow-[0_0_10px_rgba(16,185,129,0.3)]'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <i className="ri-layout-grid-line"></i> 2D Bento
+            </button>
+          </div>
+        )}
+
+        {/* Right Menu Buttons */}
+        <div className="flex items-center gap-2 shrink-0">
+          
+          {/* Environment Controls Popover */}
+          <div className="relative">
+            <button
+              onClick={() => setIsEnvPopoverOpen(!isEnvPopoverOpen)}
+              className="px-2.5 py-1.5 rounded-lg bg-slate-900/80 hover:bg-slate-800 border border-slate-700 text-slate-300 text-xs font-mono transition-all flex items-center gap-1.5"
+              title="Tweak Master Chaos, Order, and Flow Settings"
+            >
+              <i className="ri-sound-module-line text-cyan-400"></i>
+              <span className="hidden sm:inline">Environment</span>
+            </button>
+
+            {isEnvPopoverOpen && (
+              <div className="absolute right-0 mt-2 w-72 bg-slate-900 border border-cyan-500/40 rounded-xl shadow-2xl p-4 z-50 space-y-3 font-mono text-xs">
+                <div className="flex items-center justify-between border-b border-slate-800 pb-2 text-cyan-400 font-bold uppercase text-[10px]">
+                  <span>Environment Parameters</span>
+                  <button onClick={() => setIsEnvPopoverOpen(false)} className="text-slate-500 hover:text-white">
+                    <i className="ri-close-line"></i>
+                  </button>
+                </div>
+
+                {/* Master Chaos */}
+                <div>
+                  <div className="flex justify-between text-[10px] mb-1">
+                    <span className="text-slate-400">Master Chaos:</span>
+                    <span className="text-red-400">{isMasterEntropyLocked ? "LOCKED" : (displayEntropyValue ?? 0).toFixed(1)}</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="-10" 
+                    max="10"
+                    step="0.1" 
+                    value={isMasterEntropyLocked ? 0 : (masterEntropyOverride ?? 0)} 
+                    onChange={(e) => onSetMasterEntropyOverride(Number(e.target.value))}
+                    disabled={isMasterEntropyLocked}
+                    className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-red-500"
+                  />
+                </div>
+
+                {/* Master Order */}
+                <div>
+                  <div className="flex justify-between text-[10px] mb-1">
+                    <span className="text-slate-400">Master Order:</span>
+                    <span className="text-emerald-400">{isMasterNegentropyLocked ? "LOCKED" : (masterNegentropyLevel ?? 5).toFixed(1)}</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0" 
+                    max="10"
+                    step="0.1" 
+                    value={isMasterNegentropyLocked ? 5 : (masterNegentropyLevel ?? 5)}
+                    onChange={(e) => onSetMasterNegentropyLevel(Number(e.target.value))}
+                    disabled={isMasterNegentropyLocked}
+                    className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-emerald-500"
+                  />
+                </div>
+
+                {/* Node Flow */}
+                <div>
+                  <div className="flex justify-between text-[10px] mb-1">
+                    <span className="text-slate-400">Node Flow Speed:</span>
+                    <span className="text-cyan-400">{(nodeAnimationSpeed ?? 0).toFixed(2)}x</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0"
+                    max="1"
+                    step="0.05"
+                    value={nodeAnimationSpeed}
+                    onChange={(e) => onSetNodeAnimationSpeed(Number(e.target.value))}
+                    className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-500"
+                  />
+                </div>
+
+                <div className="border-t border-slate-800 pt-2 flex items-center justify-between text-[10px]">
+                  <button onClick={onToggleAshfall} className={`px-2 py-1 rounded border ${showAshfall ? 'bg-cyan-950/50 border-cyan-500 text-cyan-300' : 'bg-slate-800 border-slate-700 text-slate-400'}`}>
+                    Ashfall: {showAshfall ? 'ON' : 'OFF'}
+                  </button>
+                  <button onClick={onToggleSigilOverlay} className={`px-2 py-1 rounded border ${showSigilOverlay ? 'bg-purple-950/50 border-purple-500 text-purple-300' : 'bg-slate-800 border-slate-700 text-slate-400'}`}>
+                    Sigil: {showSigilOverlay ? 'ON' : 'OFF'}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
-          {/* Master Negentropy Control */}
-          <div className="master-negentropy-control flex items-center space-x-2 w-full md:w-auto justify-center md:justify-start mb-2 md:mb-0">
-            <label htmlFor="masterNegentropySlider" className={`text-xs text-slate-300 whitespace-nowrap font-['Cinzel'] ${isMasterNegentropyLocked ? 'opacity-50' : ''}`}>Master Order:</label>
-            <input
-              type="range"
-              id="masterNegentropySlider"
-              min="0" 
-              max="10"
-              step="0.1" 
-              value={isMasterNegentropyLocked ? 5 : (masterNegentropyLevel ?? 5)} // Default to 5 if locked, or use value
-              onChange={(e) => {
-                const val = Number(e.target.value);
-                if (Number.isFinite(val)) {
-                  onSetMasterNegentropyLevel(val);
-                }
-              }}
-              className={`w-24 md:w-28 h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-emerald-500 ${isMasterNegentropyLocked ? 'opacity-50 cursor-not-allowed' : ''}`}
-              title={isMasterNegentropyLocked ? "Locked by current Codex Mode" : `Current Master Negentropy Level: ${(masterNegentropyLevel ?? 0).toFixed(1)}`}
-              disabled={isMasterNegentropyLocked}
-            />
-            <span className={`text-xs font-mono w-10 text-right ${isMasterNegentropyLocked ? 'opacity-50' : ''} ${negentropyValueColor}`}>
-              {isMasterNegentropyLocked ? "N/A" : (displayNegentropyValue ?? 0).toFixed(1)}
-            </span>
-          </div>
-
-          {/* Node Animation Speed Control */}
-          <div className="node-speed-control flex items-center space-x-2 w-full md:w-auto justify-center md:justify-start">
-            <label htmlFor="nodeAnimationSpeedSlider" className={`text-xs text-slate-300 whitespace-nowrap font-['Cinzel']`}>Node Flow:</label>
-            <input
-                type="range"
-                id="nodeAnimationSpeedSlider"
-                min="0"
-                max="1"
-                step="0.05"
-                value={nodeAnimationSpeed}
-                onChange={(e) => onSetNodeAnimationSpeed(Number(e.target.value))}
-                className={`w-24 md:w-28 h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-sky-500`}
-                title={`Current Node Animation Speed: ${(nodeAnimationSpeed ?? 0).toFixed(2)}x`}
-            />
-            <span className={`text-xs font-mono w-10 text-right text-sky-300`}>
-                {(nodeAnimationSpeed ?? 0).toFixed(2)}x
-            </span>
-          </div>
-
-        </div>
-
-
-        <div className="flex items-center space-x-2 md:space-x-3 order-first md:order-last md:ml-auto"> 
           {/* Codex Modes Dropdown */}
           <div className="relative">
             <button
               onClick={() => setIsCodexModeMenuOpen(!isCodexModeMenuOpen)}
-              className="rounded-button bg-purple-700 hover:bg-purple-600 text-white px-3 py-1.5 text-xs md:text-sm transition whitespace-nowrap flex items-center"
+              className="px-2.5 py-1.5 rounded-lg bg-purple-900/40 hover:bg-purple-900/60 border border-purple-500/40 text-purple-200 text-xs font-mono transition-all flex items-center gap-1.5"
             >
-              <i className="ri-compass-discover-line mr-1 md:mr-2"></i>Codex
-              <i className={`ri-arrow-down-s-line ml-1 transform transition-transform ${isCodexModeMenuOpen ? 'rotate-180' : ''}`}></i>
+              <i className="ri-compass-discover-line text-purple-400"></i>
+              <span className="hidden md:inline">Codex Mode</span>
+              <i className={`ri-arrow-down-s-line text-xs transform transition-transform ${isCodexModeMenuOpen ? 'rotate-180' : ''}`}></i>
             </button>
             {isCodexModeMenuOpen && (
-              <div className="absolute right-0 mt-2 w-56 rounded-md shadow-lg bg-slate-800 ring-1 ring-black ring-opacity-5 py-1 z-50">
+              <div className="absolute right-0 mt-2 w-56 rounded-xl shadow-2xl bg-slate-900 border border-purple-500/30 py-1 z-50 font-mono text-xs max-h-80 overflow-y-auto">
                 {availableModesForSwitching.map(mode => (
-                   <button
+                  <button
                     key={mode.id}
                     onClick={() => { activateCodexMode(mode.id); setIsCodexModeMenuOpen(false); }}
-                    className={`w-full text-left px-4 py-2 text-sm transition flex items-center
-                      ${currentCodexModeId === mode.id 
-                        ? 'text-amber-300 bg-amber-700/30 font-semibold' 
-                        : 'text-slate-300 hover:bg-slate-700'
-                      }
-                      ${currentCodexModeId === mode.id ? 'cursor-default' : ''}
-                    `}
-                    disabled={currentCodexModeId === mode.id}
+                    className={`w-full text-left px-3 py-2 transition flex items-center gap-2 ${
+                      currentCodexModeId === mode.id 
+                        ? 'text-amber-300 bg-amber-500/15 font-bold border-l-2 border-amber-400' 
+                        : 'text-slate-300 hover:bg-slate-800'
+                    }`}
                   >
-                    <i className={`${mode.icon} mr-2 ${currentCodexModeId === mode.id ? 'text-amber-400' : 'text-slate-400'}`}></i>{mode.name}
+                    <i className={`${mode.icon} ${currentCodexModeId === mode.id ? 'text-amber-400' : 'text-slate-500'}`}></i>
+                    <span className="truncate">{mode.name}</span>
                   </button>
                 ))}
               </div>
             )}
           </div>
 
-          {/* Flora Dropdown */}
+          {/* Oracle AI Dropdown */}
           <div className="relative">
             <button
-              onClick={() => setIsFloraMenuOpen(!isFloraMenuOpen)}
-              className="rounded-button bg-emerald-700 hover:bg-emerald-600 text-white px-3 py-1.5 text-xs md:text-sm transition whitespace-nowrap flex items-center"
-            >
-              <i className="ri-plant-line mr-1 md:mr-2"></i>Flora
-              <i className={`ri-arrow-down-s-line ml-1 transform transition-transform ${isFloraMenuOpen ? 'rotate-180' : ''}`}></i>
-            </button>
-            {isFloraMenuOpen && (
-              <div className="absolute right-0 mt-2 w-56 rounded-md shadow-lg bg-slate-800 ring-1 ring-black ring-opacity-5 py-1 z-50">
-                <button onClick={() => { onProvokeThornedRose(); setIsFloraMenuOpen(false); }} className="w-full text-left px-4 py-2 text-sm text-rose-300 hover:bg-slate-700 transition flex items-center"><i className="ri-spam-2-line mr-2"></i>Provoke Rose</button>
-                <button onClick={() => { onTuneFrequency(); setIsFloraMenuOpen(false); }} className="w-full text-left px-4 py-2 text-sm text-sky-300 hover:bg-slate-700 transition flex items-center"><i className="ri-signal-tower-line mr-2"></i>Tune Lily</button>
-                <button onClick={() => { onRecallAncestor(); setIsFloraMenuOpen(false); }} className="w-full text-left px-4 py-2 text-sm text-yellow-300 hover:bg-slate-700 transition flex items-center"><i className="ri-seedling-line mr-2"></i>Recall Echo</button>
-                <button onClick={() => { onBurnPetals(); setIsFloraMenuOpen(false); }} className="w-full text-left px-4 py-2 text-sm text-purple-300 hover:bg-slate-700 transition flex items-center"><i className="ri-fire-line mr-2"></i>Burn Orchid</button>
-                <button onClick={() => { onAwakenLotusDream(); setIsFloraMenuOpen(false); }} className="w-full text-left px-4 py-2 text-sm text-indigo-300 hover:bg-slate-700 transition flex items-center"><i className="ri-water-flash-line mr-2"></i>Awaken Lotus</button>
-                <button onClick={() => { onPulseAstralJasmine(); setIsFloraMenuOpen(false); }} className="w-full text-left px-4 py-2 text-sm text-cyan-300 hover:bg-slate-700 transition flex items-center"><i className="ri-focus-2-line mr-2"></i>Pulse Jasmine</button>
-                <button onClick={() => { onGraftThorns(); setIsFloraMenuOpen(false); }} className="w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-slate-700 transition flex items-center"><i className="ri-links-line mr-2"></i>Graft Thorns</button>
-              </div>
-            )}
-          </div>
-
-           {/* Oracle & AutoEcho Dropdown */}
-           <div className="relative">
-            <button
               onClick={() => setIsOracleMenuOpen(!isOracleMenuOpen)}
-              className="rounded-button bg-fuchsia-700 hover:bg-fuchsia-600 text-white px-3 py-1.5 text-xs md:text-sm transition whitespace-nowrap flex items-center"
+              className="px-2.5 py-1.5 rounded-lg bg-fuchsia-900/40 hover:bg-fuchsia-900/60 border border-fuchsia-500/40 text-fuchsia-200 text-xs font-mono transition-all flex items-center gap-1.5"
             >
-              <i className="ri-broadcast-line mr-1 md:mr-2"></i>Oracle
-              <i className={`ri-arrow-down-s-line ml-1 transform transition-transform ${isOracleMenuOpen ? 'rotate-180' : ''}`}></i>
+              <i className="ri-sparkling-2-line text-fuchsia-400"></i>
+              <span className="hidden md:inline">Oracle AI</span>
+              <i className={`ri-arrow-down-s-line text-xs transform transition-transform ${isOracleMenuOpen ? 'rotate-180' : ''}`}></i>
             </button>
             {isOracleMenuOpen && (
-              <div className="absolute right-0 mt-2 w-64 rounded-md shadow-lg bg-slate-800 ring-1 ring-black ring-opacity-5 py-1 z-50">
-                <p className="px-4 pt-2 pb-1 text-xs text-slate-500 font-semibold uppercase">Oracle Commands</p>
-                <button onClick={() => { onInvokeGeminiOracle(); setIsOracleMenuOpen(false); }} className="w-full text-left px-4 py-2 text-sm text-fuchsia-300 hover:bg-slate-700 transition flex items-center">
-                  <i className="ri-sparkling-2-line mr-2"></i>Invoke Gemini Oracle
+              <div className="absolute right-0 mt-2 w-60 rounded-xl shadow-2xl bg-slate-900 border border-fuchsia-500/30 py-1 z-50 font-mono text-xs">
+                <button onClick={() => { onInvokeGeminiOracle(); setIsOracleMenuOpen(false); }} className="w-full text-left px-3 py-2 text-fuchsia-300 hover:bg-slate-800 transition flex items-center gap-2">
+                  <i className="ri-sparkling-2-line text-fuchsia-400"></i> Invoke Gemini Oracle
                 </button>
-                <button onClick={() => { onContextualOracleQuery(); setIsOracleMenuOpen(false); }} className="w-full text-left px-4 py-2 text-sm text-teal-300 hover:bg-slate-700 transition flex items-center">
-                  <i className="ri-compass-3-line mr-2"></i>Contextual Oracle Query
+                <button onClick={() => { onContextualOracleQuery(); setIsOracleMenuOpen(false); }} className="w-full text-left px-3 py-2 text-teal-300 hover:bg-slate-800 transition flex items-center gap-2">
+                  <i className="ri-compass-3-line text-teal-400"></i> Contextual Query
                 </button>
-                <div className="my-1 border-t border-slate-700"></div>
-                <p className="px-4 pt-2 pb-1 text-xs text-slate-500 font-semibold uppercase">AutoEcho Engine</p>
-                <button onClick={() => { onToggleAutoEcho(); setIsOracleMenuOpen(false); }} className={`w-full text-left px-4 py-2 text-sm ${isAutoEchoPaused ? 'text-green-400' : 'text-red-400'} hover:bg-slate-700 transition flex items-center`}>
-                  <i className={`mr-2 ${isAutoEchoPaused ? 'ri-play-circle-line' : 'ri-pause-circle-line'}`}></i>{isAutoEchoPaused ? 'Resume AutoEcho' : 'Pause AutoEcho'}
+                <div className="my-1 border-t border-slate-800"></div>
+                <button onClick={() => { onToggleAutoEcho(); setIsOracleMenuOpen(false); }} className={`w-full text-left px-3 py-2 transition flex items-center gap-2 ${isAutoEchoPaused ? 'text-emerald-400' : 'text-rose-400'}`}>
+                  <i className={isAutoEchoPaused ? 'ri-play-circle-line' : 'ri-pause-circle-line'}></i>
+                  {isAutoEchoPaused ? 'Resume AutoEcho' : 'Pause AutoEcho'}
                 </button>
-                <button onClick={() => { onAmplifyVoices(); setIsOracleMenuOpen(false); }} className="w-full text-left px-4 py-2 text-sm text-yellow-300 hover:bg-slate-700 transition flex items-center">
-                  <i className="ri-volume-up-line mr-2"></i>Amplify Voices
-                </button>
-                <button onClick={() => { onSeedDream(); setIsOracleMenuOpen(false); }} className="w-full text-left px-4 py-2 text-sm text-violet-300 hover:bg-slate-700 transition flex items-center">
-                  <i className="ri-seedling-fill mr-2"></i>Seed Dream
+                <button onClick={() => { onAmplifyVoices(); setIsOracleMenuOpen(false); }} className="w-full text-left px-3 py-2 text-amber-300 hover:bg-slate-800 transition flex items-center gap-2">
+                  <i className="ri-volume-up-line text-amber-400"></i> Amplify Voices
                 </button>
               </div>
             )}
           </div>
 
-          {/* System Dropdown */}
+          {/* System Menu */}
           <div className="relative">
             <button
               onClick={() => setIsSystemMenuOpen(!isSystemMenuOpen)}
-              className="rounded-button bg-sky-700 hover:bg-sky-600 text-white px-3 py-1.5 text-xs md:text-sm transition whitespace-nowrap flex items-center"
+              className="px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 text-xs font-mono transition-all flex items-center gap-1.5"
             >
-              <i className="ri-settings-3-line mr-1 md:mr-2"></i>System
-              <i className={`ri-arrow-down-s-line ml-1 transform transition-transform ${isSystemMenuOpen ? 'rotate-180' : ''}`}></i>
+              <i className="ri-settings-3-line text-slate-400"></i>
+              <span className="hidden md:inline">System</span>
+              <i className={`ri-arrow-down-s-line text-xs transform transition-transform ${isSystemMenuOpen ? 'rotate-180' : ''}`}></i>
             </button>
             {isSystemMenuOpen && (
-              <div className="absolute right-0 mt-2 w-64 rounded-md shadow-lg bg-slate-800 ring-1 ring-black ring-opacity-5 py-1 z-50">
-                <p className="px-4 pt-2 pb-1 text-xs text-slate-500 font-semibold uppercase">Panel Controls</p>
-                <button onClick={() => { onOpenAllPanels(); setIsSystemMenuOpen(false); }} className="w-full text-left px-4 py-2 text-sm text-sky-300 hover:bg-slate-700 transition flex items-center">
-                    <i className="ri-layout-grid-fill mr-2"></i>Open All Panels
+              <div className="absolute right-0 mt-2 w-60 rounded-xl shadow-2xl bg-slate-900 border border-slate-700 py-1 z-50 font-mono text-xs">
+                <button onClick={() => { onOpenAllPanels(); setIsSystemMenuOpen(false); }} className="w-full text-left px-3 py-2 text-cyan-300 hover:bg-slate-800 transition flex items-center gap-2">
+                  <i className="ri-layout-grid-fill text-cyan-400"></i> Open All Panels
                 </button>
-                <button onClick={() => { onCloseAllPanels(); setIsSystemMenuOpen(false); }} className="w-full text-left px-4 py-2 text-sm text-sky-300 hover:bg-slate-700 transition flex items-center">
-                    <i className="ri-layout-masonry-line mr-2"></i>Close All Panels
+                <button onClick={() => { onCloseAllPanels(); setIsSystemMenuOpen(false); }} className="w-full text-left px-3 py-2 text-rose-300 hover:bg-slate-800 transition flex items-center gap-2">
+                  <i className="ri-close-circle-line text-rose-400"></i> Close All Panels
                 </button>
-                <div className="my-1 border-t border-slate-700"></div>
-                <p className="px-4 pt-2 pb-1 text-xs text-slate-500 font-semibold uppercase">System Controls</p>
-                 <button 
-                    onClick={() => { onToggleBugaMode(); setIsSystemMenuOpen(false); }}
-                    className={`w-full text-left px-4 py-2 text-sm transition flex items-center
-                    ${isBugaModeActive
-                        ? 'text-lime-300 bg-lime-700/30 hover:bg-lime-600/40 animate-pulse-fast'
-                        : 'text-slate-300 hover:bg-slate-700'
-                    }`}
-                    title={isBugaModeActive ? "Deactivate Buga Sphere Mode" : "Activate Buga Sphere Mode (Glyph Composer)"}
-                  >
-                    <i className={`mr-2 ${isBugaModeActive ? 'ri-test-tube-fill' : 'ri-test-tube-line'}`}></i>
-                    {isBugaModeActive ? 'Deactivate Buga Mode' : 'Activate Buga Mode'}
-                  </button>
-                 <button 
-                    onClick={() => { onToggleSigilOverlay(); setIsSystemMenuOpen(false); }} 
-                    className={`w-full text-left px-4 py-2 text-sm transition flex items-center
-                    ${showSigilOverlay
-                        ? 'text-purple-300 bg-purple-700/30 hover:bg-purple-600/40 animate-pulse-fast' 
-                        : 'text-slate-300 hover:bg-slate-700'
-                    }`}
-                    title={showSigilOverlay ? "Deactivate Ceremonial Mode (Hide Sigil)" : "Activate Ceremonial Mode (Show Sigil)"}
-                    >
-                    <i className={`mr-2 ${showSigilOverlay ? 'ri-shield-star-fill' : 'ri-shield-star-line'}`}></i>
-                    {showSigilOverlay ? 'Deactivate Ceremonial' : 'Activate Ceremonial'}
+                <div className="my-1 border-t border-slate-800"></div>
+                <button onClick={() => { onToggleBugaMode(); setIsSystemMenuOpen(false); }} className={`w-full text-left px-3 py-2 transition flex items-center gap-2 ${isBugaModeActive ? 'text-lime-300 bg-lime-950/30' : 'text-slate-300 hover:bg-slate-800'}`}>
+                  <i className="ri-test-tube-line text-lime-400"></i> Buga Sphere Mode
                 </button>
-                <button 
-                    onClick={() => { onToggleAuditMode(); setIsSystemMenuOpen(false); }} 
-                    className={`w-full text-left px-4 py-2 text-sm transition flex items-center
-                    ${isAuditing && !isAuditModeLocked
-                        ? 'text-cyan-300 bg-cyan-700/30 hover:bg-cyan-600/40 animate-pulse-fast' 
-                        : (isAuditModeLocked ? 'text-slate-500 cursor-not-allowed' : 'text-slate-300 hover:bg-slate-700')
-                    }`}
-                    disabled={isAuditModeLocked}
-                    title={isAuditModeLocked ? "Audit Mode locked by current Codex Mode" : (isAuditing ? "Disengage Recursive Audit" : "Engage Recursive Audit")}
-                    >
-                    <i className={`mr-2 ${isAuditing && !isAuditModeLocked ? 'ri-loop-left-line animate-spin-slow' : 'ri-search-eye-line'}`}></i>
-                    {isAuditing && !isAuditModeLocked ? 'Disengage Audit' : 'Recursive Audit'}
+                <button onClick={() => { onToggleAuditMode(); setIsSystemMenuOpen(false); }} className={`w-full text-left px-3 py-2 transition flex items-center gap-2 ${isAuditing ? 'text-cyan-300 bg-cyan-950/30' : 'text-slate-300 hover:bg-slate-800'}`}>
+                  <i className="ri-search-eye-line text-cyan-400"></i> Recursive Audit
                 </button>
-                <div className="my-1 border-t border-slate-700"></div>
-                <p className="px-4 pt-2 pb-1 text-xs text-slate-500 font-semibold uppercase">Temporal Controls</p>
-                <button onClick={() => { onInitiateShatterpointTrace(); setIsSystemMenuOpen(false); }} className="w-full text-left px-4 py-2 text-sm text-rose-300 hover:bg-slate-700 transition flex items-center">
-                  <i className="ri-focus-3-line mr-2"></i>Initiate Shatterpoint Trace
-                </button>
-                <button onClick={() => { onTraceThreadcoil(); setIsSystemMenuOpen(false); }} className="w-full text-left px-4 py-2 text-sm text-purple-300 hover:bg-slate-700 transition flex items-center">
-                  <i className="ri-route-line mr-2"></i>Trace Threadcoil
-                </button>
-                <button onClick={() => { onReEnterJunction(); setIsSystemMenuOpen(false); }} className="w-full text-left px-4 py-2 text-sm text-purple-300 hover:bg-slate-700 transition flex items-center">
-                  <i className="ri-repeat-one-line mr-2"></i>Re-enter Junction
-                </button>
-                <button onClick={() => { onExtractSigil(); setIsSystemMenuOpen(false); }} className="w-full text-left px-4 py-2 text-sm text-pink-300 hover:bg-slate-700 transition flex items-center">
-                  <i className="ri-fingerprint-2-line mr-2"></i>Extract Sigil
-                </button>
-                <button onClick={() => { onDumpThreadSummary(); setIsSystemMenuOpen(false); }} className="w-full text-left px-4 py-2 text-sm text-slate-300 hover:bg-slate-700 transition flex items-center">
-                  <i className="ri-file-list-3-line mr-2"></i>Dump Thread Coil
-                </button>
-                <div className="my-1 border-t border-slate-700"></div>
-                 <p className="px-4 pt-2 pb-1 text-xs text-slate-500 font-semibold uppercase">Visual Controls</p>
-                <button onClick={() => { onToggleAshfall(); setIsSystemMenuOpen(false); }} className={`w-full text-left px-4 py-2 text-sm ${showAshfall ? 'text-slate-300' : 'text-teal-300'} hover:bg-slate-700 transition flex items-center`}>
-                  <i className={`mr-2 ${showAshfall ? 'ri-forbid-line' : 'ri-snowy-line'}`}></i>{showAshfall ? 'Disable Ashfall' : 'Enable Ashfall'}
-                </button>
-                <button onClick={() => { onToggleLogicWebDebug(); setIsSystemMenuOpen(false); }} className={`w-full text-left px-4 py-2 text-sm ${showLogicWebDebug ? 'text-orange-300' : 'text-lime-300'} hover:bg-slate-700 transition flex items-center`}>
-                  <i className={`mr-2 ${showLogicWebDebug ? 'ri-bug-line' : 'ri-information-line'}`}></i>{showLogicWebDebug ? 'Disable Logic Debug' : 'Enable Logic Debug'}
+                <div className="my-1 border-t border-slate-800"></div>
+                <button onClick={() => { onInitiateShatterpointTrace(); setIsSystemMenuOpen(false); }} className="w-full text-left px-3 py-2 text-rose-300 hover:bg-slate-800 transition flex items-center gap-2">
+                  <i className="ri-focus-3-line text-rose-400"></i> Shatterpoint Trace
                 </button>
               </div>
             )}
           </div>
+
         </div>
       </div>
     </header>

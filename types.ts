@@ -638,6 +638,9 @@ export type HeaderProps = {
   onSetNodeAnimationSpeed: (speed: number) => void;
   onInitiateShatterpointTrace: () => void;
   interfaceActive: boolean;
+  workspaceMode?: '3d' | '2d';
+  onWorkspaceModeChange?: (mode: '3d' | '2d') => void;
+  onOpenSearch?: () => void;
 };
 
 export type XYPosition = { x: number; y: number };
