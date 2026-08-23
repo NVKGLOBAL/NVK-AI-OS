@@ -296,6 +296,9 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
   const defaultOrbObjectsRef = useRef<THREE.Group>(new THREE.Group());
   const backgroundParticlesGroupRef = useRef<THREE.Group>(new THREE.Group());
   const speedRef = useRef(nodeAnimationSpeed);
+  const hoverScaleRef = useRef(1.0);
+  const clickScaleImpulseRef = useRef(0.0);
+  const clickWobbleVelRef = useRef(0.0);
   const panelLayoutRef = useRef(panelLayout);
   const masterPanelSizeRef = useRef(masterPanelSize);
   const nodeSpacingRef = useRef(nodeSpacing);
@@ -435,6 +438,7 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
   }, [focusOnPanelNode]);
 
   const cleanup = useCallback((renderer?: THREE.WebGLRenderer, cssRenderer?: CSS3DRenderer, scene?: THREE.Scene, controls?: OrbitControls, resizeObserver?: ResizeObserver) => {
+    console.log('CodexOrbSystem cleanup called');
     if (animationFrameIdRef.current) {
         cancelAnimationFrame(animationFrameIdRef.current);
     }
@@ -770,30 +774,36 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
         onRendererErrorRef.current?.(true);
     }, false);
     
+    const targetPixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+    renderer.setPixelRatio(targetPixelRatio);
     renderer.setSize(width, height);
-    renderer.setPixelRatio(IS_MOBILE ? Math.min(window.devicePixelRatio, 1.25) : window.devicePixelRatio);
     currentMount.appendChild(renderer.domElement);
+    renderer.domElement.style.touchAction = 'none';
 
     const cssRenderer = new CSS3DRenderer();
     cssRenderer.setSize(width, height);
     cssRenderer.domElement.style.position = 'absolute';
     cssRenderer.domElement.style.top = '0';
     cssRenderer.domElement.className = 'css3d-renderer';
-    cssRenderer.domElement.style.pointerEvents = 'none';
+    cssRenderer.domElement.style.pointerEvents = 'none'; // IMPORTANT: let touches pass through to WebGL canvas
     currentMount.appendChild(cssRenderer.domElement);
 
     let composer: EffectComposer | null = null;
-    if (!IS_MOBILE) {
+    try {
         const renderScene = new RenderPass(scene, camera);
-        const bloomPass = new UnrealBloomPass(new THREE.Vector2(width, height), 1.5, 0.4, 0.85);
+        const bloomPass = new UnrealBloomPass(new THREE.Vector2(width, height), 1.2, 0.4, 0.85);
         bloomPass.threshold = 0;
-        bloomPass.strength = 1.2;
+        bloomPass.strength = 1.0;
         bloomPass.radius = 0;
         composer = new EffectComposer(renderer);
         composer.addPass(renderScene);
         composer.addPass(bloomPass);
+    } catch (e) {
+        console.warn("CodexOrbSystem: EffectComposer initialization warning, falling back to direct render", e);
+        composer = null;
     }
     
+    // Bind to renderer.domElement so we receive events
     const controls = new OrbitControls(camera, renderer.domElement);
     controlsRef.current = controls;
     controls.enableDamping = true;
@@ -842,31 +852,78 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
         }
     };
 
-    const handleTouchMove = (event: TouchEvent) => {
-        if (event.touches.length > 0 && currentMount) {
-            const rect = currentMount.getBoundingClientRect();
-            mouse.x = ((event.touches[0].clientX - rect.left) / rect.width) * 2 - 1;
-            mouse.y = -((event.touches[0].clientY - rect.top) / rect.height) * 2 + 1;
-            mouseActive = true;
-        }
+    let touchStartX = 0;
+    let touchStartY = 0;
+    let touchStartTime = 0;
+    let lastTapTime = 0;
+
+    const updateMousePosFromCoords = (clientX: number, clientY: number) => {
+        if (!currentMount) return;
+        const rect = currentMount.getBoundingClientRect();
+        const width = rect.width > 0 ? rect.width : window.innerWidth;
+        const height = rect.height > 0 ? rect.height : window.innerHeight;
+        const left = rect.left || 0;
+        const top = rect.top || 0;
+        mouse.x = ((clientX - left) / width) * 2 - 1;
+        mouse.y = -((clientY - top) / height) * 2 + 1;
+        mouseActive = true;
     };
+
+    const handleMouseMove = (event: MouseEvent) => {
+        updateMousePosFromCoords(event.clientX, event.clientY);
+    };
+
     const handleMouseLeave = () => {
         mouse.x = -10;
         mouse.y = -10;
         mouseActive = false;
     };
+
     const handlePointerDown = (event: PointerEvent) => {
-        mouseActive = true;
+        touchStartX = event.clientX;
+        touchStartY = event.clientY;
+        touchStartTime = Date.now();
+        updateMousePosFromCoords(event.clientX, event.clientY);
         triggerClickWave(event.clientX, event.clientY);
     };
-    const handleTouchStart = (event: TouchEvent) => {
-        if (event.touches.length > 0) {
-            mouseActive = true;
-            triggerClickWave(event.touches[0].clientX, event.touches[0].clientY);
+
+    const handlePointerUp = (event: PointerEvent) => {
+        const dx = Math.abs(event.clientX - touchStartX);
+        const dy = Math.abs(event.clientY - touchStartY);
+        const dt = Date.now() - touchStartTime;
+        if (dx < 20 && dy < 20 && dt < 600) {
+            handleTapOrClick(event.clientX, event.clientY);
         }
     };
-    const handleTouchEnd = () => {
+
+    const handleTouchStart = (event: TouchEvent) => {
+        if (event.touches.length > 0) {
+            const touch = event.touches[0];
+            touchStartX = touch.clientX;
+            touchStartY = touch.clientY;
+            touchStartTime = Date.now();
+            updateMousePosFromCoords(touch.clientX, touch.clientY);
+            triggerClickWave(touch.clientX, touch.clientY);
+        }
+    };
+
+    const handleTouchMove = (event: TouchEvent) => {
+        if (event.touches.length > 0) {
+            updateMousePosFromCoords(event.touches[0].clientX, event.touches[0].clientY);
+        }
+    };
+
+    const handleTouchEnd = (event: TouchEvent) => {
         mouseActive = false;
+        if (event.changedTouches.length > 0) {
+            const touch = event.changedTouches[0];
+            const dx = Math.abs(touch.clientX - touchStartX);
+            const dy = Math.abs(touch.clientY - touchStartY);
+            const dt = Date.now() - touchStartTime;
+            if (dx < 20 && dy < 20 && dt < 600) {
+                handleTapOrClick(touch.clientX, touch.clientY);
+            }
+        }
     };
 
     // Default Orb Mode objects
@@ -967,53 +1024,44 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
     scene.add(subAgentsGroupRef.current);
     scene.add(thoughtsGroupRef.current);
 
-    const handleMouseMove = (event: MouseEvent) => {
-        if (!currentMount) return;
-        const rect = currentMount.getBoundingClientRect();
-        const width = rect.width > 0 ? rect.width : window.innerWidth;
-        const height = rect.height > 0 ? rect.height : window.innerHeight;
-        const left = rect.width > 0 ? rect.left : 0;
-        const top = rect.width > 0 ? rect.top : 0;
-        mouse.x = ((event.clientX - left) / width) * 2 - 1;
-        mouse.y = -((event.clientY - top) / height) * 2 + 1;
-        mouseActive = true;
-    };
-    const handleClick = (event?: MouseEvent) => {
-        if (event && currentMount && cameraRef.current) {
-            const rect = currentMount.getBoundingClientRect();
-            const width = rect.width > 0 ? rect.width : window.innerWidth;
-            const height = rect.height > 0 ? rect.height : window.innerHeight;
-            const left = rect.width > 0 ? rect.left : 0;
-            const top = rect.width > 0 ? rect.top : 0;
-            mouse.x = ((event.clientX - left) / width) * 2 - 1;
-            mouse.y = -((event.clientY - top) / height) * 2 + 1;
+    const handleTapOrClick = (clientX: number, clientY: number) => {
+        const now = Date.now();
+        if (now - lastTapTime < 250) return; // Prevent double trigger
+        lastTapTime = now;
 
-            const clickRaycaster = new THREE.Raycaster();
-            clickRaycaster.setFromCamera(mouse, cameraRef.current);
-            const allNodes = [...(axiomNodesGroupRef.current?.children || []), ...panelNodesGroupRef.current.children];
-            const coreOrb = defaultOrbObjectsRef.current.getObjectByName('core_orb') || modeObjectsRef.current.getObjectByName('core_orb');
-            const interactables = coreOrb ? [...allNodes, coreOrb] : allNodes;
+        if (!currentMount || !cameraRef.current) return;
+        updateMousePosFromCoords(clientX, clientY);
 
-            const intersects = clickRaycaster.intersectObjects(interactables, true);
-            if (intersects.length > 0) {
-                let obj: THREE.Object3D | null = intersects[0].object;
-                while (obj && obj !== scene) {
-                    if (obj.name === 'core_orb' || obj.userData?.type === 'panel' || obj.userData?.type === 'axiom') {
-                        intersectedRef.current = obj;
-                        break;
-                    }
-                    obj = obj.parent;
-                }
-                if (!intersectedRef.current) intersectedRef.current = intersects[0].object;
-            }
+        const clickRaycaster = new THREE.Raycaster();
+        clickRaycaster.setFromCamera(mouse, cameraRef.current);
+
+        const allNodes = [...(axiomNodesGroupRef.current?.children || []), ...panelNodesGroupRef.current.children];
+        const coreOrb = defaultOrbObjectsRef.current.getObjectByName('core_orb') || modeObjectsRef.current.getObjectByName('core_orb');
+        
+        const interactables = coreOrb ? [...allNodes, coreOrb] : allNodes;
+        if (modeObjectsRef.current) {
+            interactables.push(...modeObjectsRef.current.children);
         }
 
-        const targetObj = intersectedRef.current || hoveredCoreRef.current;
-        if (targetObj) {
-            CyberSynth.playClick();
-            playHaptic(25);
+        const intersects = clickRaycaster.intersectObjects(interactables, true);
+        let hitTarget: THREE.Object3D | null = null;
 
-            let isCoreOrb = false;
+        if (intersects.length > 0) {
+            let obj: THREE.Object3D | null = intersects[0].object;
+            while (obj && obj !== scene) {
+                if (obj.name === 'core_orb' || obj.userData?.type === 'panel' || obj.userData?.type === 'axiom') {
+                    hitTarget = obj;
+                    break;
+                }
+                obj = obj.parent;
+            }
+            if (!hitTarget) hitTarget = intersects[0].object;
+        }
+
+        let isCoreOrb = false;
+        let targetObj = hitTarget || intersectedRef.current || hoveredCoreRef.current;
+
+        if (targetObj) {
             let curr: THREE.Object3D | null = targetObj;
             while (curr) {
                 if (curr.name === 'core_orb') {
@@ -1022,38 +1070,75 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
                 }
                 curr = curr.parent;
             }
+        }
 
-            if (isCoreOrb) {
-                CyberSynth.playWarp();
-                playHaptic([40, 25, 40]);
-                onCoreOrbClickRef.current();
-
-                if (cameraRef.current && controlsRef.current) {
-                    gsap.to(cameraRef.current.position, {
-                        x: 0,
-                        y: 0,
-                        z: 14,
-                        duration: 1.2,
-                        ease: "power2.inOut"
-                    });
-                    gsap.to(controlsRef.current.target, {
-                        x: 0,
-                        y: 0,
-                        z: 0,
-                        duration: 1.2,
-                        ease: "power2.inOut",
-                        onUpdate: () => controlsRef.current?.update()
-                    });
-                }
-            } else if (targetObj.userData?.type === 'panel') {
-                const nodeId = targetObj.userData.id;
-                onPanelNodeClickRef.current(nodeId);
-                focusOnPanelNodeRef.current(nodeId);
+        // Touch target proximity fallback: if ray passes within 6.5 units of origin (0,0,0) and no specific panel node was hit
+        if (!isCoreOrb && (!targetObj || targetObj.userData?.type !== 'panel')) {
+            const ray = clickRaycaster.ray;
+            const closestPointOnRay = new THREE.Vector3();
+            ray.closestPointToPoint(new THREE.Vector3(0, 0, 0), closestPointOnRay);
+            if (closestPointOnRay.distanceTo(new THREE.Vector3(0, 0, 0)) < 6.5) {
+                isCoreOrb = true;
             }
+        }
+
+        if (isCoreOrb) {
+            CyberSynth.playClick();
+            CyberSynth.playWarp();
+            playHaptic([40, 25, 40]);
+
+            focusedNodeIdRef.current = null;
+            isTransitioningRef.current = false;
+
+            // Instant spring impulse & rotational reaction
+            clickScaleImpulseRef.current = 0.55;
+            clickWobbleVelRef.current = 0.9;
+            triggerClickWave(clientX, clientY);
+
+            if (defaultOrbObjectsRef.current) {
+                defaultOrbObjectsRef.current.rotation.y += Math.PI * 0.6;
+                defaultOrbObjectsRef.current.rotation.z += (Math.random() - 0.5) * 0.5;
+            }
+            if (modeObjectsRef.current) {
+                modeObjectsRef.current.rotation.y += Math.PI * 0.6;
+                modeObjectsRef.current.rotation.z += (Math.random() - 0.5) * 0.5;
+            }
+
+            onCoreOrbClickRef.current();
+
+            if (cameraRef.current && controlsRef.current) {
+                gsap.to(cameraRef.current.position, {
+                    x: 0,
+                    y: 0,
+                    z: 14,
+                    duration: 0.8,
+                    ease: "back.out(1.5)"
+                });
+                gsap.to(controlsRef.current.target, {
+                    x: 0,
+                    y: 0,
+                    z: 0,
+                    duration: 0.8,
+                    ease: "power2.out",
+                    onUpdate: () => controlsRef.current?.update()
+                });
+            }
+        } else if (targetObj && targetObj.userData?.type === 'panel') {
+            CyberSynth.playClick();
+            playHaptic(25);
+            const nodeId = targetObj.userData.id;
+            onPanelNodeClickRef.current(nodeId);
+            focusOnPanelNodeRef.current(nodeId);
+        }
+    };
+
+    const handleClick = (event?: MouseEvent) => {
+        if (event) {
+            handleTapOrClick(event.clientX, event.clientY);
         }
     };
     
-    // Updated handleResize to check for dimensions
+    // Updated handleResize to check for dimensions and maintain high DPI resolution
     const handleResize = () => {
         if (!currentMount) return;
         const w = currentMount.clientWidth > 0 ? currentMount.clientWidth : (window.innerWidth > 0 ? window.innerWidth : 800);
@@ -1061,6 +1146,8 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
 
         camera.aspect = w / h;
         camera.updateProjectionMatrix();
+        const pr = Math.min(window.devicePixelRatio || 1, 2);
+        renderer.setPixelRatio(pr);
         renderer.setSize(w, h);
         cssRenderer.setSize(w, h);
         if (composer) {
@@ -1081,6 +1168,7 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
     window.addEventListener('resize', handleResize); 
     window.addEventListener('touchmove', handleTouchMove, { passive: true });
     window.addEventListener('pointerdown', handlePointerDown, { passive: true });
+    window.addEventListener('pointerup', handlePointerUp, { passive: true });
     window.addEventListener('touchstart', handleTouchStart, { passive: true });
     window.addEventListener('touchend', handleTouchEnd, { passive: true });
     window.addEventListener('touchcancel', handleTouchEnd, { passive: true });
@@ -1127,77 +1215,96 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
     const tempChildPos = new THREE.Vector3();
 
     let cumulativeTime = 0;
-    let lowFpsAccumulator = 0;
     const animate = () => {
         animationFrameIdRef.current = requestAnimationFrame(animate);
-        const delta = clock.getDelta();
+        (window as any).frameCount = ((window as any).frameCount || 0) + 1;
+        const rawDelta = clock.getDelta();
 
-        // Fallback restart mechanism: if frame-rate drops below 1 fps (delta > 1.0) for more than 5 seconds, restart rendering hook
-        if (delta > 1.0) {
-            lowFpsAccumulator += delta;
-            if (lowFpsAccumulator > 5.0) {
-                console.warn("CodexOrbSystem: Frame rate dropped below 1 FPS for > 5 seconds. Automatically restarting rendering loop...");
-                cancelAnimationFrame(animationFrameIdRef.current);
-                setRetryCount(c => c + 1);
-                return;
-            }
-        } else {
-            lowFpsAccumulator = Math.max(0, lowFpsAccumulator - delta * 0.5);
-        }
-        
+        // If tab was backgrounded or frame rate spiked (> 0.2s pause), clamp delta to prevent layout jumps and preserve animation loop
+        const delta = Math.min(rawDelta, 0.1);
+
         // Target: 60 FPS standard (delta = ~0.0166s -> dtSim = 1.0)
-        // Guard against massive lag spikes (clamping delta)
-        const dtSim = Math.min(delta, 0.1) * 60;
+        const dtSim = delta * 60;
         
         // Smoothly lerp speed multiplier for focus mode (slow layout animation to a near-halt for legibility)
         const targetMultiplier = focusedNodeIdRef.current ? 0.04 : 1.0;
         focusSpeedMultiplierRef.current += (targetMultiplier - focusSpeedMultiplierRef.current) * 0.08 * dtSim;
         
-        cumulativeTime += delta * speedRef.current * focusSpeedMultiplierRef.current;
+        cumulativeTime += delta * (speedRef.current || 0.5);
         const elapsedTime = cumulativeTime;
 
-        // Restore Points base before existing animations modify them
-        const restorePoints = (obj: THREE.Object3D) => {
-            if (obj instanceof THREE.Points) {
-                restorePointsBase(obj);
-            }
-            obj.children.forEach(restorePoints);
-        };
-        restorePoints(modeObjectsRef.current);
+        try {
+            // Restore Points base before existing animations modify them
+            const restorePoints = (obj: THREE.Object3D) => {
+                if (obj instanceof THREE.Points) {
+                    restorePointsBase(obj);
+                }
+                obj.children.forEach(restorePoints);
+            };
+            restorePoints(modeObjectsRef.current);
 
-        // --- Entropy Heart Visuals ---
-        const entropyValue = systemState.entropy;
-        const pulseSpeed = 1 + entropyValue * 3;
-        const pulseIntensity = 0.5 + entropyValue * 0.5;
-        
-        // Default orb animations reacting to entropy
-        const rotationSpeed = 0.001 + entropyValue * 0.005;
-        orb.rotation.y += rotationSpeed * speedRef.current * dtSim;
-        const isCoreCurrentlyHovered = hoveredCoreRef.current !== null;
-        const targetHover = isCoreCurrentlyHovered ? 1.0 : 0.0;
-        if (orb.material instanceof THREE.ShaderMaterial) {
-          orb.material.uniforms.uTime.value = elapsedTime * pulseSpeed;
-          orb.material.uniforms.uEntropy.value = entropyValue;
-          orb.material.uniforms.uMouse.value.copy(mouse3D);
-          orb.material.uniforms.uClickPos.value.copy(clickWave3D.position);
-          orb.material.uniforms.uClickRadius.value = clickWave3D.radius;
-          orb.material.uniforms.uClickForce.value = clickWave3D.force;
-          orb.material.uniforms.uTorusFactor.value = torusFactorRef.current;
-          orb.material.uniforms.uFlowFactor.value = flowFactorRef.current;
-          orb.material.uniforms.uGridFactor.value = gridFactorRef.current;
-          orb.material.uniforms.uScanlineFactor.value = scanlineFactorRef.current;
-          if (orb.material.uniforms.uHover) {
-            orb.material.uniforms.uHover.value += (targetHover - orb.material.uniforms.uHover.value) * 0.2 * dtSim;
-          }
-        }
-        
-        let targetScale = 1 + Math.sin(elapsedTime * pulseSpeed * 2) * 0.05 * pulseIntensity;
-        if (isLiveActiveRef.current) {
-           targetScale += liveVolumeRef.current * 0.5;
-           // Add extra rotation based on volume
-           orb.rotation.y += liveVolumeRef.current * 0.2 * dtSim;
-        }
-        orb.scale.setScalar(targetScale);
+            // --- Entropy Heart Visuals ---
+            const entropyValue = systemState.entropy;
+            const pulseSpeed = 1 + entropyValue * 3;
+            const pulseIntensity = 0.5 + entropyValue * 0.5;
+            const currentSpeed = speedRef.current || 0.5;
+            
+            // Default orb animations reacting to entropy
+            const rotationSpeed = 0.001 + entropyValue * 0.005;
+            orb.rotation.y += rotationSpeed * currentSpeed * dtSim;
+            // Smooth hover scale interpolation
+            const isCoreCurrentlyHovered = hoveredCoreRef.current !== null;
+            const targetHover = isCoreCurrentlyHovered ? 1.0 : 0.0;
+            const targetHoverScale = isCoreCurrentlyHovered ? 1.25 : 1.0;
+            hoverScaleRef.current += (targetHoverScale - hoverScaleRef.current) * Math.min(0.2 * dtSim, 1.0);
+
+            // Spring physics simulation for click impulse
+            if (clickScaleImpulseRef.current > 0.001 || Math.abs(clickWobbleVelRef.current) > 0.001) {
+                const kSpring = 0.22;
+                const damping = 0.82;
+                const force = -clickScaleImpulseRef.current * kSpring;
+                clickWobbleVelRef.current = (clickWobbleVelRef.current + force * dtSim) * Math.pow(damping, dtSim);
+                clickScaleImpulseRef.current += clickWobbleVelRef.current * dtSim;
+                if (clickScaleImpulseRef.current < 0) {
+                    clickScaleImpulseRef.current = 0;
+                    clickWobbleVelRef.current = 0;
+                }
+            } else {
+                clickScaleImpulseRef.current = 0;
+                clickWobbleVelRef.current = 0;
+            }
+
+            if (orb.material instanceof THREE.ShaderMaterial) {
+              orb.material.uniforms.uTime.value = elapsedTime * pulseSpeed;
+              orb.material.uniforms.uEntropy.value = entropyValue;
+              orb.material.uniforms.uMouse.value.copy(mouse3D);
+              orb.material.uniforms.uClickPos.value.copy(clickWave3D.position);
+              orb.material.uniforms.uClickRadius.value = clickWave3D.radius;
+              orb.material.uniforms.uClickForce.value = clickWave3D.force;
+              orb.material.uniforms.uTorusFactor.value = torusFactorRef.current;
+              orb.material.uniforms.uFlowFactor.value = flowFactorRef.current;
+              orb.material.uniforms.uGridFactor.value = gridFactorRef.current;
+              orb.material.uniforms.uScanlineFactor.value = scanlineFactorRef.current;
+              if (orb.material.uniforms.uHover) {
+                orb.material.uniforms.uHover.value += (targetHover - orb.material.uniforms.uHover.value) * 0.2 * dtSim;
+              }
+            }
+            
+            let basePulseScale = 1 + Math.sin(elapsedTime * pulseSpeed * 2) * 0.05 * pulseIntensity;
+            if (isLiveActiveRef.current) {
+               basePulseScale += liveVolumeRef.current * 0.5;
+               // Add extra rotation based on volume
+               orb.rotation.y += liveVolumeRef.current * 0.2 * dtSim;
+               if (modeObjectsRef.current) {
+                 modeObjectsRef.current.rotation.y += liveVolumeRef.current * 0.2 * dtSim;
+               }
+            }
+
+            const finalCoreScale = (basePulseScale + clickScaleImpulseRef.current) * hoverScaleRef.current;
+            orb.scale.setScalar(finalCoreScale);
+            if (modeObjectsRef.current) {
+               modeObjectsRef.current.scale.setScalar(finalCoreScale);
+            }
         
         // --- Particle Background Animations ---
         const backgroundGroup = backgroundParticlesGroupRef.current;
@@ -1330,18 +1437,18 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
         const group = modeObjectsRef.current;
         switch(orbMode) {
             case OrbMode.CrystallineMatrix:
-                group.rotation.y += 0.0005 * speedRef.current;
+                group.rotation.y += 0.0005 * currentSpeed;
                 group.children.forEach(crystal => {
-                    if (crystal instanceof THREE.Mesh && crystal.geometry instanceof THREE.BoxGeometry) {
-                      crystal.rotation.x += crystal.userData.rotationSpeed.x * speedRef.current;
-                      crystal.rotation.y += crystal.userData.rotationSpeed.y * speedRef.current;
+                    if (crystal instanceof THREE.Mesh && crystal.geometry instanceof THREE.BoxGeometry && crystal.userData?.rotationSpeed) {
+                      crystal.rotation.x += crystal.userData.rotationSpeed.x * currentSpeed;
+                      crystal.rotation.y += crystal.userData.rotationSpeed.y * currentSpeed;
                     }
                 });
                 break;
             case OrbMode.EntropicStorm:
             case OrbMode.ChaoticNucleus:
-                const storm = group.children.find(c => c instanceof THREE.Points) as THREE.Points;
-                if (storm) {
+                const storm = group.children.find(c => c instanceof THREE.Points) as THREE.Points | undefined;
+                if (storm && storm.userData?.velocities) {
                     const positions = storm.geometry.attributes.position;
                     const velocities = storm.userData.velocities;
                     const entropyFactor = systemState.entropy * (orbMode === OrbMode.ChaoticNucleus ? 0.35 : 0.2);
@@ -1349,9 +1456,9 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
                         velocities[i].x += (Math.random() - 0.5) * entropyFactor * 0.01;
                         velocities[i].y += (Math.random() - 0.5) * entropyFactor * 0.01;
                         velocities[i].z += (Math.random() - 0.5) * entropyFactor * 0.01;
-                        positions.setX(i, positions.getX(i) + velocities[i].x * speedRef.current);
-                        positions.setY(i, positions.getY(i) + velocities[i].y * speedRef.current);
-                        positions.setZ(i, positions.getZ(i) + velocities[i].z * speedRef.current);
+                        positions.setX(i, positions.getX(i) + velocities[i].x * currentSpeed);
+                        positions.setY(i, positions.getY(i) + velocities[i].y * currentSpeed);
+                        positions.setZ(i, positions.getZ(i) + velocities[i].z * currentSpeed);
                         const dSq = positions.getX(i)**2 + positions.getY(i)**2 + positions.getZ(i)**2;
                         if (dSq > 10**2) {
                             positions.setXYZ(i, (Math.random()-0.5)*2, (Math.random()-0.5)*2, (Math.random()-0.5)*2);
@@ -1360,8 +1467,10 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
                     positions.needsUpdate = true;
                 }
                 group.children.filter(c => c instanceof THREE.Mesh).forEach(shard => {
-                  shard.rotation.x += shard.userData.rotSpeed.x * speedRef.current;
-                  shard.rotation.y += shard.userData.rotSpeed.y * speedRef.current;
+                  if (shard.userData?.rotSpeed) {
+                    shard.rotation.x += shard.userData.rotSpeed.x * currentSpeed;
+                    shard.rotation.y += shard.userData.rotSpeed.y * currentSpeed;
+                  }
                 });
                 break;
             case OrbMode.AethericWeave:
@@ -1557,12 +1666,8 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
 
         if (isHoveringCore && firstIntersect) {
             if (hoveredCoreRef.current !== firstIntersect) {
-                if (hoveredCoreRef.current) {
-                    gsap.to(hoveredCoreRef.current.scale, { x: 1, y: 1, z: 1, duration: 0.3 });
-                }
                 hoveredCoreRef.current = firstIntersect;
                 document.body.style.cursor = 'pointer';
-                gsap.to(hoveredCoreRef.current.scale, { x: 1.15, y: 1.15, z: 1.15, duration: 0.3 });
                 if ((hoveredCoreRef.current as THREE.Mesh).material instanceof THREE.ShaderMaterial) {
                     gsap.to(((hoveredCoreRef.current as THREE.Mesh).material as THREE.ShaderMaterial).uniforms.uEntropy, { value: 1.0, duration: 0.3 });
                 }
@@ -1571,7 +1676,6 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
         } else {
             if (hoveredCoreRef.current) {
                 document.body.style.cursor = 'default';
-                gsap.to(hoveredCoreRef.current.scale, { x: 1, y: 1, z: 1, duration: 0.3 });
                 if ((hoveredCoreRef.current as THREE.Mesh).material instanceof THREE.ShaderMaterial) {
                     gsap.to(((hoveredCoreRef.current as THREE.Mesh).material as THREE.ShaderMaterial).uniforms.uEntropy, { value: systemState.entropy, duration: 0.3 });
                 }
@@ -2073,9 +2177,13 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
         }
 
         controls.update();
-        if (composer) {
-            composer.render();
-        } else {
+        try {
+            if (composer) {
+                composer.render();
+            } else {
+                renderer.render(scene, camera);
+            }
+        } catch (rErr) {
             renderer.render(scene, camera);
         }
         
@@ -2083,6 +2191,25 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
             panelObj.cssObject.lookAt(camera.position);
         });
         cssRenderer.render(scene, camera);
+        } catch (frameErr: any) {
+            console.error("CodexOrb frame error caught, recovering:", frameErr);
+            if (document.getElementById('debug-error')) {
+                document.getElementById('debug-error')!.innerText = frameErr.toString() + '\\n' + frameErr.stack;
+            } else {
+                const div = document.createElement('div');
+                div.id = 'debug-error';
+                div.style.position = 'absolute';
+                div.style.top = '0';
+                div.style.left = '0';
+                div.style.zIndex = '9999';
+                div.style.color = 'red';
+                div.style.backgroundColor = 'rgba(0,0,0,0.8)';
+                div.style.padding = '10px';
+                div.style.pointerEvents = 'none';
+                div.innerText = frameErr.toString() + '\\n' + frameErr.stack;
+                document.body.appendChild(div);
+            }
+        }
     };
     animate();
 
@@ -2096,6 +2223,7 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
       window.removeEventListener('resize', handleResize);
       window.removeEventListener('touchmove', handleTouchMove);
       window.removeEventListener('pointerdown', handlePointerDown);
+      window.removeEventListener('pointerup', handlePointerUp);
       window.removeEventListener('touchstart', handleTouchStart);
       window.removeEventListener('touchend', handleTouchEnd);
       window.removeEventListener('touchcancel', handleTouchEnd);
@@ -2917,7 +3045,7 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
 
   return (
     <>
-      <div ref={mountRef} id="codex-orb-canvas-container" className="absolute inset-0 z-10 pointer-events-auto" />
+      <div ref={mountRef} id="codex-orb-canvas-container" className="absolute inset-0 z-10 pointer-events-auto touch-none" />
       
       {/* 3D Navigation Controls HUD (Zoom, Focus Nexus Orb, Recenter) */}
       <div className="absolute bottom-24 right-4 z-[500] flex flex-col gap-2 select-none pointer-events-auto">

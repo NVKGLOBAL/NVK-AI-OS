@@ -608,11 +608,16 @@ export const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    if (!systemBooted) return;
     const interval = setInterval(() => {
-      setThoughts(prev => prev.filter(t => Date.now() - t.createdAt < 10000));
+      setThoughts(prev => {
+        const next = prev.filter(t => Date.now() - t.createdAt < 10000);
+        if (next.length === prev.length) return prev;
+        return next;
+      });
     }, 1000);
     return () => clearInterval(interval);
-  }, []);
+  }, [systemBooted]);
 
   const spawnSubAgent = useCallback((name: string, task: string, color: string) => {
     setSubAgents(prev => [...prev, { id: `agent-${Date.now()}`, name, task, status: 'working', color }]);
@@ -660,11 +665,20 @@ export const App: React.FC = () => {
            const reInitAgents = generateInitialAgents();
            return { grid: reInitGrid, agents: reInitAgents };
         }
-        const newAgents = prev.agents.map(agent => performRitualMove(agent, prev.grid));
+        
+        let changed = false;
+        const newAgents = prev.agents.map(agent => {
+            const next = performRitualMove(agent, prev.grid);
+            if (next.x !== agent.x || next.y !== agent.y) changed = true;
+            return next;
+        });
         const newGrid = prev.grid.map(row => row.map(cell => {
            const entropy = updateCellEntropy(cell, newAgents);
+           if (entropy !== cell.entropy) changed = true;
            return { ...cell, entropy };
         }));
+        
+        if (!changed) return prev;
         return { grid: newGrid, agents: newAgents };
       });
     }, 1500); 
@@ -871,7 +885,6 @@ export const App: React.FC = () => {
       liveApi.startLive();
     }
     setShowOrbTooltip(false);
-    setIsCoreControlsOpen(true);
   }, [liveApi]);
 
   const addHistoricalEvent = (type: HistoricalEventType, data: any, specificTimestamp?: number) => {

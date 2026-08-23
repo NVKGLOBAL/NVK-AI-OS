@@ -13,7 +13,7 @@ interface NexusBrowserProps {
   initialUrl?: string;
 }
 
-const DEFAULT_NEXUS_URL = 'https://www.nvkglobal.com/';
+const DEFAULT_NEXUS_URL = 'https://www.nvk.global/';
 
 const NexusBrowser: React.FC<NexusBrowserProps> = ({ onOpenNewWindow, initialUrl }) => {
   const [tabs, setTabs] = useState<Tab[]>([
