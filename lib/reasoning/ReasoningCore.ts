@@ -13,13 +13,13 @@ export class TreeOfThoughtReasoner {
   private maxDepth: number;
   private branchingFactor: number;
   private thoughtTree: Map<string, ThoughtNode>;
-  private invokeGemini: LLMCaller;
+  private invokecloud_ai: LLMCaller;
   
-  constructor(invokeGemini: LLMCaller, maxDepth = 3, branchingFactor = 3) {
+  constructor(invokecloud_ai: LLMCaller, maxDepth = 3, branchingFactor = 3) {
     this.maxDepth = maxDepth;
     this.branchingFactor = branchingFactor;
     this.thoughtTree = new Map();
-    this.invokeGemini = invokeGemini;
+    this.invokecloud_ai = invokecloud_ai;
   }
 
   async solve(problem: string, context?: any): Promise<ReasoningPath> {
@@ -100,7 +100,7 @@ Each step should:
 Return ONLY a valid JSON array of objects with this structure: [{ "content": "next step description", "state": "optional string describing new state" }]
     `.trim();
 
-    const response = await this.invokeGemini(prompt, "You are a logical reasoning engine.");
+    const response = await this.invokecloud_ai(prompt, "You are a logical reasoning engine.");
     return this.parseLLMResponse(response || "[]");
   }
 
@@ -121,7 +121,7 @@ Rate from 0.0 to 1.0 on:
 Return ONLY a valid JSON object: { "correctness": 0.8, "completeness": 0.7, "coherence": 0.9 }
     `.trim();
 
-    const response = await this.invokeGemini(prompt, "You are a critical evaluator.");
+    const response = await this.invokecloud_ai(prompt, "You are a critical evaluator.");
     return this.parseEvaluation(response || "{}");
   }
 
@@ -178,7 +178,7 @@ ${reasoningChain}
 Provide a clear, concise final answer that synthesizes all steps into a solution.
     `.trim();
 
-    return (await this.invokeGemini(prompt, "You are a synthesizer of truth.")) || "Synthesis failed.";
+    return (await this.invokecloud_ai(prompt, "You are a synthesizer of truth.")) || "Synthesis failed.";
   }
 
   private createThoughtNode(content: string, parentId: string | null, depth: number, state: any): ThoughtNode {
@@ -222,12 +222,12 @@ Provide a clear, concise final answer that synthesizes all steps into a solution
 export class SelfReflectiveAgent {
   private maxIterations: number;
   private confidenceThreshold: number;
-  private invokeGemini: LLMCaller;
+  private invokecloud_ai: LLMCaller;
 
-  constructor(invokeGemini: LLMCaller, maxIterations = 2, confidenceThreshold = 0.85) {
+  constructor(invokecloud_ai: LLMCaller, maxIterations = 2, confidenceThreshold = 0.85) {
     this.maxIterations = maxIterations;
     this.confidenceThreshold = confidenceThreshold;
-    this.invokeGemini = invokeGemini;
+    this.invokecloud_ai = invokecloud_ai;
   }
 
   async generateWithReflection(query: string, context?: any): Promise<ReflectionResult> {
@@ -259,7 +259,7 @@ export class SelfReflectiveAgent {
 
   private async generateInitialResponse(query: string, context?: any): Promise<string> {
     const prompt = `Query: ${query}\n${context ? `Context: ${JSON.stringify(context)}` : ''}\nProvide a comprehensive, well-reasoned response.`;
-    return (await this.invokeGemini(prompt, "You are a helpful assistant.")) || "No response.";
+    return (await this.invokecloud_ai(prompt, "You are a helpful assistant.")) || "No response.";
   }
 
   private async critiqueSelf(response: string, query: string): Promise<ReflectionResult['critique']> {
@@ -275,7 +275,7 @@ Analyze this response critically:
 
 Return ONLY valid JSON: { "strengths": [], "weaknesses": [], "errors": [], "improvements": [] }
     `.trim();
-    const result = await this.invokeGemini(prompt, "You are a harsh critic.");
+    const result = await this.invokecloud_ai(prompt, "You are a harsh critic.");
     return this.parseCritique(result || "{}");
   }
 
@@ -297,7 +297,7 @@ Improvements: ${critique.improvements.join(', ')}
 
 Generate an improved response addressing these issues.
     `.trim();
-    return (await this.invokeGemini(prompt, "You are an expert editor.")) || response;
+    return (await this.invokecloud_ai(prompt, "You are an expert editor.")) || response;
   }
 
   private parseCritique(response: string): ReflectionResult['critique'] {
@@ -315,10 +315,10 @@ Generate an improved response addressing these issues.
 // ============================================================
 
 export class ContinualLearningSystem {
-  private invokeGemini: LLMCaller;
+  private invokecloud_ai: LLMCaller;
 
-  constructor(invokeGemini: LLMCaller) {
-    this.invokeGemini = invokeGemini;
+  constructor(invokecloud_ai: LLMCaller) {
+    this.invokecloud_ai = invokecloud_ai;
   }
 
   async learnFromInteraction(interaction: Episode['interaction'], outcome: Episode['outcome']): Promise<void> {
@@ -358,7 +358,7 @@ Identify reusable patterns (strategies, knowledge, behaviors).
 Return ONLY JSON array: [{ "type": "strategy|knowledge", "description": "...", "examples": [], "applicability": [] }]
     `.trim();
 
-    const response = await this.invokeGemini(prompt, "You are a meta-learning system.");
+    const response = await this.invokecloud_ai(prompt, "You are a meta-learning system.");
     const rawPatterns = this.parsePatterns(response || "[]");
     
     return rawPatterns.map((p: any) => ({

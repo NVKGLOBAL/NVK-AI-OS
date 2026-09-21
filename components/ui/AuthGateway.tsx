@@ -9,7 +9,7 @@ interface AIProvider {
 }
 
 const ALL_PROVIDERS: AIProvider[] = [
-  { id: 'google', label: 'Google Gemini Workspace', icon: 'ri-google-line', desc: 'Secure frontier Gemini models and custom Vertex pipelines', scopes: ['gemini:generate', 'vertex:predict', 'workspace:sync'] },
+  { id: 'google', label: 'Google cloud_ai Workspace', icon: 'ri-google-line', desc: 'Secure frontier cloud_ai models and custom Vertex pipelines', scopes: ['cloud_ai:generate', 'vertex:predict', 'workspace:sync'] },
   { id: 'openai', label: 'OpenAI Developer Network', icon: 'ri-openai-line', desc: 'Direct access to flagship standard GPT platforms (gpt-4o, o1)', scopes: ['chat:completions', 'models:list', 'files:write'] },
   { id: 'github', label: 'GitHub Developer Sync', icon: 'ri-github-line', desc: 'Coordinate project configurations, active repos, and Copilot logic', scopes: ['repo:read', 'user:email', 'gist:write'] },
   { id: 'anthropic', label: 'Anthropic Engine Matrix', icon: 'ri-sparkling-fill', desc: 'Frontier reasoning loops (Claude 3.5 Sonnet & Haiku)', scopes: ['claude:chat', 'messages:create', 'models:read'] },

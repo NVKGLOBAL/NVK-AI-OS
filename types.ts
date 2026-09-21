@@ -638,8 +638,8 @@ export type HeaderProps = {
   onSetNodeAnimationSpeed: (speed: number) => void;
   onInitiateShatterpointTrace: () => void;
   interfaceActive: boolean;
-  workspaceMode?: '3d' | '2d';
-  onWorkspaceModeChange?: (mode: '3d' | '2d') => void;
+  workspaceMode?: '3d' | '2d' | 'split' | 'immersive' | 'grid';
+  onWorkspaceModeChange?: (mode: '3d' | '2d' | 'split' | 'immersive' | 'grid') => void;
   onOpenSearch?: () => void;
 };
 
@@ -1620,4 +1620,201 @@ export interface AuditLog {
   userAgent: string;
   createdAt: Date;
 }
+
+// ----------------------------------------------------
+// NVK 3D OS — LIVING INTELLIGENCE INTERFACE TYPES
+// ----------------------------------------------------
+
+export type NVKOrbState = 'IDLE' | 'LISTENING' | 'THINKING' | 'ACTING' | 'DISCOVERY' | 'ERROR' | 'CALM';
+
+export type NVKActionType =
+  | 'open_app'
+  | 'search_web'
+  | 'create_document'
+  | 'create_project'
+  | 'analyze_files'
+  | 'execute_workflow'
+  | 'spawn_agents'
+  | 'custom';
+
+export interface NVKAction {
+  id: string;
+  type: NVKActionType;
+  target?: string;
+  label: string;
+  parameters?: Record<string, any>;
+  status: 'queued' | 'running' | 'completed' | 'failed' | 'requires_permission';
+  progress?: number;
+  evidence?: string[];
+  resultSummary?: string;
+  createdAt: number;
+  completedAt?: number;
+}
+
+export interface NVKApplication {
+  id: string;
+  name: string;
+  icon: string;
+  category: string;
+  capabilities: string[];
+  description: string;
+  isSpawned?: boolean;
+}
+
+export interface NVKWorkflowTask {
+  id: string;
+  title: string;
+  status: 'pending' | 'active' | 'completed' | 'failed';
+  detail?: string;
+}
+
+export interface NVKWorkflow {
+  id: string;
+  title: string;
+  status: 'idle' | 'running' | 'paused' | 'completed' | 'failed';
+  progress: number;
+  currentAction: string;
+  nextAction: string;
+  tasks: NVKWorkflowTask[];
+  outputArtifact?: {
+    type: 'document' | 'dataset' | 'solar_targets' | 'code' | 'pitch_deck';
+    title: string;
+    data: any;
+  };
+}
+
+export interface NVKActivityStep {
+  id: string;
+  label: string;
+  status: 'pending' | 'running' | 'completed' | 'failed';
+  timestamp: number;
+}
+
+
+// --- NVK 2.0 Engineering Interfaces ---
+
+export interface OldNVKCapability {
+  id: string;
+  name: string;
+  description: string;
+  execute: (payload: any, context?: any) => Promise<NVKArtifact>;
+}
+
+export interface NVKArtifact {
+  id: string;
+  type: 'UI_PANEL' | 'DATA_OBJECT' | 'SYSTEM_STATE' | 'ERROR';
+  data: any;
+  timestamp: number;
+}
+
+export interface OldNVKAction {
+  id: string;
+  capabilityId: string;
+  payload: any;
+  status: 'PENDING' | 'EXECUTING' | 'COMPLETED' | 'FAILED';
+  result?: NVKArtifact;
+}
+
+export interface OldNVKTask {
+  id: string;
+  goal: string;
+  actions: OldNVKAction[];
+  status: 'PLANNING' | 'EXECUTING' | 'COMPLETED' | 'FAILED';
+}
+
+export interface NVKIntelligenceEngine {
+  parseIntent(userInput: string, context?: any): Promise<NVKTask>;
+  executeTask(task: NVKTask): Promise<NVKArtifact[]>;
+  registerCapability(capability: NVKCapability): void;
+  getCapabilities(): NVKCapability[];
+}
+
+export type NVKEvidenceType = 
+  | "file_created"
+  | "file_modified"
+  | "command_executed"
+  | "web_response"
+  | "application_spawned"
+  | "artifact_created";
+
+export type NVKRiskLevel = 'safe' | 'low' | 'moderate' | 'high' | 'critical';
+
+export interface NVKEvidence {
+  id?: string;
+  type: NVKEvidenceType;
+  timestamp: number;
+  hash?: string;
+  reference?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface NVKCapabilitySchema {
+  type: string;
+  properties?: Record<string, { type: string; description?: string; required?: boolean }>;
+  required?: string[];
+}
+
+export type NVKCapabilityCategory = 
+  | "intelligence"
+  | "filesystem"
+  | "terminal"
+  | "web"
+  | "application"
+  | "creation"
+  | "workflow";
+
+export interface NVKExecutionContext {
+  cwd?: string;
+  confirmedByUser?: boolean;
+  sessionId?: string;
+}
+
+export interface NVKCapabilityResult {
+  success: boolean;
+  actionId?: string;
+  capabilityId: string;
+  output?: unknown;
+  error?: string;
+  evidence?: NVKEvidence[];
+}
+
+export interface NVKCapability {
+  id: string;
+  name: string;
+  description: string;
+  category: NVKCapabilityCategory;
+  riskLevel?: NVKRiskLevel;
+  inputSchema?: NVKCapabilitySchema;
+  outputSchema?: NVKCapabilitySchema;
+  available(): Promise<boolean>;
+  requiresConfirmation: boolean;
+  execute(input: unknown, context: NVKExecutionContext): Promise<NVKCapabilityResult>;
+  emitEvidence?(result: NVKCapabilityResult, context: NVKExecutionContext): NVKEvidence | NVKEvidence[];
+}
+
+export interface NVKTask {
+  id: string;
+  objective: string;
+  status: "QUEUED" | "RUNNING" | "WAITING" | "PAUSED" | "COMPLETED" | "FAILED" | "CANCELLED";
+  currentAction?: string;
+  progress: number;
+  startTime: number;
+  lastUpdate: number;
+  result?: unknown;
+  evidence?: NVKEvidence[];
+  error?: string;
+}
+
+export type NVKEvent = 
+  | { type: 'TASK_STARTED', taskId: string }
+  | { type: 'MODEL_LOADING', progress: number }
+  | { type: 'ACTION_STARTED', actionId: string, description: string }
+  | { type: 'ACTION_COMPLETED', actionId: string }
+  | { type: 'ACTION_FAILED', actionId: string, error: string }
+  | { type: 'APP_SPAWNED', appId: string }
+  | { type: 'WEB_REQUEST_STARTED', url: string }
+  | { type: 'FILE_CREATED', path: string }
+  | { type: 'TASK_VERIFIED', taskId: string }
+  | { type: 'TASK_COMPLETED', taskId: string }
+  | { type: 'TASK_FAILED', taskId: string, error: string };
 

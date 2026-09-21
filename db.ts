@@ -72,6 +72,10 @@ export class CodexDriftDB extends Dexie {
     const id = this.memory_interpretations.length + 1;
     const entry = { ...interpretation, id };
     this.memory_interpretations.push(entry);
+    // Bounded memory buffer to prevent memory leakage in long sessions
+    if (this.memory_interpretations.length > 250) {
+      this.memory_interpretations = this.memory_interpretations.slice(-250);
+    }
 
     let glyph = this.memory_glyphs.get(interpretation.glyphId);
     if (!glyph) {
@@ -180,6 +184,9 @@ export class CodexDriftDB extends Dexie {
     if (this.useMemoryFallback) {
       const id = this.memory_driftCommentaries.length + 1;
       this.memory_driftCommentaries.push({ ...commentary, id } as DriftCommentary);
+      if (this.memory_driftCommentaries.length > 250) {
+        this.memory_driftCommentaries = this.memory_driftCommentaries.slice(-250);
+      }
       return id;
     }
 

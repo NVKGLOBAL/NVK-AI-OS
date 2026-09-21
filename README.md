@@ -29,7 +29,7 @@ Copy `.env.example` to `.env` and set your preferred provider and model defaults
 DEFAULT_AI_PROVIDER=gemini
 
 # Gemini Models (e.g. gemini-2.5-flash, gemini-1.5-pro, gemini-2.0-flash-exp)
-GEMINI_API_KEY=your_gemini_key
+BANNED_KEY=your_gemini_key
 GEMINI_MODEL=gemini-2.5-flash
 
 # OpenAI Models (e.g. gpt-4o, gpt-4o-mini, o3-mini)

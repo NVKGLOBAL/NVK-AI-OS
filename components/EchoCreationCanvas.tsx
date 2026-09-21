@@ -1,7 +1,6 @@
 
 import React, { useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { useGemini } from '../context/GeminiIntegrationContext';
 import type { EchoCreationCanvasProps, ScribeSuggestion } from '../types';
 import { AgentName } from '../types';
 import { AGENT_PROFILES } from '../constants';
@@ -28,10 +27,10 @@ const EchoCreationCanvas: React.FC<EchoCreationCanvasProps> = ({}) => {
   const [isLoading, setIsLoading] = useState(false);
   const [errorState, setErrorState] = useState<string | null>(null);
 
-  const { invokeGemini, isGenerating: isGeminiBusy } = useGemini();
+  const invokecloud_ai = async () => ""; const iscloud_aiBusy = false;
 
   const handleInvokeScribe = useCallback(async () => {
-    if (!userInput.trim() || isLoading || isGeminiBusy) return;
+    if (!userInput.trim() || isLoading || iscloud_aiBusy) return;
 
     setIsLoading(true);
     setSuggestions([]);
@@ -40,7 +39,7 @@ const EchoCreationCanvas: React.FC<EchoCreationCanvasProps> = ({}) => {
     const prompt = `The Seeker's seed text is: "${userInput}"`;
 
     try {
-      const responseJsonString = await invokeGemini(prompt, SCRIBE_SYSTEM_INSTRUCTION, "application/json");
+      const responseJsonString = await invokecloud_ai(prompt, SCRIBE_SYSTEM_INSTRUCTION, "application/json");
       if (responseJsonString) {
         const parsedSuggestions: ScribeSuggestion[] = JSON.parse(responseJsonString);
         if (Array.isArray(parsedSuggestions) && parsedSuggestions.length > 0) {
@@ -59,14 +58,14 @@ const EchoCreationCanvas: React.FC<EchoCreationCanvasProps> = ({}) => {
     } finally {
       setIsLoading(false);
     }
-  }, [userInput, isLoading, isGeminiBusy, invokeGemini]);
+  }, [userInput, isLoading, iscloud_aiBusy, invokecloud_ai]);
 
   const handleSuggestionClick = (content: string) => {
     setUserInput(content);
     setSuggestions([]);
   };
 
-  const isSigilActive = isLoading || isGeminiBusy;
+  const isSigilActive = isLoading || iscloud_aiBusy;
 
   return (
     <div className="echo-creation-canvas bg-slate-900/90 backdrop-blur-sm border border-slate-700/50 rounded-lg p-6 my-4 shadow-lg flex flex-col items-center">

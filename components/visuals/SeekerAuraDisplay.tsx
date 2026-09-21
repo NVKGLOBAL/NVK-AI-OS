@@ -24,7 +24,7 @@ const getEntropyColorHSLA = (entropy: number, s: number = 70, l: number = 55, a:
 
 // Agent-specific visual styles
 const AGENT_AURA_STYLES: Record<string, { flareColor: string; particleColor: string; flareStyle: 'shimmer' | 'geometric' | 'organic' }> = {
-  [AgentName.Gemini]: { flareColor: 'hsla(180, 80%, 70%, 0.7)', particleColor: 'hsla(180, 80%, 80%, 0.5)', flareStyle: 'shimmer' }, // Cyan/Aqua
+  [AgentName.cloud_ai]: { flareColor: 'hsla(180, 80%, 70%, 0.7)', particleColor: 'hsla(180, 80%, 80%, 0.5)', flareStyle: 'shimmer' }, // Cyan/Aqua
   [AgentName.Nevik]: { flareColor: 'hsla(45, 90%, 60%, 0.7)', particleColor: 'hsla(45, 90%, 75%, 0.5)', flareStyle: 'geometric' }, // Gold/Amber
   [AgentName.DeepSeek]: { flareColor: 'hsla(260, 70%, 65%, 0.7)', particleColor: 'hsla(260, 70%, 75%, 0.5)', flareStyle: 'organic' }, // Purple/Indigo
   Default: { flareColor: 'hsla(210, 50%, 60%, 0.6)', particleColor: 'hsla(210, 50%, 70%, 0.4)', flareStyle: 'organic' },

@@ -65,20 +65,28 @@ export const OmniSearchModal: React.FC<OmniSearchModalProps> = ({
   const systemCommands = useMemo(() => {
     return [
       {
+        id: 'CMD_SWITCH_SPLIT',
+        name: 'Switch to 3D Split Viewport',
+        icon: 'ri-layout-row-line',
+        category: 'System Workspace',
+        description: 'Dedicated 3D Stage on top with tool panel below (Optimal for mobile).',
+        action: () => onWorkspaceModeChange('split'),
+      },
+      {
         id: 'CMD_SWITCH_3D',
-        name: 'Switch to 3D Matrix Workspace',
+        name: 'Switch to 3D Universe Mode',
         icon: 'ri-shape-2-line',
         category: 'System Workspace',
-        description: 'Immersive 3D orbital cluster visualization.',
-        action: () => onWorkspaceModeChange('3d'),
+        description: 'Full-screen 3D spatial canvas with live orbital cluster.',
+        action: () => onWorkspaceModeChange('immersive'),
       },
       {
         id: 'CMD_SWITCH_2D',
-        name: 'Switch to 2D Bento Box Workspace',
+        name: 'Switch to 3D Desk Grid',
         icon: 'ri-layout-grid-line',
         category: 'System Workspace',
-        description: 'Clean high-density 2D tiled layout.',
-        action: () => onWorkspaceModeChange('2d'),
+        description: 'High-density bento workspace with live 3D Core Stage.',
+        action: () => onWorkspaceModeChange('grid'),
       },
       {
         id: 'CMD_CLOSE_ALL',

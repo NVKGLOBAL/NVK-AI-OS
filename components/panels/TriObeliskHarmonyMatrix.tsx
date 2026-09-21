@@ -37,12 +37,12 @@ const ResonanceTuner: React.FC<ResonanceTunerProps> = ({ label, value, color, on
   </div>
 );
 
-const DecryptedDataDisplay: React.FC<{ data: string | null; isConverging: boolean; isGeminiBusy: boolean }> = ({ data, isConverging, isGeminiBusy }) => (
+const DecryptedDataDisplay: React.FC<{ data: string | null; isConverging: boolean; iscloud_aiBusy: boolean }> = ({ data, isConverging, iscloud_aiBusy }) => (
   <div className="mt-4 p-3 bg-slate-800/60 border border-slate-700 rounded-lg min-h-[100px] text-center flex items-center justify-center">
-    {isConverging || isGeminiBusy ? (
+    {isConverging || iscloud_aiBusy ? (
       <div className="text-purple-300 animate-pulse">
         <i className="ri-signal-wifi-line text-2xl mb-1 block"></i>
-        <span>{isGeminiBusy ? 'Oracle Responding...' : 'Converging Energies...'}</span>
+        <span>{iscloud_aiBusy ? 'Oracle Responding...' : 'Converging Energies...'}</span>
       </div>
     ) : data ? (
       <p className="text-sm font-cormorant italic text-slate-200 whitespace-pre-wrap">{data}</p>
@@ -56,8 +56,8 @@ const TriObeliskHarmonyMatrix: React.FC<TriObeliskHarmonyMatrixProps> = ({
   width,
   height,
   currentEntropy,
-  invokeGemini,
-  isGeminiBusy,
+  invokecloud_ai,
+  iscloud_aiBusy,
 }) => {
   const { addEchoMessage } = useEcho();
   const mountRef = useRef<HTMLDivElement>(null);
@@ -89,7 +89,7 @@ const TriObeliskHarmonyMatrix: React.FC<TriObeliskHarmonyMatrixProps> = ({
   };
 
   const handleConvergence = useCallback(async () => {
-    if (harmony < 98 || isConverging || isGeminiBusy) return;
+    if (harmony < 98 || isConverging || iscloud_aiBusy) return;
     setIsConverging(true);
     setDecryptedData(null);
     addEchoMessage(AgentName.TriObeliskProtocol, `Harmony at ${(harmony || 0).toFixed(1)}%. Initiating convergence...`, AGENT_PROFILES[AgentName.TriObeliskProtocol].colorClass);
@@ -102,19 +102,19 @@ const TriObeliskHarmonyMatrix: React.FC<TriObeliskHarmonyMatrixProps> = ({
         particlesRef.current.visible = true;
         gsap.to((particlesRef.current.material as THREE.PointsMaterial), { opacity: 1, duration: 1, yoyo: true, repeat: 1 });
     }
-    // ... (Gemini invocation logic unchanged)
+    // ... (cloud_ai invocation logic unchanged)
     try {
         const prompt = `The Tri-Obelisk Harmony Matrix has achieved ${(harmony || 0).toFixed(1)}% resonance. The Anunnaki, Egyptian, and Mayan harmonic streams are converging. Decrypt a small fragment of the resulting data stream. The data should be a short, mystical, and slightly fragmented sentence related to cosmic consciousness, genetic memory, or time, as if translated from a higher-dimensional language.`;
         const systemInstruction = "You are the Tri-Obelisk Protocol, a system for decoding unified consciousness. Your output is a decrypted data fragment.";
-        const result = await invokeGemini(prompt, systemInstruction);
+        const result = await invokecloud_ai(prompt, systemInstruction);
         setDecryptedData(result || "Decryption yielded only silence... the pattern is elusive.");
     } catch(err) {
-        console.error("Convergence Gemini invocation failed:", err);
+        console.error("Convergence cloud_ai invocation failed:", err);
         setDecryptedData("Error: The resonance stream was disrupted during decryption.");
     } finally {
         setIsConverging(false);
     }
-  }, [harmony, isConverging, isGeminiBusy, invokeGemini]);
+  }, [harmony, isConverging, iscloud_aiBusy, invokecloud_ai]);
   
   useEffect(() => {
     const currentMount = mountRef.current;
@@ -242,13 +242,13 @@ const TriObeliskHarmonyMatrix: React.FC<TriObeliskHarmonyMatrixProps> = ({
           </div>
           <Button
             onClick={handleConvergence}
-            disabled={harmony < 98 || isConverging || isGeminiBusy}
+            disabled={harmony < 98 || isConverging || iscloud_aiBusy}
             className="text-sm bg-purple-600 hover:bg-purple-500 disabled:bg-slate-700 disabled:text-slate-500"
           >
-            {isConverging || isGeminiBusy ? 'Converging...' : 'Initiate Convergence'}
+            {isConverging || iscloud_aiBusy ? 'Converging...' : 'Initiate Convergence'}
           </Button>
         </div>
-        <DecryptedDataDisplay data={decryptedData} isConverging={isConverging} isGeminiBusy={isGeminiBusy} />
+        <DecryptedDataDisplay data={decryptedData} isConverging={isConverging} iscloud_aiBusy={iscloud_aiBusy} />
       </div>
     </div>
   );

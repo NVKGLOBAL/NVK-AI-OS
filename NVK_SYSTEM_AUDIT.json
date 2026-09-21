@@ -1,0 +1,20 @@
+{
+  "version": "2.1",
+  "auditTimestamp": "2026-08-23T10:29:00Z",
+  "status": "HARDENED",
+  "components": {
+    "intentEngine": "operational",
+    "planner": "operational",
+    "capabilityRegistry": "operational",
+    "executionEngine": "operational",
+    "evidenceStore": "operational",
+    "artifactRegistry": "operational",
+    "localInference": "sovereign_dynamic",
+    "browserAutomation": "unavailable_truthful"
+  },
+  "metrics": {
+    "typecheckErrors": 0,
+    "buildStatus": "success",
+    "capabilityTheater": 0
+  }
+}

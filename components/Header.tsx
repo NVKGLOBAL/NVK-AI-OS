@@ -16,7 +16,7 @@ export const Header: React.FC<HeaderProps> = ({
   onAmplifyVoices,
   onSeedDream,
   isAutoEchoPaused,
-  onInvokeGeminiOracle,
+  onInvokecloud_aiOracle,
   onContextualOracleQuery,
   onToggleAshfall,
   showAshfall,
@@ -116,26 +116,43 @@ export const Header: React.FC<HeaderProps> = ({
 
         {/* Workspace Mode Switcher Pill */}
         {onWorkspaceModeChange && (
-          <div className="hidden lg:flex items-center bg-slate-900/90 border border-slate-800 rounded-full p-0.5 shadow-lg">
+          <div className="flex items-center bg-slate-900/90 border border-slate-800/90 rounded-full p-0.5 shadow-lg overflow-x-auto max-w-full">
             <button
-              onClick={() => onWorkspaceModeChange('3d')}
-              className={`px-3 py-1 rounded-full text-[10px] font-mono uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer ${
-                workspaceMode === '3d'
-                  ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/80 font-bold shadow-[0_0_10px_rgba(6,182,212,0.3)]'
+              onClick={() => onWorkspaceModeChange('split')}
+              className={`px-2.5 sm:px-3 py-1 rounded-full text-[9px] sm:text-[10px] font-mono uppercase tracking-wider transition-all flex items-center gap-1 cursor-pointer whitespace-nowrap ${
+                workspaceMode === 'split'
+                  ? 'bg-cyan-500/25 text-cyan-300 border border-cyan-400/80 font-bold shadow-[0_0_12px_rgba(6,182,212,0.35)]'
                   : 'text-slate-400 hover:text-slate-200'
               }`}
+              title="3D Split Mode: Dedicated 3D Orb Stage on Top, Tool Panel on Bottom"
             >
-              <i className="ri-shape-2-line"></i> 3D Matrix
+              <i className="ri-layout-row-line text-cyan-400"></i>
+              <span className="inline">3D Split</span>
             </button>
             <button
-              onClick={() => onWorkspaceModeChange('2d')}
-              className={`px-3 py-1 rounded-full text-[10px] font-mono uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer ${
-                workspaceMode === '2d'
-                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/80 font-bold shadow-[0_0_10px_rgba(16,185,129,0.3)]'
+              onClick={() => onWorkspaceModeChange('immersive')}
+              className={`px-2.5 sm:px-3 py-1 rounded-full text-[9px] sm:text-[10px] font-mono uppercase tracking-wider transition-all flex items-center gap-1 cursor-pointer whitespace-nowrap ${
+                workspaceMode === 'immersive' || workspaceMode === '3d'
+                  ? 'bg-purple-500/25 text-purple-300 border border-purple-400/80 font-bold shadow-[0_0_12px_rgba(168,85,247,0.35)]'
                   : 'text-slate-400 hover:text-slate-200'
               }`}
+              title="3D Immersive Mode: Full-screen 3D Spatial Universe"
             >
-              <i className="ri-layout-grid-line"></i> 2D Bento
+              <i className="ri-shape-2-line text-purple-400"></i>
+              <span className="inline">3D Universe</span>
+            </button>
+            <button
+              onClick={() => onWorkspaceModeChange('grid')}
+              className={`px-2.5 sm:px-3 py-1 rounded-full text-[9px] sm:text-[10px] font-mono uppercase tracking-wider transition-all flex items-center gap-1 cursor-pointer whitespace-nowrap ${
+                workspaceMode === 'grid' || workspaceMode === '2d'
+                  ? 'bg-emerald-500/25 text-emerald-300 border border-emerald-400/80 font-bold shadow-[0_0_12px_rgba(16,185,129,0.35)]'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+              title="3D Desk Grid: High-density workspace with live 3D Core Stage"
+            >
+              <i className="ri-layout-grid-line text-emerald-400"></i>
+              <span className="hidden sm:inline">3D Desk</span>
+              <span className="sm:hidden">Desk</span>
             </button>
           </div>
         )}
@@ -270,8 +287,8 @@ export const Header: React.FC<HeaderProps> = ({
             </button>
             {isOracleMenuOpen && (
               <div className="absolute right-0 mt-2 w-60 rounded-xl shadow-2xl bg-slate-900 border border-fuchsia-500/30 py-1 z-50 font-mono text-xs">
-                <button onClick={() => { onInvokeGeminiOracle(); setIsOracleMenuOpen(false); }} className="w-full text-left px-3 py-2 text-fuchsia-300 hover:bg-slate-800 transition flex items-center gap-2">
-                  <i className="ri-sparkling-2-line text-fuchsia-400"></i> Invoke Gemini Oracle
+                <button onClick={() => { onInvokecloud_aiOracle(); setIsOracleMenuOpen(false); }} className="w-full text-left px-3 py-2 text-fuchsia-300 hover:bg-slate-800 transition flex items-center gap-2">
+                  <i className="ri-sparkling-2-line text-fuchsia-400"></i> Invoke cloud_ai Oracle
                 </button>
                 <button onClick={() => { onContextualOracleQuery(); setIsOracleMenuOpen(false); }} className="w-full text-left px-3 py-2 text-teal-300 hover:bg-slate-800 transition flex items-center gap-2">
                   <i className="ri-compass-3-line text-teal-400"></i> Contextual Query

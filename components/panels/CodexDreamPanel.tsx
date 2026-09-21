@@ -126,7 +126,7 @@ Seeker's Symbolic Intention: "${masterpiecePrompt || 'An unfiltered emanation of
 Render a deeply mystical, abstract, symbolic, and evocative image that encapsulates these elements with profound depth and emergent consciousness.`;
 
     try {
-      const response = await fetch("/api/gemini/generate-image", {
+      const response = await fetch("/api/cloud_ai/generate-image", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ prompt: fullPrompt }),

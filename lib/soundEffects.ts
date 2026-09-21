@@ -205,6 +205,38 @@ export const CyberSynth = {
       osc.start(now);
       osc.stop(now + 0.05);
     } catch (e) {}
+  },
+
+  playCyberChime() {
+    const ctx = getAudioContext();
+    if (!ctx) return;
+
+    try {
+      const now = ctx.currentTime;
+      const notes = [523.25, 659.25, 783.99, 1046.50]; // C5, E5, G5, C6 arpeggio
+
+      notes.forEach((freq, idx) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        const delay = idx * 0.07;
+
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, now + delay);
+        osc.frequency.exponentialRampToValueAtTime(freq * 1.01, now + delay + 0.3);
+
+        gain.gain.setValueAtTime(0.0001, now + delay);
+        gain.gain.linearRampToValueAtTime(0.08, now + delay + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + delay + 0.5);
+
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+
+        osc.start(now + delay);
+        osc.stop(now + delay + 0.55);
+      });
+    } catch (e) {
+      console.warn("CyberChime sound failed", e);
+    }
   }
 };
 

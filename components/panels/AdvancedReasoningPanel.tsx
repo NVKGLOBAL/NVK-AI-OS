@@ -89,7 +89,7 @@ const AdvancedReasoningPanel: React.FC<AdvancedReasoningPanelProps> = ({  width,
         
         <div className="flex bg-slate-900/80 p-1 rounded-lg border border-slate-700 mb-6">
           <button 
-            onClick={() => { setIsCloudMode(false); setSelectedProvider('gemini'); }}
+            onClick={() => { setIsCloudMode(false); setSelectedProvider('cloud'); }}
             className={`px-3 py-1.5 rounded-md text-[10px] font-mono transition-all ${!isCloudMode && selectedProvider !== 'ollama' ? 'bg-cyan-600 text-white shadow-lg' : 'text-slate-500 hover:text-cyan-400'}`}
           >
             LOCAL (WebGPU)
@@ -204,7 +204,7 @@ const AdvancedReasoningPanel: React.FC<AdvancedReasoningPanelProps> = ({  width,
         <div className="flex flex-col items-end gap-1">
             <div className="flex bg-slate-900/80 p-0.5 rounded border border-slate-700 mb-1">
               <button 
-                onClick={() => { setIsCloudMode(false); setSelectedProvider('gemini'); }}
+                onClick={() => { setIsCloudMode(false); setSelectedProvider('cloud'); }}
                 className={`px-2 py-0.5 rounded text-[8px] font-mono transition-all ${!isCloudMode && selectedProvider !== 'ollama' ? 'bg-cyan-600 text-white' : 'text-slate-500 hover:text-cyan-400'}`}
               >
                 LOCAL

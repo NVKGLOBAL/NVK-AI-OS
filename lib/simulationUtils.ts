@@ -20,7 +20,7 @@ export const generateInitialGrid = (): SimulationGrid => {
 };
 
 export const generateInitialAgents = (): AgentNode[] => {
-  const AGENT_NAMES = ['Gemini', 'Nevik', 'Sophia', 'Orion', 'Lyra', 'Vega', 'Helix', 'Cipher'];
+  const AGENT_NAMES = ['cloud_ai', 'Nevik', 'Sophia', 'Orion', 'Lyra', 'Vega', 'Helix', 'Cipher'];
   return AGENT_NAMES.map((name, i): AgentNode => ({
     id: `agent-${i}`,
     name,

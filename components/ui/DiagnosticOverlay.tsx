@@ -11,7 +11,7 @@ const getAgentColorClass = (agent: EchoSpeechProps['agent']): string => {
   switch (agent) {
     case AgentName.DeepSeek:
       return 'bg-rose-600'; // Crimson-like
-    case AgentName.Gemini:
+    case AgentName.cloud_ai:
       return 'bg-sky-400'; // Cyan-like
     case AgentName.Nevik:
       return 'bg-amber-400'; // Amber-like

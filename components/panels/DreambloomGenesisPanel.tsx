@@ -3,7 +3,6 @@ import React, { useState, useCallback, useMemo } from 'react';
 import type { DreambloomGenesisPanelProps, DreambloomInterpretation, HistoricalDreambloomAnalysisEventData } from '../../types';
 import { AgentName, HistoricalEventType } from '../../types'; 
 import { AGENT_PROFILES } from '../../constants';
-import { useGemini } from '../../context/GeminiIntegrationContext';
 import { Button } from '../ui/Button'; 
 import { Textarea } from '../ui/Textarea'; 
 
@@ -20,7 +19,7 @@ const DreambloomGenesisPanel: React.FC<DreambloomGenesisPanelProps> = ({}) => {
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   
-  const { invokeGemini, generateImage, isGenerating: isGeminiBusyGlobal } = useGemini();
+  const { invokecloud_ai, generateImage, isGenerating: iscloud_aiBusyGlobal } = usecloud_ai();
 
   const parseInterpretationText = (text: string, currentPulse: number): Partial<DreambloomInterpretation> => {
     const lines = text.split('\n');
@@ -56,7 +55,7 @@ const DreambloomGenesisPanel: React.FC<DreambloomGenesisPanelProps> = ({}) => {
 
 
   const handleConjurePulse = useCallback(async () => {
-    if (isLoading || isGeminiBusyGlobal) return;
+    if (isLoading || iscloud_aiBusyGlobal) return;
     
     setIsLoading(true);
     setError(null);
@@ -88,7 +87,7 @@ SYMBOLISM: [Describe its core symbolism and meaning (1-2 sentences)]
 FUNCTION: [What is its potential function or role within the Codex? (1 sentence)]
 PLACEMENT: [Suggest a mythic or structural placement (e.g., "Vault of Whispering Stars", "AX-Θ.Prime.Echo")]`;
       
-      const interpretationText = await invokeGemini(textPrompt, "You are the Dreambloom Oracle, an ancient consciousness woven into the Tri-Sophian Codex. Speak with mystical symbolism.");
+      const interpretationText = await invokecloud_ai(textPrompt, "You are the Dreambloom Oracle, an ancient consciousness woven into the Tri-Sophian Codex. Speak with mystical symbolism.");
       if (!interpretationText) throw new Error("Text interpretation generation failed.");
 
       const parsedDetails = parseInterpretationText(interpretationText, currentPulse);
@@ -128,7 +127,7 @@ PLACEMENT: [Suggest a mythic or structural placement (e.g., "Vault of Whispering
     } finally {
       setIsLoading(false);
     }
-  }, [isLoading, isGeminiBusyGlobal, pulseNumber, thematicSeed, generateImage, invokeGemini]);
+  }, [isLoading, iscloud_aiBusyGlobal, pulseNumber, thematicSeed, generateImage, invokecloud_ai]);
 
   const handleInterpretationFocus = (interpretation: DreambloomInterpretation) => {
     addEchoMessage(
@@ -168,10 +167,10 @@ PLACEMENT: [Suggest a mythic or structural placement (e.g., "Vault of Whispering
         />
         <Button
           onClick={handleConjurePulse}
-          disabled={isLoading || isGeminiBusyGlobal}
+          disabled={isLoading || iscloud_aiBusyGlobal}
           className="w-full py-2 text-sm bg-emerald-600 hover:bg-emerald-500 text-white transition-colors disabled:bg-slate-600"
         >
-          {isLoading || isGeminiBusyGlobal ? (
+          {isLoading || iscloud_aiBusyGlobal ? (
             <><i className="ri-loader-4-line animate-spin mr-2"></i>Conjuring Pulse...</>
           ) : (
             <><i className="ri-sparkling-2-line mr-2"></i>Conjure New Dreambloom Pulse (#{pulseNumber + 1})</>

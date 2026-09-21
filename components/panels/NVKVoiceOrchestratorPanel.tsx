@@ -19,15 +19,15 @@ export default function NVKVoiceOrchestratorPanel() {
     clearCache
   } = useLocalLLM();
 
-  // Engine selection: 'webgpu' (Offline Local Brain) vs 'gemini' (Cloud Gemini Live)
-  const [engineMode, setEngineMode] = useState<'webgpu' | 'gemini'>('webgpu');
+  // Engine selection: 'webgpu' (Offline Local Brain) vs 'cloud_ai' (Cloud cloud_ai Live)
+  const [engineMode, setEngineMode] = useState<'webgpu' | 'cloud_ai'>('webgpu');
 
   // Connection and Mute states
   const [isConnected, setIsConnected] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   
-  // Gemini Live parameters
+  // cloud_ai Live parameters
   const [selectedVoice, setSelectedVoice] = useState('Zephyr'); // Puck, Charon, Kore, Fenrir, Zephyr
   const [selectedPersona, setSelectedPersona] = useState('nevik'); // nevik, oracle, scribe
   
@@ -285,7 +285,7 @@ export default function NVKVoiceOrchestratorPanel() {
     }
   }, [isConnected, processLocalSpeechQuery]);
 
-  // Play audio chunk continuously (Gemini mode)
+  // Play audio chunk continuously (cloud_ai mode)
   const playAudioChunk = useCallback((base64PCM: string) => {
     if (!audioCtxRef.current) return;
     const ctx = audioCtxRef.current;
@@ -371,8 +371,8 @@ export default function NVKVoiceOrchestratorPanel() {
     return window.btoa(binary);
   };
 
-  // Start capturing mic for Gemini WebSocket
-  const startGeminiRecording = useCallback(async () => {
+  // Start capturing mic for cloud_ai WebSocket
+  const startcloud_aiRecording = useCallback(async () => {
     try {
       if (!audioCtxRef.current) {
         audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
@@ -430,7 +430,7 @@ export default function NVKVoiceOrchestratorPanel() {
     }
   }, [isMuted, addEchoMessage]);
 
-  // Connect Voice Session (WebGPU or Gemini)
+  // Connect Voice Session (WebGPU or cloud_ai)
   const startSession = useCallback(async () => {
     if (isConnecting || isConnected) return;
     setIsConnecting(true);
@@ -450,7 +450,7 @@ export default function NVKVoiceOrchestratorPanel() {
       startLocalSpeechRecognition();
 
     } else {
-      // Gemini Live WebSocket Mode
+      // cloud_ai Live WebSocket Mode
       if (!audioCtxRef.current) {
         audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
       }
@@ -470,7 +470,7 @@ export default function NVKVoiceOrchestratorPanel() {
           setIsConnected(true);
           setIsConnecting(false);
           addEchoMessage(AgentName.SystemControl, `Synaptic voice lattice established with ${personaLabel}. Begin speaking.`, 'text-emerald-400');
-          startGeminiRecording();
+          startcloud_aiRecording();
         };
 
         ws.onmessage = (event) => {
@@ -517,7 +517,7 @@ export default function NVKVoiceOrchestratorPanel() {
     isConnecting,
     isConnected,
     addEchoMessage,
-    startGeminiRecording,
+    startcloud_aiRecording,
     playAudioChunk,
     cleanUpAudio,
     handleInterruption
@@ -586,15 +586,15 @@ export default function NVKVoiceOrchestratorPanel() {
             WebGPU Local Brain
           </button>
           <button
-            onClick={() => { if (isConnected) endSession(); setEngineMode('gemini'); }}
+            onClick={() => { if (isConnected) endSession(); setEngineMode('cloud_ai'); }}
             className={`px-3 py-1.5 rounded text-xs font-bold transition-all ${
-              engineMode === 'gemini' 
+              engineMode === 'cloud_ai' 
                 ? 'bg-fuchsia-500 text-black shadow-md font-extrabold' 
                 : 'text-slate-400 hover:text-fuchsia-300'
             }`}
           >
             <i className="ri-cloud-line mr-1.5" />
-            Gemini Live Cloud
+            cloud_ai Live Cloud
           </button>
         </div>
       </div>
@@ -816,7 +816,7 @@ export default function NVKVoiceOrchestratorPanel() {
             <p className="text-cyan-400/80 text-xs animate-pulse py-2">
               {engineMode === 'webgpu' 
                 ? 'WebGPU Brain listening... Speak into microphone.' 
-                : 'Listening via Gemini Live... Speak now.'}
+                : 'Listening via cloud_ai Live... Speak now.'}
             </p>
           )}
 

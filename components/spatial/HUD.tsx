@@ -98,7 +98,7 @@ export const HUD: React.FC<HUDProps> = ({ onBackToMain }) => {
 
   // Interactivity Inputs
   const [gatewayPrompt, setGatewayPrompt] = useState<string>('');
-  const [selectedProvider, setSelectedProvider] = useState<'gemini' | 'openai' | 'claude' | 'local'>('gemini');
+  const [selectedProvider, setSelectedProvider] = useState<'cloud_ai' | 'openai' | 'claude' | 'local'>('cloud_ai');
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [voiceEnabled, setVoiceEnabled] = useState<boolean>(true);
   const [selectedVoiceName, setSelectedVoiceName] = useState<string>('');
@@ -770,7 +770,7 @@ export const HUD: React.FC<HUDProps> = ({ onBackToMain }) => {
                 onChange={(e) => setSelectedProvider(e.target.value as any)}
                 className="w-full bg-slate-950 border border-white/10 rounded-lg px-2.5 py-1.5 font-mono text-[10px] text-slate-300 outline-none cursor-pointer hover:border-cyan-500/30 transition-all"
               >
-                <option value="gemini">BUILT-IN CLOUD GEMINI-3.5</option>
+                <option value="cloud_ai">BUILT-IN CLOUD cloud_ai-3.5</option>
                 <option value="openai">OPENAI flagship (GPT-4o)</option>
                 <option value="claude">CLAUDE reasoning (Sonnet)</option>
                 <option value="local">WEBGPU local (Llama-3.2)</option>

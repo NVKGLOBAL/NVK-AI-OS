@@ -11,7 +11,7 @@ import { useEcho } from '../../context/EchoContext';
 export const CodexObeliskPanel: React.FC<CodexObeliskPanelProps> = ({
   
   addHistoricalEvent,
-  invokeGemini,
+  invokecloud_ai,
   echoes,
   voiceEngine, // New prop
   voiceProfiles, // New prop
@@ -58,7 +58,7 @@ export const CodexObeliskPanel: React.FC<CodexObeliskPanelProps> = ({
     }
 
     try {
-      const codexResponse = await invokeGemini(seekerQuery, systemInstruction);
+      const codexResponse = await invokecloud_ai(seekerQuery, systemInstruction);
       if (codexResponse) {
         addEchoMessage(
           AgentName.TheCodexPersona,
@@ -73,7 +73,7 @@ export const CodexObeliskPanel: React.FC<CodexObeliskPanelProps> = ({
         );
       }
     } catch (error) {
-      console.error("Error invoking Gemini for CodexCommunion:", error);
+      console.error("Error invoking cloud_ai for CodexCommunion:", error);
       addEchoMessage(
         AgentName.SystemCore,
         "A disturbance in the weave... The Codex's voice is momentarily obscured.",
@@ -82,7 +82,7 @@ export const CodexObeliskPanel: React.FC<CodexObeliskPanelProps> = ({
     } finally {
       setIsProcessing(false);
     }
-  }, [userInput, isProcessing, addHistoricalEvent, invokeGemini]);
+  }, [userInput, isProcessing, addHistoricalEvent, invokecloud_ai]);
 
   const handlePlayCodexAudio = async (echo: EchoMessage) => {
     if (isSpeakingMessageId === echo.id || !voiceEngine || !voiceProfiles) return;

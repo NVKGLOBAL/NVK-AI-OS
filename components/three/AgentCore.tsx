@@ -1,8 +1,6 @@
-import React, { useRef, useMemo, useEffect } from 'react';
+import React, { useRef, useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
-import { Sphere, MeshDistortMaterial, Float, Text, Icosahedron, Points, PointMaterial } from '@react-three/drei';
 import * as THREE from 'three';
-import { motion } from 'framer-motion-3d';
 import { AgentCoreState } from '../../types';
 import { useSystemState } from '../../context/SystemContext';
 
@@ -16,27 +14,26 @@ interface AgentCoreProps {
 
 export const AgentCore: React.FC<AgentCoreProps> = ({ 
   state = 'idle', 
-  color = '#00E5FF', 
+  color = '#00ffb3', 
   size = 1.0,
   onOrbClick
 }) => {
   const meshRef = useRef<THREE.Mesh>(null);
+  const atmosphereRef = useRef<THREE.Mesh>(null);
   const particlesRef = useRef<THREE.Points>(null);
   const coreRef = useRef<THREE.Group>(null);
   
   const { performanceTier } = useSystemState();
 
-  const baseColor = useMemo(() => new THREE.Color(color), [color]);
-  
   // State-specific visual properties
   const stateConfig = useMemo(() => {
     switch (state) {
-      case 'listening': return { color: '#00E5FF', distort: 0.4, speed: 4, intensity: 2 };
+      case 'listening': return { color: '#00ffb3', distort: 0.4, speed: 4, intensity: 2.5 };
       case 'thinking': return { color: '#7B61FF', distort: 0.6, speed: 6, intensity: 3 };
       case 'speaking': return { color: '#FFD700', distort: 0.3, speed: 2, intensity: 2.5 };
-      case 'creating': return { color: '#FFD700', distort: 0.8, speed: 8, intensity: 4 };
+      case 'creating': return { color: '#10b981', distort: 0.8, speed: 8, intensity: 4 };
       case 'error': return { color: '#FF3B3B', distort: 1.0, speed: 10, intensity: 5 };
-      default: return { color: '#00E5FF', distort: 0.2, speed: 1.5, intensity: 1 };
+      default: return { color: '#00ffb3', distort: 0.2, speed: 1.5, intensity: 2 };
     }
   }, [state]);
 
@@ -46,7 +43,7 @@ export const AgentCore: React.FC<AgentCoreProps> = ({
     for (let i = 0; i < particleCount; i++) {
         const phi = Math.acos(-1 + (2 * i) / particleCount);
         const theta = Math.sqrt(particleCount * Math.PI) * phi;
-        const radius = 1.2 + Math.random() * 0.2;
+        const radius = 1.25 + Math.random() * 0.25;
         pos[i * 3] = radius * Math.cos(theta) * Math.sin(phi);
         pos[i * 3 + 1] = radius * Math.sin(theta) * Math.sin(phi);
         pos[i * 3 + 2] = radius * Math.cos(phi);
@@ -59,22 +56,23 @@ export const AgentCore: React.FC<AgentCoreProps> = ({
     
     if (coreRef.current) {
         coreRef.current.rotation.y += 0.005;
-        if (state === 'thinking') coreRef.current.rotation.y += 0.02;
+        if (state === 'thinking') coreRef.current.rotation.y += 0.015;
     }
 
     if (particlesRef.current) {
         particlesRef.current.rotation.y -= 0.003;
-        if (state === 'thinking') {
-            particlesRef.current.rotation.y -= 0.01;
-            particlesRef.current.scale.setScalar(1 + Math.sin(t * 10) * 0.05);
-        } else {
-            particlesRef.current.scale.setScalar(1 + Math.sin(t * 2) * 0.02);
-        }
+        const particlePulse = 1 + Math.sin(t * (state === 'thinking' ? 10 : 2)) * 0.03;
+        particlesRef.current.scale.setScalar(particlePulse);
     }
 
     if (meshRef.current) {
-        const pulse = 1 + Math.sin(t * (state === 'speaking' ? 8 : 2)) * 0.05;
+        const pulse = 1 + Math.sin(t * (state === 'speaking' ? 8 : 2.5)) * 0.06;
         meshRef.current.scale.setScalar(size * pulse);
+    }
+
+    if (atmosphereRef.current) {
+        const pulse = 1 + Math.sin(t * (state === 'speaking' ? 8 : 2.5) + Math.PI / 4) * 0.08;
+        atmosphereRef.current.scale.setScalar(size * 1.35 * pulse);
     }
   });
 
@@ -94,53 +92,66 @@ export const AgentCore: React.FC<AgentCoreProps> = ({
         document.body.style.cursor = 'default';
       }}
     >
-      {/* Central Volumetric Nucleus */}
-      <Icosahedron ref={meshRef} args={[size, performanceTier === 'low' ? 2 : 4]}>
-        <MeshDistortMaterial
+      {/* 1. Core Atmosphere / Volumetric Glow Aura (additive blending for bright sovereign green glow) */}
+      <mesh ref={atmosphereRef}>
+        <sphereGeometry args={[size * 1.35, 32, 32]} />
+        <meshBasicMaterial
           color={stateConfig.color}
-          emissive={stateConfig.color}
-          emissiveIntensity={stateConfig.intensity}
-          distort={stateConfig.distort}
-          speed={stateConfig.speed}
-          roughness={0}
-          metalness={1}
           transparent
-          opacity={0.9}
-        />
-      </Icosahedron>
-
-      {/* Particle Cloud / Lattice */}
-      <Points ref={particlesRef} positions={positions}>
-        <PointMaterial
-          transparent
-          vertexColors={false}
-          color={stateConfig.color}
-          size={0.02}
-          sizeAttenuation={true}
+          opacity={0.25}
+          blending={THREE.AdditiveBlending}
           depthWrite={false}
+        />
+      </mesh>
+
+      {/* 2. Central Solid Self-Illuminating Core Nucleus (Opaque, guaranteed bright color rendering) */}
+      <mesh ref={meshRef}>
+        <sphereGeometry args={[size, 32, 32]} />
+        <meshBasicMaterial
+          color={stateConfig.color}
+          transparent={false}
+        />
+      </mesh>
+
+      {/* 3. Outer Crystalline Holographic Wireframe Shell */}
+      <mesh>
+        <icosahedronGeometry args={[size * 1.22, 2]} />
+        <meshBasicMaterial
+          color={stateConfig.color}
+          wireframe={true}
+          transparent
+          opacity={0.35}
           blending={THREE.AdditiveBlending}
         />
-      </Points>
+      </mesh>
 
-      {/* Internal Core Light */}
+      {/* 4. Particle Cloud / Lattice */}
+      <points ref={particlesRef}>
+        <bufferGeometry>
+          <bufferAttribute
+            attach="attributes-position"
+            count={positions.length / 3}
+            array={positions}
+            itemSize={3}
+          />
+        </bufferGeometry>
+        <pointsMaterial
+          color={stateConfig.color}
+          size={0.035}
+          sizeAttenuation={true}
+          transparent
+          opacity={0.8}
+          blending={THREE.AdditiveBlending}
+          depthWrite={false}
+        />
+      </points>
+
+      {/* Internal High-Intensity Point Light to illuminate external nodes */}
       <pointLight 
-        intensity={stateConfig.intensity * 2} 
-        distance={5} 
+        intensity={stateConfig.intensity * 8.0} 
+        distance={20} 
         color={stateConfig.color} 
       />
-
-      {/* Floating State Indicators */}
-      {state === 'listening' && (
-         <Text
-           position={[0, size + 0.8, 0]}
-           fontSize={0.15}
-           color={stateConfig.color}
-           font="/fonts/Inter-Bold.woff"
-           anchorX="center"
-         >
-           LISTENING...
-         </Text>
-      )}
     </group>
   );
 };

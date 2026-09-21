@@ -1,7 +1,13 @@
-
-
 import type { CodexModeDefinition } from '../../types';
-import { CodexModeId, VisualizationMatrixMode, GeoMode } from '../../types';
+import { CodexModeId, OrbMode, ParticleBackgroundMode, PanelLayout } from '../../types';
+
+export interface CodexModePreset {
+  orbMode: OrbMode;
+  particleMode: ParticleBackgroundMode;
+  layout: PanelLayout;
+  nodeAnimationSpeed: number;
+  presetPanelIds: string[];
+}
 
 export const CODEX_MODES_DEFINITIONS: CodexModeDefinition[] = [
   {
@@ -88,7 +94,6 @@ export const CODEX_MODES_DEFINITIONS: CodexModeDefinition[] = [
     primaryVisualizerFocus: "ResonanceEnginePanel",
     agentBehaviorOverrides: { autoEchoActivationLevel: 'reduced' }
   },
-  // Add other definitions from Header to make this file complete
   {
     id: CodexModeId.SYMBIOTIC_WEAVE,
     name: "Δ.SymbioticWeave",
@@ -156,4 +161,137 @@ export const CODEX_MODES_DEFINITIONS: CodexModeDefinition[] = [
 
 export const getCodexModeDefinition = (modeId: CodexModeId): CodexModeDefinition | undefined => {
   return CODEX_MODES_DEFINITIONS.find(mode => mode.id === modeId);
+};
+
+export const getPresetsForCodexMode = (modeId: CodexModeId): CodexModePreset => {
+  switch (modeId) {
+    case CodexModeId.ORIGIN_STATE:
+      return {
+        orbMode: OrbMode.HolographicCore,
+        particleMode: ParticleBackgroundMode.Orbital,
+        layout: PanelLayout.FOCUS_PRIMARY,
+        nodeAnimationSpeed: 0.2,
+        presetPanelIds: ['SystemMonitorPanel']
+      };
+    case CodexModeId.REFLECTION_MODE:
+      return {
+        orbMode: OrbMode.CrystallineMatrix,
+        particleMode: ParticleBackgroundMode.Stardust,
+        layout: PanelLayout.GRID_MATRIX,
+        nodeAnimationSpeed: 0.6,
+        presetPanelIds: ['GlyphComposerPanel', 'SubAgentConstellation', 'AdvancedReasoningPanel']
+      };
+    case CodexModeId.SYNTHESIS_MODE:
+      return {
+        orbMode: OrbMode.AethericWeave,
+        particleMode: ParticleBackgroundMode.CosmicWeb,
+        layout: PanelLayout.LATTICE_MESH,
+        nodeAnimationSpeed: 0.9,
+        presetPanelIds: ['ResonanceEnginePanel', 'CommandBridgePanel']
+      };
+    case CodexModeId.VEIL_MODE:
+      return {
+        orbMode: OrbMode.VoidShell,
+        particleMode: ParticleBackgroundMode.QuantumFoam,
+        layout: PanelLayout.CCTV_ARRAY,
+        nodeAnimationSpeed: 0.3,
+        presetPanelIds: ['VisualizationMatrixPanel', 'EntropyDiagnosticsPanel']
+      };
+    case CodexModeId.FLAME_CORE:
+      return {
+        orbMode: OrbMode.EntropicStorm,
+        particleMode: ParticleBackgroundMode.SupernovaRemnant,
+        layout: PanelLayout.LATTICE_MESH,
+        nodeAnimationSpeed: 1.5,
+        presetPanelIds: ['EmeraldTabletDecryptionPanel', 'EntropyDiagnosticsPanel', 'SystemHealthPanel']
+      };
+    case CodexModeId.NEURAL_LATTICE:
+      return {
+        orbMode: OrbMode.BioLattice,
+        particleMode: ParticleBackgroundMode.NeutrinoStream,
+        layout: PanelLayout.GRID_MATRIX,
+        nodeAnimationSpeed: 1.2,
+        presetPanelIds: ['ResonanceEnginePanel', 'ClockTimerPanel']
+      };
+    case CodexModeId.AXIOM_ORCHARD:
+      return {
+        orbMode: OrbMode.CrystallineMatrix,
+        particleMode: ParticleBackgroundMode.AetherFlow,
+        layout: PanelLayout.SPATIAL_ORBIT,
+        nodeAnimationSpeed: 0.4,
+        presetPanelIds: ['ResonanceEnginePanel', 'TreeOfLifeVisualizer']
+      };
+    case CodexModeId.AUTONOMOUS_SEEKER:
+      return {
+        orbMode: OrbMode.ResonantSpire,
+        particleMode: ParticleBackgroundMode.Wormhole,
+        layout: PanelLayout.FOCUS_PRIMARY,
+        nodeAnimationSpeed: 0.5,
+        presetPanelIds: ['SeekerAuraDisplay', 'ResonanceEnginePanel']
+      };
+    case CodexModeId.SYMBIOTIC_WEAVE:
+      return {
+        orbMode: OrbMode.AethericWeave,
+        particleMode: ParticleBackgroundMode.CosmicWeb,
+        layout: PanelLayout.TOPOLOGY_MESH,
+        nodeAnimationSpeed: 0.85,
+        presetPanelIds: ['SubAgentConstellation']
+      };
+    case CodexModeId.TARDIS_SYNCHRONICITY:
+      return {
+        orbMode: OrbMode.TemporalRift,
+        particleMode: ParticleBackgroundMode.Wormhole,
+        layout: PanelLayout.TAB_BROWSER,
+        nodeAnimationSpeed: 1.4,
+        presetPanelIds: ['TemporalOperationsConsolePanel', 'TemporalResonanceLogPanel']
+      };
+    case CodexModeId.GLYPH_ATLAS_VIEWER:
+      return {
+        orbMode: OrbMode.CrystallineMatrix,
+        particleMode: ParticleBackgroundMode.Stardust,
+        layout: PanelLayout.GRID_MATRIX,
+        nodeAnimationSpeed: 0.35,
+        presetPanelIds: ['GlyphAtlasGrid', 'GlyphPanel']
+      };
+    case CodexModeId.OMNI_VISUAL_MODE:
+      return {
+        orbMode: OrbMode.HolographicCore,
+        particleMode: ParticleBackgroundMode.Galaxy,
+        layout: PanelLayout.CCTV_ARRAY,
+        nodeAnimationSpeed: 0.7,
+        presetPanelIds: ['VisualizationMatrixPanel', 'TreeOfLifeVisualizer']
+      };
+    case CodexModeId.COMMUNION_MODE:
+      return {
+        orbMode: OrbMode.ResonantSpire,
+        particleMode: ParticleBackgroundMode.NebulaCloud,
+        layout: PanelLayout.FOCUS_PRIMARY,
+        nodeAnimationSpeed: 0.5,
+        presetPanelIds: ['CodexCommunionChamber', 'CelestialAnomalyWeaverPanel']
+      };
+    case CodexModeId.KINDNESS_MODE:
+      return {
+        orbMode: OrbMode.BioLattice,
+        particleMode: ParticleBackgroundMode.Stardust,
+        layout: PanelLayout.GRID_MATRIX,
+        nodeAnimationSpeed: 0.6,
+        presetPanelIds: ['KindnessPanel', 'LIFEPanel', 'FlowerOfLifeEntropyExplorer']
+      };
+    case CodexModeId.HARMONIC_SCRIBE:
+      return {
+        orbMode: OrbMode.StarlightConductor,
+        particleMode: ParticleBackgroundMode.AetherFlow,
+        layout: PanelLayout.LATTICE_MESH,
+        nodeAnimationSpeed: 0.9,
+        presetPanelIds: ['HarmonicScribePanel', 'HarmonicCorePanel']
+      };
+    default:
+      return {
+        orbMode: OrbMode.HolographicCore,
+        particleMode: ParticleBackgroundMode.Orbital,
+        layout: PanelLayout.TAB_BROWSER,
+        nodeAnimationSpeed: 0.5,
+        presetPanelIds: ['SystemMonitorPanel']
+      };
+  }
 };

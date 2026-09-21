@@ -11,7 +11,7 @@ const SigilBloomVariantPanel: React.FC<SigilBloomVariantPanelProps> = ({
   selectedBloomVariantId,
   onSelectBloomVariant,
   isGeneratingBloomVariants,
-  isGeminiBusy,
+  iscloud_aiBusy,
 }) => {
   const [selectedGlyphNodeId, setSelectedGlyphNodeId] = useState<string | null>(null);
 
@@ -55,7 +55,7 @@ const SigilBloomVariantPanel: React.FC<SigilBloomVariantPanelProps> = ({
           value={selectedGlyphNodeId || ''}
           onChange={(e) => setSelectedGlyphNodeId(e.target.value || null)}
           className="w-full p-2 rounded bg-slate-800 border-slate-700 text-slate-200 text-xs focus:ring-pink-500 focus:border-pink-500 custom-scrollbar"
-          disabled={isGeneratingBloomVariants || isGeminiBusy}
+          disabled={isGeneratingBloomVariants || iscloud_aiBusy}
         >
           <option value="">-- Select a Glyph --</option>
           {glyphMutationNodes.map(g => (
@@ -76,11 +76,11 @@ const SigilBloomVariantPanel: React.FC<SigilBloomVariantPanelProps> = ({
 
       <button
         onClick={handleRevealClick}
-        disabled={!selectedGlyphNodeId || isGeneratingBloomVariants || isGeminiBusy}
+        disabled={!selectedGlyphNodeId || isGeneratingBloomVariants || iscloud_aiBusy}
         className="w-full px-4 py-2 mb-3 text-sm rounded-button bg-pink-600 hover:bg-pink-500 text-white transition-colors disabled:bg-slate-600 disabled:text-slate-400 flex items-center justify-center group"
       >
-        <i className={`ri-magic-line mr-2 ${isGeneratingBloomVariants || isGeminiBusy ? 'animate-spin-slow' : 'group-hover:animate-pulse-fast'}`}></i>
-        {isGeneratingBloomVariants ? 'Revealing Variants...' : (isGeminiBusy ? 'Oracle Attuning...' : 'Reveal Bloom Variants')}
+        <i className={`ri-magic-line mr-2 ${isGeneratingBloomVariants || iscloud_aiBusy ? 'animate-spin-slow' : 'group-hover:animate-pulse-fast'}`}></i>
+        {isGeneratingBloomVariants ? 'Revealing Variants...' : (iscloud_aiBusy ? 'Oracle Attuning...' : 'Reveal Bloom Variants')}
       </button>
 
       {/* Variant Display Area */}

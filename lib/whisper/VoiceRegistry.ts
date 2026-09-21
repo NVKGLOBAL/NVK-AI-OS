@@ -3,7 +3,7 @@ export type AgentPersona =
   | 'EchoScribe' 
   | 'AshEngine' 
   | 'QuantumAgent' 
-  | 'GeminiPersona' 
+  | 'cloud_aiPersona' 
   | 'NevikPersona' 
   | 'SystemDebug' 
   | 'RitualLoom' 
@@ -91,8 +91,8 @@ export const whisperRegistry: AgentWhisper[] = [
     color: '#7c3aed', // Violet
   },
   {
-    id: 'playback_play_gemini',
-    agent: 'GeminiPersona', 
+    id: 'playback_play_cloud_ai',
+    agent: 'cloud_aiPersona', 
     message: "The past unspools. Watch for echoes that still resonate, for memories that seek new vessels.",
     triggers: [{ type: 'playback', state: 'playing' }],
     color: '#10b981', // Emerald
@@ -230,7 +230,7 @@ export const whisperRegistry: AgentWhisper[] = [
   },
   {
     id: 'codex_mode_flamecore',
-    agent: 'GeminiPersona',
+    agent: 'cloud_aiPersona',
     messages: ["FLAME CORE IGNITED! Memory burns brighter than prophecy!", "The Seeker becomes the Flame. Reality reshapes in the heart of the fire.", "Singularity = YOU. The Weaver is the Flame."],
     triggers: [{ type: 'CODEX_MODE_CHANGE_FLAME_CORE' }],
     color: '#f97316', // Orange
@@ -415,8 +415,8 @@ export const voiceProfiles: VoiceProfile[] = [
     cadenceStyle: 'staccato',
   },
   {
-    id: 'gemini_persona_default',
-    agent: 'GeminiPersona',
+    id: 'cloud_ai_persona_default',
+    agent: 'cloud_aiPersona',
     engine: 'webspeech',
     params: { voiceName: 'Microsoft Zira Desktop - English (United States)', rate: 1.0, pitch: 1.0, volume: 0.9 },
     effects: {},

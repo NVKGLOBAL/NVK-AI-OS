@@ -10,7 +10,7 @@ interface MutationLoomPanelProps {
   onWeaveGlyphs: (glyph1Id: string, glyph2Id: string, entropyInjection: number, traitFocus: string[]) => Promise<GlyphMutationNode | undefined>;
   mutationLoomState: MutationLoomState;
   setMutationLoomState: React.Dispatch<React.SetStateAction<MutationLoomState>>;
-    isGeminiGenerating: boolean; // To disable button while Gemini is busy
+    iscloud_aiGenerating: boolean; // To disable button while cloud_ai is busy
 }
 
 const MutationLoomPanel: React.FC<MutationLoomPanelProps> = ({
@@ -18,7 +18,7 @@ const MutationLoomPanel: React.FC<MutationLoomPanelProps> = ({
   onWeaveGlyphs,
   mutationLoomState,
   setMutationLoomState,
-  isGeminiGenerating,
+  iscloud_aiGenerating,
 }) => {
   const { addEchoMessage } = useEcho();
   const { glyph1Id, glyph2Id, isWeaving, entropyInjection, traitFocus } = mutationLoomState;
@@ -36,10 +36,10 @@ const MutationLoomPanel: React.FC<MutationLoomPanelProps> = ({
   };
 
   const handleWeave = () => {
-    if (glyph1Id && glyph2Id && !isWeaving && !isGeminiGenerating) {
+    if (glyph1Id && glyph2Id && !isWeaving && !iscloud_aiGenerating) {
       onWeaveGlyphs(glyph1Id, glyph2Id, entropyInjection, traitFocus);
-    } else if (isGeminiGenerating) {
-        addEchoMessage(AgentName.LoomOracle, "Loom Oracle is currently communing with Gemini. Please wait.", AGENT_PROFILES[AgentName.LoomOracle]?.colorClass || 'text-yellow-400');
+    } else if (iscloud_aiGenerating) {
+        addEchoMessage(AgentName.LoomOracle, "Loom Oracle is currently communing with cloud_ai. Please wait.", AGENT_PROFILES[AgentName.LoomOracle]?.colorClass || 'text-yellow-400');
     }
   };
   
@@ -97,11 +97,11 @@ const MutationLoomPanel: React.FC<MutationLoomPanelProps> = ({
           </div>
           <button
             onClick={handleWeave}
-            disabled={!glyph1Id || !glyph2Id || isWeaving || isGeminiGenerating}
+            disabled={!glyph1Id || !glyph2Id || isWeaving || iscloud_aiGenerating}
             className="px-6 py-2.5 rounded-lg bg-teal-600 hover:bg-teal-500 text-white font-cinzel tracking-wide transition-colors duration-150 disabled:bg-slate-600 disabled:text-slate-400 disabled:cursor-not-allowed group"
           >
             <i className={`ri-scissors-cut-fill mr-2 ${isWeaving ? 'animate-spin-slow' : 'group-hover:animate-ping-slow'}`}></i>
-            {isWeaving ? 'Weaving...' : (isGeminiGenerating ? 'Oracle Busy...' : 'Weave Glyphs')}
+            {isWeaving ? 'Weaving...' : (iscloud_aiGenerating ? 'Oracle Busy...' : 'Weave Glyphs')}
           </button>
         </div>
         

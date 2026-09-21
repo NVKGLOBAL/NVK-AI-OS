@@ -2,10 +2,9 @@
 
 
 import React, { useState, useEffect, useMemo, useCallback, useContext } from 'react';
-import type { GlyphOrbit, AgentInterpretation, RitualContext, DriftSeverity, GeminiGlyphInterpretation, EchoMessage, IDriftInterpretationDB, GlyphMutationNode, HistoricalEvent } from '../../types'; // Added HistoricalEvent
+import type { GlyphOrbit, AgentInterpretation, RitualContext, DriftSeverity, cloud_aiGlyphInterpretation, EchoMessage, IDriftInterpretationDB, GlyphMutationNode, HistoricalEvent } from '../../types'; // Added HistoricalEvent
 import { AgentName } from '../../types';
 import { AGENT_PROFILES, AGENT_NAME_TO_STRING_MAP } from '../../constants';
-import { DriftNarratorContext, useDriftNarrator } from '../../context/DriftNarratorContext';
 import EntropyLinkIndicator from '../ui/EntropyLinkIndicator'; // Ensure this path is correct
 import MeaningPulseGraph from '../core/MeaningPulseGraph'; // Ensure this path is correct
 import DriftArchivePanel from './DriftArchivePanel'; // Import the new panel
@@ -97,14 +96,14 @@ interface InlineDriftLensPanelProps {
   glyphDriftHistory: GlyphOrbit[];
   currentRitualContext: RitualContext;
   currentEntropy: number;
-  isGeminiGeneratingGlobal: boolean;
+  iscloud_aiGeneratingGlobal: boolean;
   onInterpretationGenerated: (interpretation: IDriftInterpretationDB) => void; // Changed to DB type
     currentDriftForLens: IDriftInterpretationDB | null; // Changed to DB type
   setCurrentDriftForLens: React.Dispatch<React.SetStateAction<IDriftInterpretationDB | null>>; // Changed to DB type
   isLoadingLens: boolean;
   setIsLoadingLens: React.Dispatch<React.SetStateAction<boolean>>;
-  viewModeLens: 'agents' | 'gemini';
-  setViewModeLens: React.Dispatch<React.SetStateAction<'agents' | 'gemini'>>;
+  viewModeLens: 'agents' | 'cloud_ai';
+  setViewModeLens: React.Dispatch<React.SetStateAction<'agents' | 'cloud_ai'>>;
   generateNewInterpretationLens: () => void; 
 }
 
@@ -113,7 +112,7 @@ const InlineDriftLensPanel: React.FC<InlineDriftLensPanelProps> = React.memo(({
   glyphDriftHistory,
   currentRitualContext,
   currentEntropy,
-  isGeminiGeneratingGlobal,
+  iscloud_aiGeneratingGlobal,
   onInterpretationGenerated,
   currentDriftForLens,
   setCurrentDriftForLens,
@@ -139,14 +138,14 @@ const InlineDriftLensPanel: React.FC<InlineDriftLensPanelProps> = React.memo(({
   
   useEffect(() => {
     setCurrentDriftForLens(null); 
-    if (viewModeLens === 'gemini' && selectedGlyphNode) { 
+    if (viewModeLens === 'cloud_ai' && selectedGlyphNode) { 
       generateNewInterpretationLens();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedGlyphNode, viewModeLens, setCurrentDriftForLens]); 
 
   useEffect(() => {
-    if (viewModeLens === 'gemini' && selectedGlyphNode) {
+    if (viewModeLens === 'cloud_ai' && selectedGlyphNode) {
         if (!currentDriftForLens || 
             currentDriftForLens.glyphSymbol !== (selectedGlyphNode.label || selectedGlyphNode.glyphId) ||
             currentDriftForLens.ritualContext !== currentRitualContext ||
@@ -176,11 +175,11 @@ const InlineDriftLensPanel: React.FC<InlineDriftLensPanelProps> = React.memo(({
           Agent Consensus
         </button>
         <button
-          onClick={() => setViewModeLens('gemini')}
-          className={`px-3 py-1.5 text-xs rounded-md transition-colors ${viewModeLens === 'gemini' ? 'bg-lime-600 text-white font-semibold' : 'bg-slate-700 hover:bg-slate-600 text-slate-300'}`}
-          aria-pressed={viewModeLens === 'gemini'}
+          onClick={() => setViewModeLens('cloud_ai')}
+          className={`px-3 py-1.5 text-xs rounded-md transition-colors ${viewModeLens === 'cloud_ai' ? 'bg-lime-600 text-white font-semibold' : 'bg-slate-700 hover:bg-slate-600 text-slate-300'}`}
+          aria-pressed={viewModeLens === 'cloud_ai'}
         >
-          Gemini Oracle
+          cloud_ai Oracle
         </button>
       </div>
 
@@ -197,17 +196,17 @@ const InlineDriftLensPanel: React.FC<InlineDriftLensPanelProps> = React.memo(({
         </div>
       )}
 
-      {viewModeLens === 'gemini' && (
+      {viewModeLens === 'cloud_ai' && (
         <div className="text-xs">
-          {(isLoadingLens || (isGeminiGeneratingGlobal && !currentDriftForLens)) && <p className="text-lime-400 italic animate-pulse">Oracle is perceiving...</p>}
-          {!isLoadingLens && !isGeminiGeneratingGlobal && currentDriftForLens && (
+          {(isLoadingLens || (iscloud_aiGeneratingGlobal && !currentDriftForLens)) && <p className="text-lime-400 italic animate-pulse">Oracle is perceiving...</p>}
+          {!isLoadingLens && !iscloud_aiGeneratingGlobal && currentDriftForLens && (
             <div className="p-2 bg-lime-800/30 border border-lime-600/50 rounded">
-              <span className={`font-semibold ${AGENT_PROFILES[AgentName.GeminiDriftNarrator]?.colorClass}`}>{AGENT_NAME_TO_STRING_MAP[AgentName.GeminiDriftNarrator]}: </span>
-              <span className="text-lime-200 italic">"{currentDriftForLens.geminiReading}"</span>
+              <span className={`font-semibold ${AGENT_PROFILES[AgentName.cloud_aiDriftNarrator]?.colorClass}`}>{AGENT_NAME_TO_STRING_MAP[AgentName.cloud_aiDriftNarrator]}: </span>
+              <span className="text-lime-200 italic">"{currentDriftForLens.cloud_aiReading}"</span>
               <p className="text-lime-500 text-[10px] mt-1">Drift Score: {(currentDriftForLens?.driftScore || 0).toFixed(2)}</p>
             </div>
           )}
-          {!isLoadingLens && !isGeminiGeneratingGlobal && !currentDriftForLens && <p className="text-slate-500 italic">Awaiting Oracle's vision for {selectedGlyphNode.label || selectedGlyphNode.glyphId}.</p>}
+          {!isLoadingLens && !iscloud_aiGeneratingGlobal && !currentDriftForLens && <p className="text-slate-500 italic">Awaiting Oracle's vision for {selectedGlyphNode.label || selectedGlyphNode.glyphId}.</p>}
         </div>
       )}
     </div>
@@ -221,8 +220,8 @@ interface DriftDifferentialOverlayPropsActual {
   glyphDriftHistory: GlyphOrbit[];
   glyphMutationNodes: GlyphMutationNode[];
   currentRitualContext: RitualContext;
-  isGeminiGenerating: boolean; 
-    logGeminiNarrativeDriftEvent: (driftInterpretation: IDriftInterpretationDB) => void; // Changed to DB type
+  iscloud_aiGenerating: boolean; 
+    logcloud_aiNarrativeDriftEvent: (driftInterpretation: IDriftInterpretationDB) => void; // Changed to DB type
   ritualHistory?: HistoricalEvent[]; 
 }
 
@@ -231,8 +230,8 @@ const DriftDifferentialOverlay: React.FC<DriftDifferentialOverlayPropsActual> = 
   glyphDriftHistory,
   glyphMutationNodes,
   currentRitualContext,
-  isGeminiGenerating,
-  logGeminiNarrativeDriftEvent,
+  iscloud_aiGenerating,
+  logcloud_aiNarrativeDriftEvent,
   ritualHistory 
 }) => {
   const { addEchoMessage } = useEcho();
@@ -246,7 +245,7 @@ const DriftDifferentialOverlay: React.FC<DriftDifferentialOverlayPropsActual> = 
 
   const [currentDriftForLens, setCurrentDriftForLens] = useState<IDriftInterpretationDB | null>(null); // Changed to DB type
   const [isLoadingLens, setIsLoadingLens] = useState(false);
-  const [viewModeLens, setViewModeLens] = useState<'agents' | 'gemini'>('agents');
+  const [viewModeLens, setViewModeLens] = useState<'agents' | 'cloud_ai'>('agents');
 
   const driftService = useDriftNarrator();
 
@@ -268,22 +267,22 @@ const DriftDifferentialOverlay: React.FC<DriftDifferentialOverlayPropsActual> = 
   }, [glyphMutationNodes, selectedGlyphSymbol]);
 
   const handleInterpretationGenerated = useCallback((interpretation: IDriftInterpretationDB) => { // Changed to DB type
-    logGeminiNarrativeDriftEvent(interpretation);
+    logcloud_aiNarrativeDriftEvent(interpretation);
     const agentInterpretations = (Array.isArray(glyphDriftHistory) ? glyphDriftHistory.find(g => g.glyphSymbol === interpretation.glyphSymbol)?.interpretations : []) || [];
     const severity = driftService.calculateDriftSeverity(
-        driftService.convertToGeminiGlyphInterpretation(interpretation),
+        driftService.convertTocloud_aiGlyphInterpretation(interpretation),
         agentInterpretations
     );
     setDriftSeverity(severity);
     setCurrentDriftForLens(interpretation);
-  }, [glyphDriftHistory, driftService, logGeminiNarrativeDriftEvent]);
+  }, [glyphDriftHistory, driftService, logcloud_aiNarrativeDriftEvent]);
   
   const generateNewInterpretationLensLogic = useCallback(async () => {
-    if (!selectedGlyphNode || isGeminiGenerating || isLoadingLens) return;
+    if (!selectedGlyphNode || iscloud_aiGenerating || isLoadingLens) return;
     
     setIsLoadingLens(true);
-    if (viewModeLens === 'gemini') {
-        addEchoMessage(AgentName.System, `Consulting Gemini Oracle for glyph "${selectedGlyphNode.label || selectedGlyphNode.glyphId}"...`, AGENT_PROFILES[AgentName.System].colorClass);
+    if (viewModeLens === 'cloud_ai') {
+        addEchoMessage(AgentName.System, `Consulting cloud_ai Oracle for glyph "${selectedGlyphNode.label || selectedGlyphNode.glyphId}"...`, AGENT_PROFILES[AgentName.System].colorClass);
     }
     const activeGlyphAgentInterpretations = (Array.isArray(glyphDriftHistory) ? glyphDriftHistory.find(g => g.glyphSymbol === (selectedGlyphNode.label || selectedGlyphNode.glyphId))?.interpretations.slice(0, 3) : []) || [];
     
@@ -302,7 +301,7 @@ const DriftDifferentialOverlay: React.FC<DriftDifferentialOverlayPropsActual> = 
     setIsLoadingLens(false);
   }, [
     selectedGlyphNode, currentRitualContext, currentEntropy, driftService, 
-    isGeminiGenerating, isLoadingLens, handleInterpretationGenerated, viewModeLens, glyphDriftHistory
+    iscloud_aiGenerating, isLoadingLens, handleInterpretationGenerated, viewModeLens, glyphDriftHistory
   ]);
 
   useEffect(() => {
@@ -339,7 +338,7 @@ const DriftDifferentialOverlay: React.FC<DriftDifferentialOverlayPropsActual> = 
     const testInterpretationItem: IDriftInterpretationDB = { 
       glyphId: selectedGlyphNode.id, // Use node ID
       glyphSymbol: selectedGlyphNode.label || selectedGlyphNode.glyphId,
-      geminiReading: testReading, agentConsensus: testConsensus, entropy: testEntropyVal,
+      cloud_aiReading: testReading, agentConsensus: testConsensus, entropy: testEntropyVal,
       driftScore: testEntropyVal + 0.1, ritualContext: `Test Case: ${testCase} entropy`,
       timestamp: new Date(), version: "Δ.Test" // Add version for IDriftInterpretationDB
     };
@@ -403,8 +402,8 @@ const DriftDifferentialOverlay: React.FC<DriftDifferentialOverlayPropsActual> = 
                         <input type="checkbox" checked={isMockModeUI} onChange={toggleMockModeService} className="mr-1.5 h-3.5 w-3.5 rounded border-slate-500 text-lime-500 focus:ring-lime-400"/>
                         Test Data Mode
                     </label>
-                    <button onClick={generateNewInterpretationForButton} className="px-2 py-1 text-xs bg-lime-700 hover:bg-lime-600 text-lime-100 rounded-md transition-colors disabled:opacity-50" disabled={!selectedGlyphNode || isGeminiGenerating || isLoadingLens}>
-                        {isLoadingLens || isGeminiGenerating ? 'Perceiving...' : 'Regenerate'}
+                    <button onClick={generateNewInterpretationForButton} className="px-2 py-1 text-xs bg-lime-700 hover:bg-lime-600 text-lime-100 rounded-md transition-colors disabled:opacity-50" disabled={!selectedGlyphNode || iscloud_aiGenerating || isLoadingLens}>
+                        {isLoadingLens || iscloud_aiGenerating ? 'Perceiving...' : 'Regenerate'}
                     </button>
                 </div>
             </div>
@@ -452,7 +451,7 @@ const DriftDifferentialOverlay: React.FC<DriftDifferentialOverlayPropsActual> = 
                 glyphDriftHistory={glyphDriftHistory}
                 currentRitualContext={currentRitualContext}
                 currentEntropy={currentEntropy}
-                isGeminiGeneratingGlobal={isGeminiGenerating}
+                iscloud_aiGeneratingGlobal={iscloud_aiGenerating}
                 onInterpretationGenerated={handleInterpretationGenerated}
                 
                 currentDriftForLens={currentDriftForLens}

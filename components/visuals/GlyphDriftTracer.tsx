@@ -6,7 +6,7 @@ import { AGENT_CONSTELLATION_COLORS } from '../../constants';
 
 
 const ORBIT_COLORS: Record<string, string> = {
-  [AgentName.Gemini]: AGENT_CONSTELLATION_COLORS[AgentName.Gemini] || 'text-cyan-300',
+  [AgentName.cloud_ai]: AGENT_CONSTELLATION_COLORS[AgentName.cloud_ai] || 'text-cyan-300',
   [AgentName.DeepSeek]: AGENT_CONSTELLATION_COLORS[AgentName.DeepSeek] || 'text-rose-400',
   [AgentName.Nevik]: AGENT_CONSTELLATION_COLORS[AgentName.Nevik] || 'text-amber-300',
   [AgentName.System]: 'text-slate-400',

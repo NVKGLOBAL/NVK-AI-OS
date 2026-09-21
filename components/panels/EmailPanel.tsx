@@ -111,7 +111,7 @@ If they ask about anomalies, bugs, or diagnostics, report active self-healing lo
 Ensure your response body is concise, professional, cybernetic, and helpful (max 150 words).
 Do NOT write To/From headers or Subject lines in your output block—start directly with a professional cybernetic greeting like "Greetings Operator," or "Secure Link Established," and sign off clearly as a Sentinel node.`;
 
-          const res = await fetch('/api/gemini/generate', {
+          const res = await fetch('/api/cloud_ai/generate', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({

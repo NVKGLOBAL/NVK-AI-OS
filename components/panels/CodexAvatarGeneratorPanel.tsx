@@ -1,6 +1,5 @@
 
 import React, { useState, useCallback } from 'react';
-import { useGemini } from '../../context/GeminiIntegrationContext';
 import type { CodexAvatarGeneratorPanelProps } from '../../types';
 import { AgentName } from '../../types';
 import { AGENT_PROFILES } from '../../constants';
@@ -18,10 +17,10 @@ export const CodexAvatarGeneratorPanel: React.FC<CodexAvatarGeneratorPanelProps>
   const { addEchoMessage } = useEcho();
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const { generateImage, isGenerating: isGeminiBusyGlobal } = useGemini();
+  const { generateImage, isGenerating: iscloud_aiBusyGlobal } = usecloud_ai();
 
   const handleGenerateAvatar = useCallback(async () => {
-    if (isGeminiBusyGlobal || isLoading) return;
+    if (iscloud_aiBusyGlobal || isLoading) return;
 
     setIsLoading(true);
     setAvatarUrl(null);
@@ -54,11 +53,11 @@ The avatar should feel like a living, thinking entity, a fusion of ancient knowl
       setIsLoading(false);
     }
   }, [
-    isGeminiBusyGlobal, isLoading, codexMode, currentEntropy,
+    iscloud_aiBusyGlobal, isLoading, codexMode, currentEntropy,
     seekerTraits, resonantNVKAxiom, latestWitnessMessage, generateImage
   ]);
 
-  const loading = isLoading || isGeminiBusyGlobal;
+  const loading = isLoading || iscloud_aiBusyGlobal;
 
   return (
     <div className="codex-avatar-generator-panel bg-slate-900/90 backdrop-blur-md border border-amber-500/50 rounded-xl shadow-2xl p-3 sm:p-6 text-slate-100 my-3 sm:my-6">

@@ -156,7 +156,7 @@ const ModelOrchestratorPanel: React.FC = () => {
 
   const handleFallBackToCloud = () => {
     setIsCloudMode(true);
-    setSelectedProvider('gemini');
+    setSelectedProvider('cloud_ai');
     setActiveTab('providers');
   };
 
@@ -254,7 +254,7 @@ const ModelOrchestratorPanel: React.FC = () => {
           { id: 'meta-llama/llama-3.3-70b-instruct:free', name: 'Meta Llama 3.3 70B (High Speed Dev)', free: true },
           { id: 'deepseek/deepseek-r1:free', name: 'DeepSeek R1 Reasoning (Deep COT)', free: true },
           { id: 'qwen/qwen-2.5-coder-32b:free', name: 'Qwen 2.5 Coder 32B (Optimized Programming)', free: true },
-          { id: 'google/gemini-2.5-flash:free', name: 'Gemini 2.5 Flash Free (Multimodal Fast Search)', free: true },
+          { id: 'google/cloud_ai-2.5-flash:free', name: 'cloud_ai 2.5 Flash Free (Multimodal Fast Search)', free: true },
           { id: 'microsoft/phi-3-medium-128k-instruct:free', name: 'Phi 3 Medium (128K Developer Core)', free: true }
         ];
       case 'together':
@@ -632,7 +632,7 @@ const ModelOrchestratorPanel: React.FC = () => {
             <div className="bg-slate-900/50 p-5 rounded-lg border border-slate-700">
               <h3 className="text-lg font-medium text-white mb-4">Select Primary LLM Provider</h3>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                {['gemini', 'ollama', 'openai', 'anthropic', 'mistral', 'nvidia', 'deepseek', 'openrouter', 'together', 'huggingface'].map(provider => (
+                {['cloud_ai', 'ollama', 'openai', 'anthropic', 'mistral', 'nvidia', 'deepseek', 'openrouter', 'together', 'huggingface'].map(provider => (
                   <div 
                     key={provider}
                     onClick={() => {
@@ -646,7 +646,7 @@ const ModelOrchestratorPanel: React.FC = () => {
                       {selectedProvider === provider && <i className="ri-check-line text-indigo-400"></i>}
                     </div>
                     <p className="text-[11px] text-slate-500 mt-2 leading-tight">
-                      {provider === 'gemini' ? 'Default NVK Core.' : 
+                      {provider === 'cloud_ai' ? 'Default NVK Core.' : 
                        provider === 'ollama' ? 'Local LLM Orchestrator.' :
                        provider === 'nvidia' ? 'NVIDIA NIM Microservices.' : 
                        provider === 'deepseek' ? 'DeepSeek Reasoning Node.' :
@@ -853,7 +853,7 @@ const ModelOrchestratorPanel: React.FC = () => {
                     </p>
                   )}
                   <div className="pt-2 border-t border-amber-500/10 flex flex-wrap items-center justify-between gap-2 font-sans">
-                    <span className="text-[10px] text-amber-400 italic">Trouble loading? Use Gemini Cloud Server instead:</span>
+                    <span className="text-[10px] text-amber-400 italic">Trouble loading? Use cloud_ai Cloud Server instead:</span>
                     <button 
                       onClick={handleFallBackToCloud}
                       className="px-3 py-1 bg-gradient-to-r from-amber-600 to-orange-650 hover:from-amber-500 hover:to-orange-550 text-white rounded text-[10px] font-mono font-bold uppercase tracking-wider transition-all shadow-md animate-pulse"

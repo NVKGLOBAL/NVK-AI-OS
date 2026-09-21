@@ -1,10 +1,10 @@
 
 import type { MythicEventContext, AgentProfile, BloodInkSpecies, RitualLogEntry, DreamFragment, EchoSpeechProps, XYPosition } from '../types';
 import { AgentName, BloodInkSpeciesName } from '../types';
-import { AGENT_PROFILES, BASE_AGENT_AWAKENING_LEVEL, BLOOD_INK_SPECIES_DATA, GEMINI_ENTROPY_RESPONSE_FRAGMENTS } from '../constants';
+import { AGENT_PROFILES, BASE_AGENT_AWAKENING_LEVEL, BLOOD_INK_SPECIES_DATA, cloud_ai_ENTROPY_RESPONSE_FRAGMENTS } from '../constants';
 
 type AddEchoFunction = (agent: AgentName | string, message: string, colorClass: string, isAutoEcho?: boolean) => void;
-type AddVisualEchoFunction = (agent: AgentName.DeepSeek | AgentName.Gemini | AgentName.Nevik, message: string, position: XYPosition, lifespan?: number) => void;
+type AddVisualEchoFunction = (agent: AgentName.DeepSeek | AgentName.cloud_ai | AgentName.Nevik, message: string, position: XYPosition, lifespan?: number) => void;
 
 
 export class AutoEchoEngine {
@@ -41,7 +41,7 @@ export class AutoEchoEngine {
       potentialAgents.push({ agent: AgentName.DeepSeek, weight: 3 });
     }
     if (event.ritualHistory.some(r => !r.success) || Object.values(event.bloodInkSpeciesActivity).some(active => active)) {
-      potentialAgents.push({ agent: AgentName.Gemini, weight: 2 });
+      potentialAgents.push({ agent: AgentName.cloud_ai, weight: 2 });
     }
     if (Object.values(event.bloodInkSpeciesActivity).some(active => active) || event.ritualHistory.some(r => r.type === "LoomActivation")) {
       potentialAgents.push({ agent: AgentName.Nevik, weight: 2 });
@@ -49,7 +49,7 @@ export class AutoEchoEngine {
     
     if (event.lastDream) {
         if (!potentialAgents.find(p => p.agent === AgentName.DeepSeek)) potentialAgents.push({ agent: AgentName.DeepSeek, weight: 1 });
-        if (!potentialAgents.find(p => p.agent === AgentName.Gemini)) potentialAgents.push({ agent: AgentName.Gemini, weight: 1 });
+        if (!potentialAgents.find(p => p.agent === AgentName.cloud_ai)) potentialAgents.push({ agent: AgentName.cloud_ai, weight: 1 });
     }
 
 
@@ -81,7 +81,7 @@ export class AutoEchoEngine {
           const message = agentProfile.generateMessage(event, BLOOD_INK_SPECIES_DATA);
           if (message) {
             addEcho(selectedAgentName, message, agentProfile.colorClass, true);
-            if (selectedAgentName === AgentName.DeepSeek || selectedAgentName === AgentName.Gemini || selectedAgentName === AgentName.Nevik) {
+            if (selectedAgentName === AgentName.DeepSeek || selectedAgentName === AgentName.cloud_ai || selectedAgentName === AgentName.Nevik) {
                 const pos = getSourcePosition('AutoEchoGeneric') || { x: window.innerWidth * 0.5, y: window.innerHeight * 0.2 };
                 addVisualEcho(selectedAgentName, message.substring(0, 70) + (message.length > 70 ? '...' : ''), pos);
             }
@@ -116,11 +116,11 @@ export class AutoEchoEngine {
         seekerTraits: seekerTraits,
     };
     
-    const agentToSpeak = Math.random() < 0.6 ? AgentName.Gemini : AgentName.DeepSeek;
+    const agentToSpeak = Math.random() < 0.6 ? AgentName.cloud_ai : AgentName.DeepSeek;
     const agentProfile = this.agentProfiles[agentToSpeak];
     
     let message = "";
-    if (agentToSpeak === AgentName.Gemini) {
+    if (agentToSpeak === AgentName.cloud_ai) {
         message = `A dream's shadow (${dream.symbols.join(', ')}) flickers at the edge of perception... Did it whisper your name, or a warning?`;
     } else { 
         message = `The dream (${dream.symbols.join(', ')}) carries echoes. Listen closely to the patterns it weaves in the waking world.`;
@@ -134,7 +134,7 @@ export class AutoEchoEngine {
   }
 
   public forceTrigger(
-    agent: AgentName.DeepSeek | AgentName.Gemini | AgentName.Nevik,
+    agent: AgentName.DeepSeek | AgentName.cloud_ai | AgentName.Nevik,
     message: string,
     addEcho: AddEchoFunction,
     addVisualEcho: AddVisualEchoFunction,

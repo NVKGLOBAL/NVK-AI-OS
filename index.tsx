@@ -2,12 +2,11 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { App } from './App';
-import { GeminiProvider } from './context/GeminiIntegrationContext'; // Import GeminiProvider
-import { LocalLLMProvider } from './context/LocalLLMContext'; // Import LocalLLMProvider
-import { EchoProvider } from './context/EchoContext'; // Import EchoProvider
-import { AppErrorBoundary } from './components/AppErrorBoundary'; // Import AppErrorBoundary
+import { LocalLLMProvider } from './context/LocalLLMContext'; 
+import { EchoProvider } from './context/EchoContext'; 
+import { AppErrorBoundary } from './components/AppErrorBoundary'; 
 
-// Safely ignore extension script & messaging noise (e.g. "Could not establish connection. Receiving end does not exist.")
+// Safely ignore extension script & messaging noise
 window.addEventListener('unhandledrejection', (event) => {
   const reason = event.reason;
   const message = reason?.message || String(reason || '');
@@ -33,13 +32,11 @@ const root = ReactDOM.createRoot(rootElement);
 root.render(
   <React.StrictMode>
     <AppErrorBoundary>
-      <GeminiProvider> 
-        <LocalLLMProvider> {/* Wrap App with LocalLLMProvider for shared WebGPU context */}
+        <LocalLLMProvider>
           <EchoProvider>
             <App />
           </EchoProvider>
         </LocalLLMProvider>
-      </GeminiProvider>
     </AppErrorBoundary>
   </React.StrictMode>
 );

@@ -1,12 +1,16 @@
 
-import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useMemo, useRef, useEffect, Suspense } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { CodexOrbSystem } from './components/CodexOrbSystem';
-import { useGeminiLive } from './lib/useGeminiLive';
+
+const CodexOrbSystem = React.lazy(() =>
+  import('./components/CodexOrbSystem').then(m => ({ default: m.CodexOrbSystem }))
+);
+
 import { PinnedPanel } from './components/PinnedPanel';
 import { PanelManager } from './components/PanelManager';
 import { OrbModeSelector } from './components/ui/OrbModeSelector';
 import { PANEL_DEFINITIONS, DOCK_APPS } from './constants';
+import { getPresetsForCodexMode, getCodexModeDefinition } from './components/core/CodexModes';
 import { OmniWheel } from './components/ui/OmniWheel';
 import { FlightController } from './components/ui/FlightController';
 import { GeoMode, OrbMode, CodexModeId, ParticleBackgroundMode, PanelLayout, ClusterType, Cluster, NavigationInput, FlightInput, AgentCoreState, GlyphInstance } from './types';
@@ -91,9 +95,15 @@ import FileSystemPanel from './components/panels/FileSystemPanel';
 import GlyphPanel from './components/panels/GlyphPanel';
 import ClusterConfigPanel from './components/panels/ClusterConfigPanel';
 import NVKVoiceOrchestratorPanel from './components/panels/NVKVoiceOrchestratorPanel';
+import { DocumentWorkspace } from './components/panels/DocumentWorkspace';
+import { WorkflowWorkspace } from './components/panels/WorkflowWorkspace';
+import { SubAgentConstellation } from './components/panels/SubAgentConstellation';
+import { NVKCommandLayer } from './components/spatial/NVKCommandLayer';
+import type { NVKOrbState, NVKWorkflow, NVKActivityStep } from './types';
+import type { ProcessedNVKIntent } from './services/nvkActionEngine';
+import { eventBus } from './services/EventBus';
 
 import { SystemStateProvider, type SystemStateContextType } from './context/SystemContext';
-import { GeminiContext, useGemini } from './context/GeminiIntegrationContext';
 import { useEcho } from './context/EchoContext';
 import { useLocalLLM } from './context/LocalLLMContext';
 import { VoiceEngine } from './lib/whisper/VoiceEngine';
@@ -106,12 +116,23 @@ import { OmniSearchModal } from './components/ui/OmniSearchModal';
 import { BootSequence } from './components/core/BootSequence'; 
 import Watermark from './components/ui/Watermark'; 
 import { GlobalControlHub } from './components/GlobalControlHub';
-import { NVKLogicCore } from './components/NVKLogicCore';
 import { TutorialOverlay } from './components/TutorialOverlay';
 import { AuthGateway } from './components/ui/AuthGateway';
 import { CyberSynth } from './lib/soundEffects';
 
-import { JarvisDesktop3D } from './components/three/JarvisDesktop3D';
+const JarvisDesktop3D = React.lazy(() =>
+  import('./components/three/JarvisDesktop3D').then(m => ({ default: m.JarvisDesktop3D }))
+);
+
+const Cyber3DLoader: React.FC = () => (
+  <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/80 backdrop-blur-sm z-20 pointer-events-none">
+    <div className="w-10 h-10 rounded-full border-2 border-cyan-500/20 border-t-cyan-400 animate-spin mb-3"></div>
+    <span className="text-[10px] font-mono text-cyan-300 uppercase tracking-widest animate-pulse font-semibold">
+      Hydrating 3D Lattice...
+    </span>
+  </div>
+);
+
 import { NVKSpaceBridge } from './integration/spaceBridge';
 import { HUD } from './components/spatial/HUD';
 import { Workspace2D } from './components/spatial/Workspace2D';
@@ -145,8 +166,9 @@ class ThreeErrorBoundary extends React.Component<
 }
 
 export const App: React.FC = () => {
+  const [isVoiceActive, setIsVoiceActive] = useState(false);
   const [nodeInfo, setNodeInfo] = useState<{axiom: string, role: string} | null>(null);
-  const [systemBooted, setSystemBooted] = useState(false); 
+  const [systemBooted, setSystemBooted] = useState(true); 
   const [isMobile, setIsMobile] = useState<boolean>(() => {
     if (typeof window !== 'undefined') {
       return window.innerWidth < 768 || /Mobi|Android/i.test(navigator.userAgent);
@@ -160,7 +182,13 @@ export const App: React.FC = () => {
     }
     return 'high';
   });
-  const [workspaceMode, setWorkspaceMode] = useState<'3d' | '2d'>('3d');
+  const [workspaceMode, setWorkspaceMode] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('nvk_workspace_mode');
+      if (saved) return saved;
+    }
+    return '3d';
+  });
   const [active2dNodeId, setActive2dNodeId] = useState<string | null>(null);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
 
@@ -557,6 +585,52 @@ export const App: React.FC = () => {
     addEchoMessage(AgentName.SystemControl, 'All neural panels expanded.', 'text-emerald-400');
   }, [activeCluster.nodes, updateActiveCluster, addEchoMessage]);
 
+  const handleActivateCodexMode = useCallback((modeId: CodexModeId) => {
+    setCurrentCodexModeId(modeId);
+    
+    const preset = getPresetsForCodexMode(modeId);
+    if (preset) {
+      // Build nodes for the preset panels if they don't exist
+      const newNodes = preset.presetPanelIds.map(panelId => {
+        const panelDef = PANEL_DEFINITIONS.find(p => p.id === panelId);
+        const name = panelDef ? panelDef.name : panelId;
+        const nodeId = `${activeCluster.id}-${panelId.toLowerCase()}`;
+        return {
+          id: nodeId,
+          panelId,
+          label: name,
+        };
+      });
+
+      const newOpenNodeIds = newNodes.map(n => n.id);
+
+      // Reset minimized and maximized panel layouts to prevent stale bounds
+      setMinimizedPanelIds([]);
+      setMaximizedPanelIds([]);
+      setFocusedPanelId(null);
+
+      // Apply the preset to the active cluster
+      updateActiveCluster({
+        orbMode: preset.orbMode,
+        particleMode: preset.particleMode,
+        layout: preset.layout,
+        nodeAnimationSpeed: preset.nodeAnimationSpeed,
+        nodes: newNodes,
+        openNodeIds: newOpenNodeIds,
+      });
+
+      // Synchronize local background particle state
+      setParticleMode(preset.particleMode);
+
+      const modeDef = getCodexModeDefinition(modeId);
+      addEchoMessage(
+        AgentName.CodexModeEngine,
+        `CORE ALIGNMENT ACTIVE: Switched to ${modeDef?.name || modeId}. System core synchronized to: ${preset.orbMode} orb with ${preset.particleMode} topology. Mounted ${preset.presetPanelIds.length} preset workspace nodes.`,
+        'text-sky-300'
+      );
+    }
+  }, [activeCluster.id, updateActiveCluster, addEchoMessage]);
+
   const [particleMode, setParticleMode] = useState<ParticleBackgroundMode>(ParticleBackgroundMode.Orbital);
   const [isParticleSelectorOpen, setIsParticleSelectorOpen] = useState(false);
   const [navigationInput, setNavigationInput] = useState<NavigationInput | null>(null);
@@ -566,7 +640,7 @@ export const App: React.FC = () => {
     isLocked: false
   });
   const [recenterTrigger, setRecenterTrigger] = useState(0);
-  const { invokeGemini, generateImage, isGenerating } = useGemini();
+  const invokeGemini = async () => ""; const generateImage = async () => ""; const isGenerating = false;
   const voiceEngine = useMemo(() => new VoiceEngine(), []);
 
   // --- Comprehensive Mock Application State ---
@@ -578,7 +652,13 @@ export const App: React.FC = () => {
   const [rewovenGlyphs, setRewovenGlyphs] = useState<RewovenGlyph[]>([]);
   const [agentGrid, setAgentGrid] = useState<{grid: SimulationGrid, agents: AgentNode[]}>({grid: [], agents: []});
   const [activeSpecies, setActiveSpecies] = useState<BloodInkSpeciesName | null>(null);
+  const [currentCodexModeId, setCurrentCodexModeId] = useState<CodexModeId>(CodexModeId.ORIGIN_STATE);
   const [codexMode, setCodexMode] = useState<CodexModeDefinition | undefined>(undefined);
+
+  useEffect(() => {
+    const def = getCodexModeDefinition(currentCodexModeId);
+    setCodexMode(def);
+  }, [currentCodexModeId]);
   const [seekerTraits, setSeekerTraits] = useState<string[]>(['Dreamwalker']);
   const [latestWitnessMessage, setLatestWitnessMessage] = useState<EchoMessage | null>(null);
   const [currentGeoMode, setCurrentGeoMode] = useState<GeoMode>(GeoMode.Recursive);
@@ -602,6 +682,79 @@ export const App: React.FC = () => {
     { id: '2', name: 'Weaver', task: 'Idle', status: 'idle', color: '#ff00ff' }
   ]);
   const [thoughts, setThoughts] = useState<ThoughtGlyph[]>([]);
+
+  // NVK Living Intelligence Interface States
+  const [nvkOrbState, setNvkOrbState] = useState<NVKOrbState>('IDLE');
+  const [activeNVKWorkflow, setActiveNVKWorkflow] = useState<NVKWorkflow | null>(null);
+
+  useEffect(() => {
+    const unsubscribe = eventBus.subscribe((event) => {
+      // Just a simple listener to trigger updates or log
+      console.log('App received event:', event);
+      if (event.type === 'TASK_STARTED' || event.type === 'TASK_COMPLETED' || event.type === 'TASK_FAILED') {
+         // Could sync to a state variable here for UI
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
+  const [nvkActivitySteps, setNvkActivitySteps] = useState<NVKActivityStep[]>([]);
+  const [nvkCustomDocData, setNvkCustomDocData] = useState<any>(null);
+
+  const handleExecuteNVKAction = useCallback((intent: ProcessedNVKIntent) => {
+    CyberSynth.playCyberChime();
+    
+    // If activity steps provided, trigger sequential updates
+    if (intent.activitySteps && intent.activitySteps.length > 0) {
+      setNvkActivitySteps(intent.activitySteps);
+      // Sequentially mark them as complete
+      intent.activitySteps.forEach((step, idx) => {
+        setTimeout(() => {
+          setNvkActivitySteps(prev => prev.map((s, i) => {
+            if (i < idx) return { ...s, status: 'completed' };
+            if (i === idx) return { ...s, status: 'running' };
+            return { ...s, status: 'pending' };
+          }));
+        }, (idx + 1) * 600);
+      });
+      setTimeout(() => {
+        setNvkActivitySteps(prev => prev.map(s => ({ ...s, status: 'completed' })));
+      }, (intent.activitySteps.length + 1) * 600);
+    }
+
+    if (intent.workflow) {
+      setActiveNVKWorkflow(intent.workflow);
+    }
+
+    if (intent.initialData) {
+      setNvkCustomDocData(intent.initialData);
+    }
+
+    if (intent.spawnAppId) {
+      const targetPanelId = intent.spawnAppId;
+      const panelDef = PANEL_DEFINITIONS.find(p => p.id === targetPanelId);
+      const label = panelDef ? panelDef.name : targetPanelId;
+      const targetNodeId = `${activeCluster.id}-${targetPanelId.toLowerCase()}`;
+
+      // Check if node exists in cluster
+      const exists = activeCluster.nodes.some(n => n.id === targetNodeId || n.panelId === targetPanelId);
+
+      if (!exists) {
+        updateActiveCluster({
+          nodes: [...activeCluster.nodes, { id: targetNodeId, panelId: targetPanelId, label }],
+          openNodeIds: Array.from(new Set([...activeCluster.openNodeIds, targetNodeId]))
+        });
+      } else {
+        const foundNode = activeCluster.nodes.find(n => n.id === targetNodeId || n.panelId === targetPanelId);
+        const idToOpen = foundNode ? foundNode.id : targetNodeId;
+        updateActiveCluster({
+          openNodeIds: Array.from(new Set([...activeCluster.openNodeIds, idToOpen]))
+        });
+      }
+
+      addEchoMessage(AgentName.SystemControl, `NVK Workspace Spawned: ${label}`, 'text-cyan-400');
+    }
+  }, [activeCluster, updateActiveCluster, addEchoMessage]);
 
   const addThought = useCallback((text: string) => {
     setThoughts(prev => [...prev, { id: `thought-${Date.now()}`, text, createdAt: Date.now() }].slice(-10));
@@ -768,61 +921,13 @@ export const App: React.FC = () => {
     addEchoMessage(AgentName.SystemControl, `Panel ${panelId} unpinned to 3D cluster.`, 'text-cyan-400');
   }, [activeCluster, activeClusterId, updateActiveCluster, addEchoMessage]);
 
-  const handleLiveToolCall = useCallback((toolCall: any, sendResponse: (res: any) => void) => {
-    const functionCalls = toolCall.functionCalls;
-    if (!functionCalls) return;
-
-    const responses = functionCalls.map((call: any) => {
-      try {
-        if (call.name === "changeOrbMode") {
-          const modeMap: Record<string, OrbMode> = {
-            "holographic": OrbMode.HolographicCore,
-            "zen": OrbMode.ZenVoid,
-            "quantum": OrbMode.QuantumState,
-            "tactical": OrbMode.TacticalMap,
-            "dreambloom": OrbMode.Dreambloom,
-            "crystalline": OrbMode.CrystallineMatrix,
-            "chaotic": OrbMode.ChaoticNucleus,
-            "biolattice": OrbMode.BioLattice
-          };
-          const targetMode = modeMap[call.args.mode.toLowerCase()] || OrbMode.HolographicCore;
-          updateActiveCluster({ orbMode: targetMode });
-          addEchoMessage(AgentName.SystemCore, `Orb mode set to ${call.args.mode}`, 'text-cyan-400');
-          return { id: call.id, response: { success: true, mode: targetMode } };
-        } else if (call.name === "openPanel") {
-          handleAppClick(call.args.panelName);
-          return { id: call.id, response: { success: true, panel: call.args.panelName } };
-        } else if (call.name === "closePanel") {
-          const panelName = call.args.panelName;
-          const panelToClose = activeCluster.pinnedPanelIds.find(pid => pid.startsWith(panelName));
-          if (panelToClose) {
-            handleUnpinPanel(panelToClose);
-            return { id: call.id, response: { success: true, closed: panelName } };
-          }
-          return { id: call.id, response: { success: false, reason: "Panel not open" } };
-        }
-      } catch (e) {
-        console.error("Tool execution error:", e);
-        return { id: call.id, response: { success: false, error: String(e) } };
-      }
-      return { id: call.id, response: { success: false, error: "Unknown command" } };
-    });
-
-    sendResponse({ functionResponses: responses });
-  }, [updateActiveCluster, handleAppClick, handleUnpinPanel, activeCluster.pinnedPanelIds, addEchoMessage]);
-
-  const liveApi = useGeminiLive({ onToolCall: handleLiveToolCall });
-
-  const hasStartedLive = useRef(false);
   useEffect(() => {
-    if (systemBooted && !hasStartedLive.current) {
-      hasStartedLive.current = true;
-      liveApi.startLive();
+    if (systemBooted) {
       setShowOrbTooltip(true);
       const timeout = setTimeout(() => setShowOrbTooltip(false), 15000);
       return () => clearTimeout(timeout);
     }
-  }, [systemBooted, liveApi.startLive]);
+  }, [systemBooted]);
 
   // Global Browser Agent Interoperability Bridge (OpenClaw / Hermes / Playwright)
   useEffect(() => {
@@ -879,13 +984,13 @@ export const App: React.FC = () => {
   const [showOrbTooltip, setShowOrbTooltip] = useState(false);
 
   const handleCoreOrbClick = useCallback(() => {
-    if (liveApi.isActive) {
-      liveApi.sendText("*user poked the orb*");
+    if (isVoiceActive) {
+      (() => {})("*user poked the orb*");
     } else {
-      liveApi.startLive();
+      setIsVoiceActive(true);
     }
     setShowOrbTooltip(false);
-  }, [liveApi]);
+  }, [isVoiceActive]);
 
   const addHistoricalEvent = (type: HistoricalEventType, data: any, specificTimestamp?: number) => {
     const newEvent: HistoricalEvent = {
@@ -1002,6 +1107,8 @@ const mockShatterpointData = {
       case 'NexusBrowser':
         const browserUrl = panelId.split('::')[2] ? decodeURIComponent(panelId.split('::')[2]) : undefined;
         return wrapInProviders(<NexusBrowser onOpenNewWindow={(url) => handleAppClick('NexusBrowser', url)} initialUrl={browserUrl} />);
+      case 'SystemMonitorPanel':
+        return wrapInProviders(<SystemMonitorPanel />);
       case 'EchoSphere':
          return wrapInProviders(<EchoScribePanel echoes={echoes} />);
       case 'PersonaComms':
@@ -1197,6 +1304,12 @@ const mockShatterpointData = {
         return wrapInProviders(<MessagingPanel />);
       case 'FileSystemPanel':
         return wrapInProviders(<FileSystemPanel />);
+      case 'DocumentWorkspace':
+        return wrapInProviders(<DocumentWorkspace initialData={nvkCustomDocData} initialTitle="NVK Global — Living Intelligence OS" />);
+      case 'WorkflowWorkspace':
+        return wrapInProviders(<WorkflowWorkspace workflow={activeNVKWorkflow || undefined} onUpdateWorkflow={setActiveNVKWorkflow} />);
+      case 'SubAgentConstellation':
+        return wrapInProviders(<SubAgentConstellation />);
       case 'GlyphPanel':
         return wrapInProviders(<GlyphPanel glyphId={nodeId.split('-')[1] || 'GLYPH-001'} clusterId={activeClusterId} />);
       case 'ClusterConfigPanel':
@@ -1326,7 +1439,7 @@ const mockShatterpointData = {
     addEchoMessage(AgentName.SystemControl, `Spawning new ${type} Orb System: ${name}`, 'text-purple-400');
   }, [clusters.length, addEchoMessage]);
 
-  const { isGenerating: isGeminiGenerating } = useGemini();
+  const isGeminiGenerating = false;
   const { isGenerating: isLocalGenerating, loadStatus } = useLocalLLM();
   const [bridge, setBridge] = useState<NVKSpaceBridge | null>(null);
 
@@ -1378,28 +1491,28 @@ const mockShatterpointData = {
   const lastMousePos = useRef({ x: 0, y: 0, time: 0 });
 
   const handleContainerMouseMove = useCallback((e: React.MouseEvent) => {
-    if (!liveApi.isActive) return;
+    if (!isVoiceActive) return;
     const now = Date.now();
     if (now - lastMousePos.current.time > 10000) { 
        const dx = Math.abs(e.clientX - lastMousePos.current.x);
        const dy = Math.abs(e.clientY - lastMousePos.current.y);
        if (dx > 100 || dy > 100) {
-          liveApi.sendText(`*user moved mouse cursor toward coordinate x: ${e.clientX}, y: ${e.clientY}*`);
+          (() => {})(`*user moved mouse cursor toward coordinate x: ${e.clientX}, y: ${e.clientY}*`);
           lastMousePos.current = { x: e.clientX, y: e.clientY, time: now };
        }
     }
-  }, [liveApi]);
+  }, [isVoiceActive]);
 
   const handleContainerClick = useCallback((e: React.MouseEvent) => {
-    if (!liveApi.isActive) return;
+    if (!isVoiceActive) return;
     // Don't send clicks that are inside UI elements if possible, but for now just send it
     const target = e.target as HTMLElement;
     if (target.tagName === 'CANVAS') {
-       liveApi.sendText(`*user clicked empty space in the 3D workspace at x: ${e.clientX}, y: ${e.clientY}*`);
+       (() => {})(`*user clicked empty space in the 3D workspace at x: ${e.clientX}, y: ${e.clientY}*`);
     } else {
-       liveApi.sendText(`*user clicked a UI element in the workspace at x: ${e.clientX}, y: ${e.clientY}*`);
+       (() => {})(`*user clicked a UI element in the workspace at x: ${e.clientX}, y: ${e.clientY}*`);
     }
-  }, [liveApi]);
+  }, [isVoiceActive]);
 
   if (isAuthGatewayRoute) {
     return <AuthGateway />;
@@ -1412,94 +1525,234 @@ const mockShatterpointData = {
   return (
     <SystemStateProvider value={systemState}>
       <div 
-        className="app-container w-full h-screen bg-black overflow-hidden relative flex flex-col"
+        className="app-container w-full h-screen bg-black overflow-hidden relative flex flex-col select-none"
         onDragOver={(e) => e.preventDefault()}
         onDrop={handleGlobalDrop}
         onMouseMove={handleContainerMouseMove}
         onClick={handleContainerClick}
       >
-        {workspaceMode === '3d' ? (
-          <ThreeErrorBoundary
-            fallback={
-              <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-slate-950 p-6 text-center select-none">
-                <div className="w-16 h-16 rounded-full border-2 border-emerald-500/20 animate-ping flex items-center justify-center mb-6">
-                  <i className="ri-error-warning-line text-emerald-400 text-2xl animate-pulse"></i>
-                </div>
-                <h2 className="text-lg font-mono text-emerald-400 uppercase tracking-widest font-semibold text-center">WebGL Engine Suspended</h2>
-                <p className="text-slate-400 font-mono text-[9px] max-w-sm mt-3 leading-relaxed uppercase break-words px-4">
-                  Hardware acceleration adaptive context lost or disabled on mobile. Loading Safe 2D Eco-Lattice...
-                </p>
-                <button 
-                  onClick={() => setWorkspaceMode('2d')}
-                  className="mt-6 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 font-mono text-[10px] uppercase text-slate-950 font-bold rounded-lg tracking-widest shadow-[0_0_15px_rgba(16,185,129,0.3)] duration-300 transition-all cursor-pointer active:scale-95"
-                >
-                  Activate Safe 2D Layout
-                </button>
-              </div>
-            }
-            onError={() => {
-              console.warn("WebGL crash captured in ThreeErrorBoundary. Cascading fallback to 2D Safe Workspace.");
-              setWorkspaceMode('2d');
-            }}
-          >
-            <JarvisDesktop3D 
-              agentState={agentState}
-              activeGlyphs={activeGlyphs}
-              selectedGlyphId={selectedGlyphId}
-              onGlyphClick={handleGlyphClick}
-              onExtrudeGlyph={handleExtrudeGlyph}
-              setBridge={setBridge}
-              onOrbClick={handleCoreOrbClick}
-            />
+        {/* Global NVK OS Top Header */}
+        <Header 
+          workspaceMode={workspaceMode}
+          onWorkspaceModeChange={setWorkspaceMode}
+          onOpenSearch={() => setIsSearchOpen(true)}
+          onOpenAllPanels={handleOpenAllPanels}
+          onCloseAllPanels={handleCloseAllPanels}
+          onProvokeThornedRose={() => {}}
+          onTuneFrequency={() => {}}
+          onRecallAncestor={() => {}}
+          onBurnPetals={() => {}}
+          onAwakenLotusDream={() => {}}
+          onPulseAstralJasmine={() => {}}
+          onGraftThorns={() => {}}
+          onToggleAutoEcho={() => {}}
+          onAmplifyVoices={() => {}}
+          onSeedDream={() => {}}
+          isAutoEchoPaused={false}
+          onInvokecloud_aiOracle={() => {}}
+          onContextualOracleQuery={() => {}}
+          onToggleAshfall={() => {}}
+          showAshfall={false}
+          masterEntropyOverride={0}
+          onSetMasterEntropyOverride={() => {}}
+          isMasterEntropyLocked={false}
+          masterNegentropyLevel={5}
+          onSetMasterNegentropyLevel={() => {}}
+          isMasterNegentropyLocked={false}
+          showLogicWebDebug={false}
+          onToggleLogicWebDebug={() => {}}
+          isAuditing={false}
+          onToggleAuditMode={() => {}}
+          isAuditModeLocked={false}
+          currentCodexModeId={currentCodexModeId}
+          activateCodexMode={handleActivateCodexMode}
+          onDumpThreadSummary={() => {}}
+          showSigilOverlay={false}
+          onToggleSigilOverlay={() => {}}
+          onTraceThreadcoil={() => {}}
+          onReEnterJunction={() => {}}
+          onExtractSigil={() => {}}
+          isBugaModeActive={false}
+          onToggleBugaMode={() => {}}
+          nodeAnimationSpeed={activeCluster.nodeAnimationSpeed ?? 0.5}
+          onSetNodeAnimationSpeed={(spd) => updateActiveCluster({ nodeAnimationSpeed: spd })}
+          onInitiateShatterpointTrace={() => {}}
+          interfaceActive={true}
+        />
 
-            <CodexOrbSystem
-              onNodeHover={handleNodeHover}
-              axiomsRevealed={true}
-              panels={PANEL_DEFINITIONS}
-              clusterNodes={activeCluster.nodes}
-              onPanelNodeClick={handlePanelNodeClick}
-              openNodeIds={activeCluster.openNodeIds}
-              panelLayout={activeCluster.layout}
+        {/* Main 3D Spatial Layout Engine */}
+        <div className="flex-1 w-full overflow-hidden relative flex flex-col min-h-0">
+          {workspaceMode === 'split' ? (
+            /* 3D SPLIT VIEWPORT MODE (Optimal for Mobile & Clutter-Free Touch Control) */
+            <div className="w-full h-full flex flex-col overflow-hidden bg-slate-950">
+              {/* Top 3D Spatial Stage Canvas */}
+              <div className="h-[32vh] min-h-[220px] max-h-[360px] w-full relative border-b border-cyan-500/20 bg-black shrink-0 overflow-hidden shadow-2xl">
+                <ThreeErrorBoundary
+                  fallback={
+                    <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950 text-center p-4">
+                      <span className="text-xs font-mono text-cyan-400 font-bold uppercase">3D Stage Safe Mode</span>
+                    </div>
+                  }
+                  onError={() => {
+                    console.warn("WebGL crash captured in Split Mode. Falling back to 2D Desk.");
+                    setWorkspaceMode('2d');
+                  }}
+                >
+                  <Suspense fallback={<Cyber3DLoader />}>
+                    <JarvisDesktop3D 
+                      agentState={agentState}
+                      activeGlyphs={activeGlyphs}
+                      selectedGlyphId={selectedGlyphId}
+                      onGlyphClick={handleGlyphClick}
+                      onExtrudeGlyph={handleExtrudeGlyph}
+                      setBridge={setBridge}
+                      onOrbClick={handleCoreOrbClick}
+                    />
+                  </Suspense>
+                </ThreeErrorBoundary>
+
+                {/* Live 3D Badge Overlay */}
+                <div className="absolute top-2 right-2 z-20 flex items-center gap-2 bg-slate-950/85 backdrop-blur-md px-3 py-1 rounded-full border border-cyan-500/30 text-[9px] font-mono text-cyan-300 shadow-lg">
+                  <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping"></span>
+                  <span className="hidden sm:inline font-bold">LIVE 3D SPATIAL STAGE</span>
+                  <span className="sm:hidden font-bold">3D STAGE</span>
+                  <button 
+                    onClick={handleCoreOrbClick}
+                    className="ml-1 px-2 py-0.5 bg-cyan-500/20 hover:bg-cyan-500/40 text-cyan-200 border border-cyan-400/50 rounded text-[8px] font-bold uppercase transition-all cursor-pointer"
+                  >
+                    Pulse Orb
+                  </button>
+                </div>
+              </div>
+
+              {/* Middle Interactive Touch-Friendly Node Selector Carousel */}
+              <div className="bg-slate-900/90 border-b border-cyan-500/20 px-3 py-1.5 flex items-center gap-2 overflow-x-auto shrink-0 custom-scrollbar">
+                <span className="text-[9px] font-mono uppercase tracking-widest text-cyan-400 font-bold shrink-0 flex items-center gap-1 pr-2 border-r border-slate-800">
+                  <i className="ri-nodes-line"></i> Nodes:
+                </span>
+                {PANEL_DEFINITIONS.map(panel => {
+                  const isOpen = activeCluster.openNodeIds.some(id => id.startsWith(panel.id));
+                  return (
+                    <button
+                      key={panel.id}
+                      onClick={() => handleAppClick(panel.id)}
+                      className={`px-3 py-1 rounded-lg border font-mono text-[9.5px] uppercase tracking-wider flex items-center gap-1.5 shrink-0 transition-all cursor-pointer ${
+                        isOpen 
+                          ? 'bg-cyan-500/25 border-cyan-400 text-cyan-200 font-bold shadow-[0_0_10px_rgba(6,182,212,0.3)]' 
+                          : 'bg-slate-950/60 border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700'
+                      }`}
+                    >
+                      <i className={`${panel.icon} text-cyan-400`}></i>
+                      <span>{panel.name}</span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Bottom Focused Tool Viewer (Zero Overlapping Clutter) */}
+              <div className="flex-1 w-full overflow-hidden p-1 sm:p-2 relative bg-slate-950">
+                <Workspace2D 
+                  activeCluster={activeCluster}
+                  updateActiveCluster={updateActiveCluster}
+                  active2dNodeId={active2dNodeId}
+                  setActive2dNodeId={setActive2dNodeId}
+                  handlePanelNodeClick={handlePanelNodeClick}
+                  handleSwapPanel={handleSwapPanel}
+                  handlePinPanel={handlePinPanel}
+                  getPanelContent={getPanelContent}
+                  PANEL_DEFINITIONS={PANEL_DEFINITIONS}
+                  setWorkspaceMode={setWorkspaceMode}
+                  workspaceMode={workspaceMode}
+                />
+              </div>
+            </div>
+          ) : workspaceMode === 'grid' || workspaceMode === '2d' ? (
+            /* 3D DESK GRID MODE (Bento Desk with Live Integrated 3D Core Stage) */
+            <Workspace2D 
+              activeCluster={activeCluster}
+              updateActiveCluster={updateActiveCluster}
+              active2dNodeId={active2dNodeId}
+              setActive2dNodeId={setActive2dNodeId}
+              handlePanelNodeClick={handlePanelNodeClick}
+              handleSwapPanel={handleSwapPanel}
+              handlePinPanel={handlePinPanel}
               getPanelContent={getPanelContent}
-              systemState={systemState}
-              orbMode={activeCluster.orbMode}
-              particleMode={activeCluster.particleMode}
-              onPinPanel={handlePinPanel}
-              onClosePanel={(id) => updateActiveCluster({ openNodeIds: activeCluster.openNodeIds.filter(pid => pid !== id) })}
-              onTacticalBrief={handleTacticalBrief}
-              nodeAnimationSpeed={activeCluster.nodeAnimationSpeed}
-              masterPanelSize={activeCluster.masterPanelSize}
-              nodeSpacing={activeCluster.nodeSpacing}
-              nodeFlow={activeCluster.nodeFlow}
-              onCoreOrbClick={handleCoreOrbClick}
-              subAgents={subAgents}
-              thoughts={thoughts}
-              photoSources={activeCluster.photoSources}
-              onSwapPanel={handleSwapPanel}
-              navigationInput={navigationInput}
-              flightInput={flightInput}
-              recenterTrigger={recenterTrigger}
-              autoRecenter={autoRecenter}
-              isLiveActive={liveApi.isActive}
-              liveVolume={liveApi.volume}
+              PANEL_DEFINITIONS={PANEL_DEFINITIONS}
+              setWorkspaceMode={setWorkspaceMode}
+              workspaceMode={workspaceMode}
             />
-          </ThreeErrorBoundary>
-        ) : (
-          /* SAFE 2D ECO-LATTICE WORKSPACE */
-          <Workspace2D 
-            activeCluster={activeCluster}
-            updateActiveCluster={updateActiveCluster}
-            active2dNodeId={active2dNodeId}
-            setActive2dNodeId={setActive2dNodeId}
-            handlePanelNodeClick={handlePanelNodeClick}
-            handleSwapPanel={handleSwapPanel}
-            handlePinPanel={handlePinPanel}
-            getPanelContent={getPanelContent}
-            PANEL_DEFINITIONS={PANEL_DEFINITIONS}
-            setWorkspaceMode={setWorkspaceMode}
-            workspaceMode={workspaceMode}
-          />
-        )}
+          ) : (
+            /* 3D IMMERSIVE UNIVERSE MODE (Full Canvas Spatial Experience) */
+            <ThreeErrorBoundary
+              fallback={
+                <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-slate-950 p-6 text-center select-none">
+                  <div className="w-16 h-16 rounded-full border-2 border-emerald-500/20 animate-ping flex items-center justify-center mb-6">
+                    <i className="ri-error-warning-line text-emerald-400 text-2xl animate-pulse"></i>
+                  </div>
+                  <h2 className="text-lg font-mono text-emerald-400 uppercase tracking-widest font-semibold text-center">WebGL Engine Suspended</h2>
+                  <p className="text-slate-400 font-mono text-[9px] max-w-sm mt-3 leading-relaxed uppercase break-words px-4">
+                    Hardware acceleration lost. Loading Safe 2D Desk...
+                  </p>
+                  <button 
+                    onClick={() => setWorkspaceMode('2d')}
+                    className="mt-6 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 font-mono text-[10px] uppercase text-slate-950 font-bold rounded-lg tracking-widest shadow-[0_0_15px_rgba(16,185,129,0.3)] transition-all cursor-pointer"
+                  >
+                    Activate Safe 2D Layout
+                  </button>
+                </div>
+              }
+              onError={() => {
+                console.warn("WebGL crash in Immersive Mode. Cascading to 2D Desk.");
+                setWorkspaceMode('2d');
+              }}
+            >
+              <Suspense fallback={<Cyber3DLoader />}>
+                <JarvisDesktop3D 
+                  agentState={agentState}
+                  activeGlyphs={activeGlyphs}
+                  selectedGlyphId={selectedGlyphId}
+                  onGlyphClick={handleGlyphClick}
+                  onExtrudeGlyph={handleExtrudeGlyph}
+                  setBridge={setBridge}
+                  onOrbClick={handleCoreOrbClick}
+                />
+
+                <CodexOrbSystem
+                  onNodeHover={handleNodeHover}
+                  axiomsRevealed={true}
+                  panels={PANEL_DEFINITIONS}
+                  clusterNodes={activeCluster.nodes}
+                  onPanelNodeClick={handlePanelNodeClick}
+                  openNodeIds={activeCluster.openNodeIds}
+                  panelLayout={activeCluster.layout}
+                  getPanelContent={getPanelContent}
+                  systemState={systemState}
+                  orbMode={activeCluster.orbMode}
+                  particleMode={activeCluster.particleMode}
+                  onPinPanel={handlePinPanel}
+                  onClosePanel={(id) => updateActiveCluster({ openNodeIds: activeCluster.openNodeIds.filter(pid => pid !== id) })}
+                  onTacticalBrief={handleTacticalBrief}
+                  nodeAnimationSpeed={activeCluster.nodeAnimationSpeed}
+                  masterPanelSize={activeCluster.masterPanelSize}
+                  nodeSpacing={activeCluster.nodeSpacing}
+                  nodeFlow={activeCluster.nodeFlow}
+                  onCoreOrbClick={handleCoreOrbClick}
+                  subAgents={subAgents}
+                  thoughts={thoughts}
+                  photoSources={activeCluster.photoSources}
+                  onSwapPanel={handleSwapPanel}
+                  navigationInput={navigationInput}
+                  flightInput={flightInput}
+                  recenterTrigger={recenterTrigger}
+                  autoRecenter={autoRecenter}
+                  isLiveActive={isVoiceActive}
+                  liveVolume={0}
+                  nvkOrbState={nvkOrbState}
+                />
+              </Suspense>
+            </ThreeErrorBoundary>
+          )}
+        </div>
 
         <AnimatePresence>
           {swappingNodeId && (
@@ -1704,6 +1957,17 @@ const mockShatterpointData = {
             </motion.div>
           )}
         </AnimatePresence>
+
+        {/* NVK Living Intelligence Interface Command Layer */}
+        <NVKCommandLayer
+          orbState={nvkOrbState}
+          onSetOrbState={setNvkOrbState}
+          onExecuteAction={handleExecuteNVKAction}
+          isVoiceActive={isVoiceActive}
+          onToggleVoice={isVoiceActive ? (() => setIsVoiceActive(false)) : (() => setIsVoiceActive(true))}
+          activeWorkflow={activeNVKWorkflow}
+          activitySteps={nvkActivitySteps}
+        />
 
         {/* Clean Dock at the bottom */}
         <Dock 

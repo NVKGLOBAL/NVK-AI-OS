@@ -53,7 +53,7 @@ export const Workspace2D: React.FC<Workspace2DProps> = ({
       layoutType: 'tab',
       showOrb: true,
       compactMode: false,
-      customTitle: 'NVK OS ECO-LATTICE',
+      customTitle: 'NVK 3D OS Workspace',
       panelOpacity: 0.90,
       bgWallpaper: 'grid',
       columnCount: 2
@@ -62,7 +62,11 @@ export const Workspace2D: React.FC<Workspace2DProps> = ({
     try {
       const saved = localStorage.getItem('nvk_2d_workspace_config');
       if (saved) {
-        return { ...defaults, ...JSON.parse(saved) };
+        const parsed = JSON.parse(saved);
+        if (parsed.customTitle === 'NVK OS ECO-LATTICE' || !parsed.customTitle) {
+          parsed.customTitle = 'NVK 3D OS Workspace';
+        }
+        return { ...defaults, ...parsed };
       }
     } catch (e) {
       console.warn("Storage restricted or unreadable:", e);
@@ -271,7 +275,7 @@ export const Workspace2D: React.FC<Workspace2DProps> = ({
               onChange={(e) => setEditingTitle(e.target.value)}
               onBlur={() => {
                 setIsEditingTitleInline(false);
-                const titleVal = editingTitle.trim() || 'NVK OS ECO-LATTICE';
+                const titleVal = editingTitle.trim() || 'NVK 3D OS Workspace';
                 setEditingTitle(titleVal);
                 updateConfig({ customTitle: titleVal });
                 showAlert("Workspace Title Updated");
@@ -279,7 +283,7 @@ export const Workspace2D: React.FC<Workspace2DProps> = ({
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
                   setIsEditingTitleInline(false);
-                  const titleVal = editingTitle.trim() || 'NVK OS ECO-LATTICE';
+                  const titleVal = editingTitle.trim() || 'NVK 3D OS Workspace';
                   setEditingTitle(titleVal);
                   updateConfig({ customTitle: titleVal });
                   showAlert("Workspace Title Updated");

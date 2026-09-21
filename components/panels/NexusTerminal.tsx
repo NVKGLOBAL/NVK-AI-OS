@@ -12,9 +12,9 @@ interface NexusTerminalProps {
 
 const NexusTerminal: React.FC<NexusTerminalProps> = ({ addThought, spawnSubAgent }) => {
   const [history, setHistory] = useState<TerminalLine[]>([
-    { type: 'system', text: 'Angelic OS Nexus Terminal v1.0.0' },
-    { type: 'system', text: 'Initializing secure NVK environment...' },
-    { type: 'system', text: 'Type "help" for a list of available commands.' }
+    { type: 'system', text: 'NVK 3D OS — Sovereign Nexus Terminal v2.1' },
+    { type: 'system', text: 'AI you own. Local-first intelligence. Your data stays with you by default.' },
+    { type: 'system', text: 'Type "help" for available commands, or tell NVK what you want to accomplish.' }
   ]);
   const [input, setInput] = useState('');
   const [commandHistory, setCommandHistory] = useState<string[]>([]);
@@ -97,7 +97,7 @@ const NexusTerminal: React.FC<NexusTerminalProps> = ({ addThought, spawnSubAgent
       addThought(`Executing: ${trimmed}`);
     }
 
-    const newHistory: TerminalLine[] = [...history, { type: 'input', text: `PS C:\\ANGELIC_OS\\NEXUS> ${trimmed}` }];
+    const newHistory: TerminalLine[] = [...history, { type: 'input', text: `nvk@sovereign:~$ ${trimmed}` }];
     setHistory(newHistory);
     setInput('');
     
@@ -109,7 +109,7 @@ const NexusTerminal: React.FC<NexusTerminalProps> = ({ addThought, spawnSubAgent
     if (command === 'npm' && args.includes('install') && args.includes('-g')) {
       setHistory(prev => [...prev, { 
         type: 'error', 
-        text: '[Angelic OS Safeguard] Global installations (-g) are restricted in this cloud environment. Please use "npx" to run CLI tools directly, or install locally without the -g flag.' 
+        text: '[NVK OS Safeguard] Global installations (-g) are restricted in this cloud container environment. Please use "npx" to run CLI tools directly, or install locally without the -g flag.' 
       }]);
       setInput('');
       return;
@@ -235,14 +235,24 @@ const NexusTerminal: React.FC<NexusTerminalProps> = ({ addThought, spawnSubAgent
         output = { type: 'output', text: `Analyzing data stream... Pattern recognized. Confidence: 94.2%.` };
         setHistory(prev => [...prev, output!]);
         break;
-      default:
-        // Execute real terminal command
-        if (isHitlEnabled) {
+      default: {
+        // Classify safe inspection commands vs potentially dangerous mutating commands
+        const parts = trimmed.split(/\s+/);
+        const baseCmd = parts[0].toLowerCase();
+        const safeBaseCommands = ['ls', 'dir', 'pwd', 'whoami', 'uname', 'date', 'uptime', 'echo', 'cat', 'head', 'tail', 'grep', 'wc', 'find', 'which', 'df', 'free', 'id'];
+        
+        let isSafe = safeBaseCommands.includes(baseCmd) && !trimmed.includes('>') && !trimmed.includes('>>') && !trimmed.includes('|');
+        if (baseCmd === 'git' && ['status', 'log', 'branch', 'diff', 'show'].includes(parts[1]?.toLowerCase())) isSafe = true;
+        if (baseCmd === 'node' && ['-v', '--version'].includes(parts[1]?.toLowerCase())) isSafe = true;
+        if (baseCmd === 'npm' && ['-v', '--version', 'list'].includes(parts[1]?.toLowerCase())) isSafe = true;
+
+        if (isHitlEnabled && !isSafe) {
           setPendingCommand(trimmed);
         } else {
           await executeShellCommand(trimmed);
         }
         break;
+      }
     }
   };
 

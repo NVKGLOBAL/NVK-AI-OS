@@ -9,7 +9,7 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { CSS3DRenderer, CSS3DObject } from 'three/addons/renderers/CSS3DRenderer.js';
 import { gsap } from 'gsap';
 import { CyberSynth, playHaptic } from '../lib/soundEffects';
-import type { PanelDefinition, NodeInfo, SubAgent, ThoughtGlyph, ClusterNode, NavigationInput } from '../types';
+import type { PanelDefinition, NodeInfo, SubAgent, ThoughtGlyph, ClusterNode, NavigationInput, NVKOrbState } from '../types';
 import { OrbMode, ParticleBackgroundMode, PanelLayout } from '../types';
 import type { SystemStateContextType } from '../context/SystemContext';
 
@@ -229,6 +229,7 @@ interface CodexOrbSystemProps {
   scanlineFactor?: number;
   isLiveActive?: boolean;
   liveVolume?: number;
+  nvkOrbState?: NVKOrbState;
 }
 
 type PanelObject = {
@@ -272,6 +273,7 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
   scanlineFactor = 0.12,
   isLiveActive = false,
   liveVolume = 0,
+  nvkOrbState = 'IDLE',
 }) => {
   const mountRef = useRef<HTMLDivElement>(null);
   const navigationInputRef = useRef<NavigationInput | null>(null);
@@ -320,6 +322,7 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
 
   const hoveredCoreRef = useRef<THREE.Object3D | null>(null);
   const autoRecenterRef = useRef(autoRecenter);
+  const nvkOrbStateRef = useRef<NVKOrbState>(nvkOrbState);
   const [rendererError, setRendererError] = React.useState(false);
   const [retryCount, setRetryCount] = React.useState(0);
 
@@ -360,6 +363,10 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
     onTacticalBriefRef.current = onTacticalBrief;
     onSwapPanelRef.current = onSwapPanel;
   }, [onNodeHover, onPanelNodeClick, onCoreOrbClick, onTacticalBrief, onSwapPanel]);
+
+  useEffect(() => {
+    nvkOrbStateRef.current = nvkOrbState;
+  }, [nvkOrbState]);
 
   useEffect(() => {
     speedRef.current = nodeAnimationSpeed;
@@ -1275,8 +1282,31 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
             }
 
             if (orb.material instanceof THREE.ShaderMaterial) {
-              orb.material.uniforms.uTime.value = elapsedTime * pulseSpeed;
-              orb.material.uniforms.uEntropy.value = entropyValue;
+              const currentNvkState = nvkOrbStateRef.current;
+              let targetColor = new THREE.Vector3(0.0, 0.9, 1.0); // default cyan
+              let stateEntropyBoost = 0;
+
+              if (currentNvkState === 'LISTENING') {
+                targetColor = new THREE.Vector3(0.1, 0.65, 1.0);
+              } else if (currentNvkState === 'THINKING') {
+                targetColor = new THREE.Vector3(0.75, 0.2, 1.0);
+                stateEntropyBoost = 0.4;
+              } else if (currentNvkState === 'ACTING') {
+                targetColor = new THREE.Vector3(0.0, 1.0, 0.55);
+                stateEntropyBoost = 0.25;
+              } else if (currentNvkState === 'DISCOVERY') {
+                targetColor = new THREE.Vector3(1.0, 0.75, 0.1);
+              } else if (currentNvkState === 'ERROR') {
+                targetColor = new THREE.Vector3(1.0, 0.2, 0.25);
+                stateEntropyBoost = 0.6;
+              }
+
+              if (orb.material.uniforms.uColor) {
+                orb.material.uniforms.uColor.value.lerp(targetColor, 0.1 * dtSim);
+              }
+
+              orb.material.uniforms.uTime.value = elapsedTime * pulseSpeed * (currentNvkState === 'THINKING' ? 2.2 : 1.0);
+              orb.material.uniforms.uEntropy.value = Math.min(1.0, entropyValue + stateEntropyBoost);
               orb.material.uniforms.uMouse.value.copy(mouse3D);
               orb.material.uniforms.uClickPos.value.copy(clickWave3D.position);
               orb.material.uniforms.uClickRadius.value = clickWave3D.radius;

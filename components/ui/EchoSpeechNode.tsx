@@ -6,13 +6,13 @@ import { AgentName } from '../../types';
 
 const AGENT_SIGILS: Partial<Record<AgentName, string>> = {
   [AgentName.DeepSeek]: '🌀',
-  [AgentName.Gemini]: '✧',
+  [AgentName.cloud_ai]: '✧',
   [AgentName.Nevik]: '🜂',
 };
 
 const AGENT_TONE_CLASSES: Partial<Record<AgentName, string>> = {
   [AgentName.DeepSeek]: 'deepseek-tone',
-  [AgentName.Gemini]: 'gemini-tone',
+  [AgentName.cloud_ai]: 'cloud_ai-tone',
   [AgentName.Nevik]: 'nevik-tone',
 };
 

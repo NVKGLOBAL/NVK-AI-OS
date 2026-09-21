@@ -38,34 +38,34 @@ const PanelLauncher: React.FC<PanelLauncherProps> = ({ panels, onPanelSelect }) 
   });
 
   return (
-    <div className="panel-launcher p-4 h-full flex flex-col">
-      <h3 className="text-xl font-cinzel font-semibold text-sky-300 mb-4 text-center">
+    <div className="panel-launcher p-2 sm:p-4 h-full flex flex-col">
+      <h3 className="text-xs sm:text-base font-mono uppercase tracking-widest font-semibold text-sky-300 mb-1.5 sm:mb-3 text-center">
         Panel Directory
       </h3>
       <input
         type="text"
-        placeholder="Search panels by name or description..."
+        placeholder="Search panels..."
         value={searchTerm}
         onChange={(e) => setSearchTerm(e.target.value)}
-        className="w-full p-2 mb-4 bg-slate-800/70 border border-slate-600 rounded-md text-slate-100 placeholder-slate-400 focus:ring-2 focus:ring-sky-500 focus:border-sky-500 transition-colors duration-200"
+        className="w-full p-1 px-2.5 mb-2 text-[10px] sm:text-xs bg-slate-800/70 border border-slate-600 rounded-md text-slate-100 placeholder-slate-400 focus:ring-2 focus:ring-sky-500 focus:border-sky-500 transition-colors duration-200 font-mono"
         aria-label="Search Panels"
       />
       <a
         href="https://www.nvkglobal.com"
         target="_blank"
         rel="noopener noreferrer"
-        className="w-full text-center p-2 mb-4 rounded-md bg-purple-600 hover:bg-purple-500 text-white font-cinzel tracking-wider transition-all duration-200 flex items-center justify-center gap-2"
+        className="w-full text-center p-1 px-2 mb-2 text-[10px] sm:text-xs rounded-md bg-purple-600/90 hover:bg-purple-500 text-white font-mono tracking-wider transition-all duration-200 flex items-center justify-center gap-1.5"
       >
         <i className="ri-global-line"></i>
-        Go To The NVK NEXUS
+        NVK NEXUS
       </a>
-      <div className="flex-grow overflow-y-auto custom-scrollbar pr-2 -mr-2">
+      <div className="flex-grow overflow-y-auto custom-scrollbar pr-1 -mr-1">
         {sortedCategories.length === 0 && (
-          <p className="text-center text-slate-500 italic mt-8">No panels match your search.</p>
+          <p className="text-center text-slate-500 italic mt-4 text-[10px]">No panels match search.</p>
         )}
         {sortedCategories.map(category => (
-          <div key={category} className="mb-4">
-            <h4 className="text-md font-cinzel text-sky-400 mb-2 border-b border-sky-700/50 pb-1">
+          <div key={category} className="mb-3">
+            <h4 className="text-[10px] sm:text-xs font-mono tracking-widest uppercase text-sky-400 mb-1.5 border-b border-sky-700/50 pb-0.5">
               {category}
             </h4>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">

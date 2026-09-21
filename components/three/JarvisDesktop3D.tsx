@@ -69,16 +69,16 @@ const OrbitingGlyph: React.FC<{
         </Html>
 
         {isFocused && (
-          <Html position={[4.5, 0, 0]} center distanceFactor={10}>
-             <div className="w-[450px] h-[350px] bg-slate-950/90 border border-cyan-500/30 rounded-xl shadow-2xl p-4 overflow-hidden relative group">
-                <div className="flex justify-between items-center mb-2 pb-2 border-b border-white/10">
-                   <span className="text-[10px] font-mono text-cyan-400 uppercase tracking-widest">{glyph.name} // NODE_ALPHA</span>
-                   <button onClick={(e) => { e.stopPropagation(); }} className="text-white/40 hover:text-rose-400">
-                      <i className="ri-close-line"></i>
+          <Html position={[0, -1.5, 0]} center distanceFactor={12}>
+             <div className="w-[88vw] sm:w-[420px] max-h-[280px] sm:max-h-[340px] bg-slate-950/95 border border-cyan-500/40 rounded-xl shadow-2xl p-3 sm:p-4 overflow-hidden relative group">
+                <div className="flex justify-between items-center mb-2 pb-1.5 border-b border-white/10">
+                   <span className="text-[10px] font-mono text-cyan-400 uppercase tracking-widest truncate">{glyph.name} // NODE_ALPHA</span>
+                   <button onClick={(e) => { e.stopPropagation(); onClick(); }} className="w-5 h-5 rounded-full bg-slate-800 hover:bg-rose-500/80 text-white/70 hover:text-white flex items-center justify-center transition-all cursor-pointer">
+                      <i className="ri-close-line text-xs font-bold"></i>
                    </button>
                 </div>
-                <div className="h-full overflow-y-auto custom-scrollbar">
-                   {glyph.content || <div className="text-slate-500 italic p-4 text-center">Neural data stream initializing...</div>}
+                <div className="h-[200px] sm:h-[260px] overflow-y-auto custom-scrollbar text-xs">
+                   {glyph.content || <div className="text-slate-500 italic p-4 text-center font-mono text-[10px]">Neural data stream initializing...</div>}
                 </div>
              </div>
           </Html>
@@ -142,6 +142,37 @@ const PerformanceScaler: React.FC<{
   return null;
 };
 
+const CanvasResizeHandler: React.FC = () => {
+  const { camera, gl, size } = useThree();
+  useEffect(() => {
+    if (camera instanceof THREE.PerspectiveCamera) {
+      camera.aspect = size.width / size.height;
+      camera.updateProjectionMatrix();
+    }
+    gl.setSize(size.width, size.height);
+  }, [size, camera, gl]);
+  return null;
+};
+
+const ThrottledRenderer: React.FC<{ isTabVisible: boolean }> = ({ isTabVisible }) => {
+  const lastRenderTime = useRef(0);
+
+  useFrame((state) => {
+    const now = performance.now();
+    
+    if (!isTabVisible) {
+      // Out of focus: dynamically reduce the render frequency to 1 frame per 1000ms (1 Hz) to drastically optimize GPU/CPU cycles
+      if (now - lastRenderTime.current < 1000) {
+        return;
+      }
+    }
+    
+    lastRenderTime.current = now;
+    state.gl.render(state.scene, state.camera);
+  }, 1);
+
+  return null;
+};
 const CameraController: React.FC<{
   targetDistance: number;
   setTargetDistance: React.Dispatch<React.SetStateAction<number>>;
@@ -205,8 +236,56 @@ export const JarvisDesktop3D: React.FC<JarvisDesktop3DProps> = ({
 }) => {
   const sceneRef = useRef<THREE.Scene>(null);
   const coreRef = useRef<any>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const { isMobile, performanceTier } = useSystemState();
   const bridgeCreated = useRef(false);
+
+  const [webglSupported, setWebglSupported] = useState<boolean | null>(null);
+  const [webglError, setWebglError] = useState<string>('');
+  const [isTabVisible, setIsTabVisible] = useState(true);
+
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      setIsTabVisible(document.visibilityState === 'visible');
+    };
+    const handleFocus = () => setIsTabVisible(true);
+    const handleBlur = () => setIsTabVisible(false);
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleFocus);
+    window.addEventListener('blur', handleBlur);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleFocus);
+      window.removeEventListener('blur', handleBlur);
+    };
+  }, []);
+
+  useEffect(() => {
+    try {
+      const canvas = document.createElement('canvas');
+      const gl = canvas.getContext('webgl2') || canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+      if (!gl) {
+        setWebglSupported(false);
+        setWebglError('WebGL rendering context could not be acquired. Hardware acceleration might be disabled or your browser/device GPU is unsupported.');
+      } else {
+        setWebglSupported(true);
+      }
+    } catch (err: any) {
+      setWebglSupported(false);
+      setWebglError(err?.message || 'WebGL check threw an unexpected exception.');
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!containerRef.current) return;
+    const observer = new ResizeObserver(() => {
+      // Container resized, keeps WebGL viewport synced without re-initialization
+    });
+    observer.observe(containerRef.current);
+    return () => observer.disconnect();
+  }, []);
 
   // Dynamic performance scaling states
   const [localPerformanceTier, setLocalPerformanceTier] = useState<'low' | 'high'>(performanceTier === 'low' ? 'low' : 'high');
@@ -273,9 +352,44 @@ export const JarvisDesktop3D: React.FC<JarvisDesktop3DProps> = ({
     }
   }, [sceneRef.current, !!setBridge]); // Minimal dependencies to prevent loops
 
+  if (webglSupported === false) {
+    return (
+      <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-slate-950 p-6 text-center select-none font-mono">
+        <div className="max-w-md w-full bg-slate-900/90 border border-rose-500/30 rounded-2xl p-6 backdrop-blur-xl shadow-[0_0_30px_rgba(244,63,94,0.15)]">
+          <div className="w-16 h-16 rounded-full border border-rose-500/20 bg-rose-500/5 flex items-center justify-center mb-6 mx-auto animate-pulse">
+            <i className="ri-error-warning-line text-rose-400 text-3xl"></i>
+          </div>
+          <h2 className="text-xs uppercase tracking-widest text-rose-400 font-bold mb-2">
+            NVK-OS // WebGL Initialization Fault
+          </h2>
+          <div className="h-px bg-rose-500/20 my-4 w-full" />
+          <p className="text-slate-400 text-[10px] uppercase leading-relaxed text-left mb-4 bg-black/40 border border-white/5 rounded px-3 py-2.5">
+            Diagnostics: {webglError || 'Hardware context unavailable. WebGL context acquisition returned null.'}
+          </p>
+          <div className="text-slate-500 text-[9px] text-left uppercase space-y-2 leading-relaxed">
+            <div className="text-rose-400/80 font-bold mb-1">// TROUBLESHOOTING CHECKLIST:</div>
+            <div>1. Ensure "Use graphics acceleration when available" is enabled in browser system settings.</div>
+            <div>2. Visit chrome://flags and search for "Override software rendering list" (toggle to enabled).</div>
+            <div>3. Check if your device GPU driver is updated to the latest stable release.</div>
+          </div>
+          
+          <div className="mt-6 flex flex-col gap-2">
+            <button 
+              onClick={() => window.location.reload()}
+              className="px-4 py-2 bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/40 text-rose-300 font-bold uppercase tracking-widest text-[9px] rounded-lg transition-all cursor-pointer"
+            >
+              Retry Initialization
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div 
-      className="fixed inset-0 z-0 bg-slate-950 select-none"
+      ref={containerRef}
+      className="fixed inset-0 z-0 bg-slate-950 select-none pointer-events-auto"
       onDoubleClick={(e) => {
         const target = e.target as HTMLElement;
         if (target.tagName === 'CANVAS' || target.classList.contains('bg-slate-950')) {
@@ -329,10 +443,11 @@ export const JarvisDesktop3D: React.FC<JarvisDesktop3DProps> = ({
         </button>
       </div>
 
-      <Canvas shadows={localPerformanceTier !== 'low'} dpr={dpr} onCreated={({ scene }) => { (sceneRef.current as any) = scene; }}>
+      <Canvas shadows={false} dpr={dpr} onCreated={({ scene }) => { (sceneRef.current as any) = scene; }}>
         <PerspectiveCamera makeDefault position={[0, 0, isMobile ? 25 : 20]} fov={isMobile ? 65 : 50} />
         <OrbitControls 
           ref={controlsRef}
+          enableRotate={true}
           enablePan={false} 
           enableZoom={true} 
           minDistance={8} 
@@ -352,12 +467,14 @@ export const JarvisDesktop3D: React.FC<JarvisDesktop3DProps> = ({
           }}
         />
 
-        <Suspense fallback={null}>
+        <Suspense fallback={<Html center><div className="text-white">Loading 3D...</div></Html>}>
           <PerformanceScaler 
             onFpsUpdate={setFps} 
             onDprUpdate={handleDprUpdate} 
             initialDpr={performanceTier === 'low' ? 0.75 : 1.25}
           />
+          <CanvasResizeHandler />
+          <ThrottledRenderer isTabVisible={isTabVisible} />
           <CameraController 
             targetDistance={targetDistance}
             setTargetDistance={setTargetDistance}
@@ -372,7 +489,9 @@ export const JarvisDesktop3D: React.FC<JarvisDesktop3DProps> = ({
           ) : (
             <directionalLight intensity={1.5} position={[10, 10, 10]} />
           )}
-          <ambientLight intensity={0.2} />
+          <ambientLight intensity={1.2} />
+          <directionalLight intensity={2.5} position={[15, 25, 15]} color="#ffffff" />
+          <pointLight position={[0, 0, 0]} intensity={6.0} color="#00ffb3" distance={15} />
           
           <AgentCore state={agentState} onOrbClick={onOrbClick} />
 

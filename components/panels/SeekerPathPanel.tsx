@@ -6,14 +6,14 @@ import React, { useState } from 'react';
 // SeekerPathPanelProps definition was here. It is conceptually replaced.
 interface SeekerPathPanelProps {
   seekerTraits: string[];
-  invokeGeminiImage?: (prompt: string) => Promise<string | null>; 
+  invokecloud_aiImage?: (prompt: string) => Promise<string | null>; 
   isGeneratingSigil?: boolean; 
 }
 */
 
 // const SeekerPathPanel: React.FC<SeekerPathPanelProps> = ({ 
 //   seekerTraits,
-//   invokeGeminiImage, 
+//   invokecloud_aiImage, 
 //   isGeneratingSigil: isGeneratingSigilGlobal 
 // }) => {
 //   const [generatedSigilImage, setGeneratedSigilImage] = useState<string | null>(null);
@@ -21,7 +21,7 @@ interface SeekerPathPanelProps {
 //   const [sigilGenerationError, setSigilGenerationError] = useState<string | null>(null);
 
 //   const handleForgeSigil = async () => {
-//     if (!invokeGeminiImage) {
+//     if (!invokecloud_aiImage) {
 //       setSigilGenerationError("Image generation service is not available.");
 //       return;
 //     }
@@ -37,7 +37,7 @@ interface SeekerPathPanelProps {
 //     try {
 //       // console.log(AgentName.SeekerPath, `Forging sigil with prompt: "${prompt.substring(0, 100)}..."`); 
       
-//       const imageUrl = await invokeGeminiImage(prompt);
+//       const imageUrl = await invokecloud_aiImage(prompt);
 //       if (imageUrl) {
 //         setGeneratedSigilImage(imageUrl);
 //          // console.log(AgentName.SeekerPath, "Sigil forged successfully.");
@@ -112,7 +112,7 @@ interface SeekerPathPanelProps {
 //           <button 
 //             onClick={handleForgeSigil}
 //             className="w-full px-4 py-2 text-sm rounded-button bg-amber-600 hover:bg-amber-500 text-white transition-colors disabled:bg-slate-600 disabled:text-slate-400 disabled:cursor-not-allowed mb-2 flex items-center justify-center group"
-//             disabled={isLoading || !invokeGeminiImage}
+//             disabled={isLoading || !invokecloud_aiImage}
 //             aria-busy={isLoading}
 //             aria-label={isLoading ? "Forging sigil, please wait" : "Forge a new sigil based on current traits"}
 //           >

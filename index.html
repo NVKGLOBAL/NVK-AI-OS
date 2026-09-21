@@ -5,7 +5,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <script>
-    // System-wide proactive error capture and telemetry
+    // System-wide proactive error logging and telemetry
     window.addEventListener('error', function(event) {
       const errorMsg = event.message || (event.error ? event.error.message : 'Unknown script or resource error');
       const errorStack = event.error ? event.error.stack : '';
@@ -23,6 +23,8 @@
         return;
       }
 
+      console.warn("[NVK Log Captured]:", errorMsg, sourceFile);
+
       // Post telemetry
       fetch('/api/log-error', {
         method: 'POST',
@@ -34,30 +36,6 @@
           info: `Source: ${sourceFile}:${event.lineno}:${event.colno}`
         })
       }).catch(e => console.warn("Log endpoint inaccessible:", e));
-
-      // Visual safety fallback overlay
-      var overlay = document.getElementById('nvk-runtime-safety-mesh');
-      if (!overlay) {
-        overlay = document.createElement('div');
-        overlay.id = 'nvk-runtime-safety-mesh';
-        overlay.style = 'position:fixed;inset:0;background:#03030c;color:#10b981;font-family:monospace;padding:1.5rem;z-index:999999;overflow-y:auto;border:2px solid #ef4444;box-sizing:border-box;border-radius:8px;';
-        overlay.innerHTML = `
-          <div style="max-width:800px;margin:2rem auto;background:#000000;border:1px solid #1e293b;padding:2rem;border-radius:12px;box-shadow:0 0 30px rgba(0,255,180,0.1);">
-            <div style="border-bottom:1px solid #dc2626;padding-bottom:1rem;margin-bottom:1.5rem;">
-              <h1 style="color:#ef4444;margin:0;font-size:1.5rem;letter-spacing:2px;">[ NVK OS // RUNTIME CRASH RECOVERED ]</h1>
-              <p style="color:#64748b;margin:0.25rem 0 0 0;font-size:0.75rem;">HIGH-ACCURACY CRITICAL LEVEL FAILURE RECORDED</p>
-            </div>
-            <div style="background:#1b0000;color:#f87171;padding:1rem;border-radius:6px;border:1px solid rgba(239,68,68,0.2);font-size:0.875rem;margin-bottom:1.5rem;white-space:pre-wrap;word-break:break-all;" id="mesh-error-desc"></div>
-            <button onclick="window.location.reload()" style="background:#10b981;color:#03030c;border:none;padding:0.75rem 1.5rem;font-weight:bold;cursor:pointer;border-radius:6px;font-family:inherit;">RETRY HOT REBOOT</button>
-            <button onclick="localStorage.clear();window.location.reload()" style="background:#ef4444;color:#ffffff;border:none;padding:0.75rem 1.5rem;font-weight:bold;cursor:pointer;border-radius:6px;font-family:inherit;margin-left:1rem;">RESET HARD STATE</button>
-          </div>
-        `;
-        document.body.appendChild(overlay);
-      }
-      const descEl = document.getElementById('mesh-error-desc');
-      if (descEl) {
-        descEl.textContent += `\nError: ${errorMsg}\nLocation: ${sourceFile}:${event.lineno}:${event.colno}\n\nStack:\n${errorStack}`;
-      }
     });
 
     window.addEventListener('unhandledrejection', function(event) {
@@ -76,6 +54,8 @@
         return;
       }
 
+      console.warn("[NVK Rejection Captured]:", errorMsg);
+
       fetch('/api/log-error', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -86,34 +66,24 @@
           info: 'Promise unhandled rejection'
         })
       }).catch(e => console.warn("Log endpoint inaccessible:", e));
-
-      // Visual safety fallback overlay
-      var overlay = document.getElementById('nvk-runtime-safety-mesh');
-      if (!overlay) {
-        overlay = document.createElement('div');
-        overlay.id = 'nvk-runtime-safety-mesh';
-        overlay.style = 'position:fixed;inset:0;background:#03030c;color:#10b981;font-family:monospace;padding:1.5rem;z-index:999999;overflow-y:auto;border:2px solid #ef4444;box-sizing:border-box;border-radius:8px;';
-        overlay.innerHTML = `
-          <div style="max-width:800px;margin:2rem auto;background:#000000;border:1px solid #1e293b;padding:2rem;border-radius:12px;box-shadow:0 0 30px rgba(0,255,180,0.1);">
-            <div style="border-bottom:1px solid #dc2626;padding-bottom:1rem;margin-bottom:1.5rem;">
-              <h1 style="color:#ef4444;margin:0;font-size:1.5rem;letter-spacing:2px;">[ NVK OS // RUNTIME CRASH RECOVERED ]</h1>
-              <p style="color:#64748b;margin:0.25rem 0 0 0;font-size:0.75rem;">HIGH-ACCURACY CRITICAL LEVEL FAILURE RECORDED</p>
-            </div>
-            <div style="background:#1b0000;color:#f87171;padding:1rem;border-radius:6px;border:1px solid rgba(239,68,68,0.2);font-size:0.875rem;margin-bottom:1.5rem;white-space:pre-wrap;word-break:break-all;" id="mesh-error-desc"></div>
-            <button onclick="window.location.reload()" style="background:#10b981;color:#03030c;border:none;padding:0.75rem 1.5rem;font-weight:bold;cursor:pointer;border-radius:6px;font-family:inherit;">RETRY HOT REBOOT</button>
-            <button onclick="localStorage.clear();window.location.reload()" style="background:#ef4444;color:#ffffff;border:none;padding:0.75rem 1.5rem;font-weight:bold;cursor:pointer;border-radius:6px;font-family:inherit;margin-left:1rem;">RESET HARD STATE</button>
-          </div>
-        `;
-        document.body.appendChild(overlay);
-      }
-      const descEl = document.getElementById('mesh-error-desc');
-      if (descEl) {
-        descEl.textContent += `\nUnhandled Rejection: ${errorMsg}\n\nStack:\n${errorStack}`;
-      }
     });
   </script>
-  <title>NVK OS</title>
+  <title>NVK - NVK GLOBAL - Experience the future today</title>
+  <meta name="description" content="AI you own. Local-first intelligence. Your data stays with you by default. Tell NVK what you want to accomplish." />
+  <meta property="og:title" content="NVK - NVK GLOBAL - Experience the future today" />
+  <meta property="og:description" content="AI you own. Local-first intelligence. Your data stays with you by default. Tell NVK what you want to accomplish." />
+  <meta name="theme-color" content="#020617" />
+  <link rel="manifest" href="/manifest.json" />
   <link rel="icon" href="data:;base64,iVBORw0KGgo="> <!-- Default favicon to prevent 404 -->
+  <script>
+    if ('serviceWorker' in navigator && window.location.protocol.startsWith('http')) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js').catch((err) => {
+          console.debug('[NVK SW] Registration deferred or offline:', err);
+        });
+      });
+    }
+  </script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600&family=DM+Sans:wght@300;400;500&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">

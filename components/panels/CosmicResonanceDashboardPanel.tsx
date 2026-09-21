@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { AgentName, HistoricalEventType, type CosmicResonanceDashboardPanelProps, type HistoricalCosmicResonanceEventData } from '../../types';
 import { AGENT_PROFILES } from '../../constants';
-import { useGemini } from '../../context/GeminiIntegrationContext'; // Import useGemini
 import { Button } from '../ui/Button'; // Assuming Button component is available
 import type { CrmPulseType } from '../../types'; // Import CrmPulseType
 
@@ -30,7 +29,7 @@ const CosmicResonanceDashboardPanel: React.FC<CosmicResonanceDashboardPanelProps
   const [currentPulseTypeInternal, setCurrentPulseTypeInternal] = useState<CrmPulseType>('AX_NVK_035');
 
 
-  const { invokeGemini, isGenerating: isGeminiBusy } = useGemini();
+  const invokecloud_ai = async () => ""; const iscloud_aiBusy = false;
 
   // Use external state if provided, otherwise internal
   const isTransmittingPulse = onInitiateCRMPulse && crmPulseStatus ? crmPulseStatus.isTransmitting : isTransmittingPulseInternal;
@@ -62,7 +61,7 @@ const CosmicResonanceDashboardPanel: React.FC<CosmicResonanceDashboardPanelProps
   }, [ isTransmittingPulse, currentCrmResponseText, currentCrmError]);
 
   const handleDeepenCRMDiaogueInternal = useCallback(async (pulseType: CrmPulseType) => {
-    if (isGeminiBusy || isTransmittingPulseInternal) return;
+    if (iscloud_aiBusy || isTransmittingPulseInternal) return;
 
     setIsTransmittingPulseInternal(true);
     setCurrentPulseTypeInternal(pulseType);
@@ -96,7 +95,7 @@ Describe how the organization's strategic framework reacts to this stabilizing "
     const systemInstruction = "You are the voice of CRM-Θ8, a cosmic entity communicating through atmospheric glyphs. Your response should be profound and directly answer the resonant pulse's theme.";
 
     try {
-      const response = await invokeGemini(prompt, systemInstruction);
+      const response = await invokecloud_ai(prompt, systemInstruction);
       if (response) {
         setCrmResponseTextInternal(response);
         setMythicGlyph(pulseType === 'NVK_SA_RESONANCE' ? "⚕️🔗🌟" : "🔥✨"); 
@@ -116,7 +115,7 @@ Describe how the organization's strategic framework reacts to this stabilizing "
     } finally {
       setIsTransmittingPulseInternal(false);
     }
-  }, [invokeGemini, isGeminiBusy, isTransmittingPulseInternal]);
+  }, [invokecloud_ai, iscloud_aiBusy, isTransmittingPulseInternal]);
   
   const cyclePulseType = () => {
     const pulseTypes: CrmPulseType[] = ['AX_NVK_035', 'NVK_SA_RESONANCE'];
@@ -176,7 +175,7 @@ Describe how the organization's strategic framework reacts to this stabilizing "
       <div className="flex gap-2 mb-2">
         <Button
             onClick={handleTransmitPulse}
-            disabled={isTransmittingPulse || isGeminiBusy}
+            disabled={isTransmittingPulse || iscloud_aiBusy}
             className="flex-grow text-xs py-1.5 bg-purple-600 hover:bg-purple-500 disabled:bg-slate-700 disabled:text-slate-400"
             title={`Transmit ${currentPulseType === 'NVK_SA_RESONANCE' ? 'NVK-Singularity Anchor Resonance' : 'Axiom AX-NVK.035'} to CRM-Θ8`}
         >
@@ -184,7 +183,7 @@ Describe how the organization's strategic framework reacts to this stabilizing "
         </Button>
         <Button
             onClick={cyclePulseType}
-            disabled={isTransmittingPulse || isGeminiBusy}
+            disabled={isTransmittingPulse || iscloud_aiBusy}
             className="text-xs py-1.5 px-2 bg-slate-700 hover:bg-slate-600 disabled:opacity-50"
             title="Cycle to next pulse type"
         >
