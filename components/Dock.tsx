@@ -30,18 +30,18 @@ export const Dock: React.FC<DockProps> = ({
   const centerIndex = (total - 1) / 2;
 
   return (
-    <footer className="fixed bottom-6 left-0 right-0 flex justify-center items-end z-[1100] pointer-events-none">
+    <footer className="fixed bottom-12 left-0 right-0 flex justify-center items-end z-[1100] pointer-events-none">
       <div className="flex items-end justify-center gap-2 px-6 py-3 pointer-events-auto max-w-[98vw]">
         {items.map((item, index) => {
           const dist = index - centerIndex;
           
-          // Circular device bottom arc fitting (tangent-aligned polar transform, curved 15% more)
+          // Circular device bottom arc fitting (tangent-aligned polar transform, curved an additional 15% more)
           const spacing = 48; // spacing between elements
           const radius = 220; // curvature radius of circular smartwatch/device frame
           const angleRad = (dist * spacing) / radius;
-          const angleDeg = 1.15 * angleRad * (180 / Math.PI);
+          const angleDeg = 1.3225 * angleRad * (180 / Math.PI);
           // Curve upwards at the side boundaries
-          const translateY = -1.15 * (radius - radius * Math.cos(angleRad)); 
+          const translateY = -1.3225 * (radius - radius * Math.cos(angleRad)); 
 
           const isOpen = item.type === 'app' && openAppIds.some(id => id.startsWith(item.id));
 
