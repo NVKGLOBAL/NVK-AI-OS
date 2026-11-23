@@ -1998,6 +1998,7 @@ const mockShatterpointData = {
                   onPinPanel={handlePinPanel}
                   onClosePanel={(id) => updateActiveCluster({ openNodeIds: activeCluster.openNodeIds.filter(pid => pid !== id) })}
                   onTacticalBrief={handleTacticalBrief}
+                  onAxiomOpenPanel={handleAppClick}
                   nodeAnimationSpeed={activeCluster.nodeAnimationSpeed}
                   masterPanelSize={activeCluster.masterPanelSize}
                   nodeSpacing={activeCluster.nodeSpacing}

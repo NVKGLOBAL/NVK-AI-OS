@@ -86,8 +86,11 @@ export const PanelManager: React.FC<PanelManagerProps> = ({
     });
   const activePanels = [...pinnedPanelIds.map(getPanelMeta), ...nodePanels];
 
+  // Lattice Manager capsule lives bottom-right, clear of the dock:
+  // centered bottom-20/24 used to overlap the center dock icons' top
+  // sliver (capsule z-1150 over dock z-1100).
   return (
-    <div className="fixed bottom-20 md:bottom-24 left-1/2 -translate-x-1/2 z-[1150] flex flex-col items-center gap-2 pointer-events-none select-none">
+    <div className="fixed bottom-24 right-4 z-[1150] flex flex-col items-end gap-2 pointer-events-none select-none">
       <AnimatePresence>
         {isOpen && (
           <motion.div

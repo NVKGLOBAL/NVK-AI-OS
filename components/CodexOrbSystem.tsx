@@ -9,6 +9,7 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { CSS3DRenderer, CSS3DObject } from 'three/addons/renderers/CSS3DRenderer.js';
 import { gsap } from 'gsap';
 import { CyberSynth, playHaptic } from '../lib/soundEffects';
+import { resolveAxiomPanelId, AXIOM_TAP_TOLERANCE_UNITS } from '../lib/axiomPanelMapping';
 import type { PanelDefinition, NodeInfo, SubAgent, ThoughtGlyph, ClusterNode, NavigationInput, NVKOrbState } from '../types';
 import { OrbMode, ParticleBackgroundMode, PanelLayout } from '../types';
 import type { SystemStateContextType } from '../context/SystemContext';
@@ -194,17 +195,11 @@ const AXIOM_NODES_DATA: (NodeInfo & { label: string })[] = [
   { label: 'Status', axiom: 'AX-PEACE.05', role: 'Codex Resonance, Seeker Reflection' },
 ];
 
-// N10: axiom taps fire a Tactical Brief for the closest real panel.
-// Every axiom maps to a real PANEL_DEFINITIONS id (constants.ts), so no
-// axiom node is ever a dead tap target.
-const AXIOM_TACTICAL_BRIEF_PANEL: Record<string, string> = {
-  Network: 'EmergentLogicWeb', // Interconnectivity — the live web of glyphs/axioms
-  Security: 'TraitGatePanel', // Boundary logic / trait shielding — trait gates
-  'Data Streams': 'CosmicResonanceDashboardPanel', // Live signal/stream monitoring
-  Archive: 'DriftArchivePanel', // Lore shard / drift archive
-  Analytics: 'EntropyDiagnosticsPanel', // Drift + entropy analytics
-  Status: 'SystemHealthPanel', // System health / resonance status
-};
+// Axiom → panel mapping lives in lib/axiomPanelMapping.ts (pure module,
+// covered by services/axiom_panel_mapping_test.ts). Axiom taps open their
+// mapped real panel — the same path the dock uses. The N10 "Tactical
+// Brief" is gone from the tap path: it needed a model and posted into a
+// closed echo feed, so it was invisible in the default no-model state.
 
 interface CodexOrbSystemProps {
   onNodeHover: (info: NodeInfo | null) => void;
@@ -221,6 +216,10 @@ interface CodexOrbSystemProps {
   onPinPanel: (nodeId: string) => void;
   onClosePanel: (nodeId: string) => void;
   onTacticalBrief?: (nodeId: string) => void;
+  // Axiom taps open their mapped panel (same path as the dock). The
+  // Tactical Brief is no longer fired from the tap path; it survives only
+  // as the "Tactical Brief (AI)" button on an already-open panel.
+  onAxiomOpenPanel?: (panelId: string) => void;
   nodeAnimationSpeed: number;
   masterPanelSize?: number;
   nodeSpacing?: number;
@@ -270,6 +269,7 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
   onPinPanel,
   onClosePanel,
   onTacticalBrief,
+  onAxiomOpenPanel,
   nodeAnimationSpeed,
   masterPanelSize = 1,
   nodeSpacing = 1,
@@ -351,6 +351,7 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
   const onPanelNodeClickRef = useRef(onPanelNodeClick);
   const onCoreOrbClickRef = useRef(onCoreOrbClick);
   const onTacticalBriefRef = useRef(onTacticalBrief);
+  const onAxiomOpenPanelRef = useRef(onAxiomOpenPanel);
   const onSwapPanelRef = useRef(onSwapPanel);
   const onRendererErrorRef = useRef(onRendererError);
 
@@ -398,8 +399,9 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
     onPanelNodeClickRef.current = onPanelNodeClick;
     onCoreOrbClickRef.current = onCoreOrbClick;
     onTacticalBriefRef.current = onTacticalBrief;
+    onAxiomOpenPanelRef.current = onAxiomOpenPanel;
     onSwapPanelRef.current = onSwapPanel;
-  }, [onNodeHover, onPanelNodeClick, onCoreOrbClick, onTacticalBrief, onSwapPanel]);
+  }, [onNodeHover, onPanelNodeClick, onCoreOrbClick, onTacticalBrief, onAxiomOpenPanel, onSwapPanel]);
 
   useEffect(() => {
     nvkOrbStateRef.current = nvkOrbState;
@@ -1171,6 +1173,27 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
             }
         }
 
+        // Axiom hit tolerance: the nodes are small (r=0.8) and orbit at
+        // ~1.5 units/s, so a tap aimed from a ~1s-old screenshot can miss
+        // the mesh by two node diameters. If the ray passes close to an
+        // axiom node's current world position, treat it as a tap on that
+        // node. Never steals a direct panel hit or a core-orb tap.
+        if (!isCoreOrb && (!targetObj || (targetObj.userData?.type !== 'axiom' && targetObj.userData?.type !== 'panel'))) {
+            const ray = clickRaycaster.ray;
+            const tmp = new THREE.Vector3();
+            let bestNode: THREE.Object3D | null = null;
+            let bestDist = AXIOM_TAP_TOLERANCE_UNITS;
+            axiomNodesGroupRef.current?.children.forEach((child) => {
+                child.getWorldPosition(tmp);
+                const d = ray.distanceToPoint(tmp);
+                if (d < bestDist) {
+                    bestDist = d;
+                    bestNode = child;
+                }
+            });
+            if (bestNode) targetObj = bestNode;
+        }
+
         // Touch target proximity fallback: if ray passes within 6.5 units of origin (0,0,0) and no specific panel node was hit
         // N10: never steal an axiom tap — axiom nodes are handled by their own branch below.
         if (!isCoreOrb && targetObj?.userData?.type !== 'axiom' && (!targetObj || targetObj.userData?.type !== 'panel')) {
@@ -1220,14 +1243,17 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
                 });
             }
         } else if (targetObj && targetObj.userData?.type === 'axiom') {
-            // N10: axiom nodes fire a Tactical Brief for their closest real
-            // panel (see AXIOM_TACTICAL_BRIEF_PANEL above).
-            const panelId = AXIOM_TACTICAL_BRIEF_PANEL[targetObj.userData.label as string];
-            if (panelId && onTacticalBriefRef.current) {
+            // Axiom taps open their mapped real panel — the same path the
+            // dock uses (handleAppClick), so the tap creates the node +
+            // pinned instance. The Tactical Brief is NOT fired here: it
+            // needs a model and posts into a closed echo feed, so it was
+            // invisible in the default no-model state.
+            const panelId = resolveAxiomPanelId(targetObj.userData.label as string);
+            if (panelId && onAxiomOpenPanelRef.current) {
                 CyberSynth.playClick();
                 playHaptic(25);
                 triggerClickWave(clientX, clientY);
-                onTacticalBriefRef.current(panelId);
+                onAxiomOpenPanelRef.current(panelId);
             }
         } else if (targetObj && targetObj.userData?.type === 'panel') {
             CyberSynth.playClick();
