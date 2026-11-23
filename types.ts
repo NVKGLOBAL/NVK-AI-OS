@@ -1421,7 +1421,9 @@ export interface LocalLLMContextType {
   loadStatus: string; // "Initializing", "Downloading", "Ready", "Error"
   error: Error | null;
   loadModel: (modelId?: string) => Promise<void>;
-  generateText: (prompt: string, systemPrompt?: string) => Promise<string | null>;
+  generateText: (prompt: string, systemPrompt?: string, temperature?: number, maxTokens?: number) => Promise<string | null>;
+  /** Weights-specific cache probe: true only when this model's weight files are in the Cache API. */
+  isModelCached: (modelId: string) => Promise<boolean>;
   selectedModel: string;
   setSelectedModel: (modelId: string) => void;
   hfToken: string;
@@ -1626,6 +1628,25 @@ export interface AuditLog {
 // ----------------------------------------------------
 
 export type NVKOrbState = 'IDLE' | 'LISTENING' | 'THINKING' | 'ACTING' | 'DISCOVERY' | 'ERROR' | 'CALM';
+
+/**
+ * The result of running a user command through the runtime.
+ * Moved here from services/nvkActionEngine.ts (deleted 2026-11-22: the canned
+ * keyword engine that built these intents was unreachable dead code).
+ * NOTE: there is deliberately no `orbStateSequence` field — scripted orb-state
+ * sequences were dead data; the orb is driven only by real bus events.
+ */
+export interface ProcessedNVKIntent {
+  interpretedAction: any;
+  replyMessage: string;
+  spawnAppId?: string;
+  spawnAppIds?: string[];
+  workflow?: NVKWorkflow;
+  requiresConfirmation?: boolean;
+  activitySteps?: NVKActivityStep[];
+  buttons?: {label: string, action: string}[];
+  initialData?: any;
+}
 
 export type NVKActionType =
   | 'open_app'

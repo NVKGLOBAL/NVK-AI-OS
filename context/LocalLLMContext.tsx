@@ -12,13 +12,18 @@ const SELECTED_MODEL = "gemma-3-1b-it-q4f16_1-MLC";
  * Custom App Config to explicitly register stable models.
  * Using verified URLs for Gemma 3 and other models.
  */
-const MODEL_LIB_URL_PREFIX = "https://raw.githubusercontent.com/mlc-ai/binary-mlc-llm-libs/main/web-llm-models/v0_2_81/";
+const MODEL_LIB_URL_PREFIX = "https://raw.githubusercontent.com/mlc-ai/binary-mlc-llm-libs/main/web-llm-models/v0_2_84/";
 
 const customAppConfig = {
   ...prebuiltAppConfig,
-  useIndexedDBCache: false,
+  // Defect 5 fix (2026-11-22): cache ON. Was false, so every load re-downloaded
+  // the full model — the exact re-download loop the NVK Agent fixed in v0.1.1.
+  useIndexedDBCache: true,
   model_list: [
-    ...(prebuiltAppConfig.model_list || []),
+    // Defect 6 fix (2026-11-22): Gemma 3 4B is excluded everywhere. Its wasm
+    // lib 404s upstream, so the entry could never load; the silent 4B→1B
+    // rewrite that hid that fact is deleted below.
+    ...(prebuiltAppConfig.model_list || []).filter((m: any) => !String((m as any).model_id || '').includes('gemma-3-4b')),
     {
       model: "https://huggingface.co/mlc-ai/SmolLM2-135M-Instruct-q0f16-MLC",
       model_id: "SmolLM2-135M-Instruct-q0f16-MLC",
@@ -39,13 +44,6 @@ const customAppConfig = {
       model_lib: "https://raw.githubusercontent.com/mlc-ai/binary-mlc-llm-libs/main/web-llm-models/v0_2_84/base/gemma3-1b-it-q4f16_1_cs1k-webgpu.wasm",
       low_resource_required: true,
       vram_required_MB: 1500,
-    },
-    {
-      model: "https://huggingface.co/mlc-ai/gemma-3-4b-it-q4f16_1-MLC",
-      model_id: "gemma-3-4b-it-q4f16_1-MLC",
-      model_lib: "https://raw.githubusercontent.com/mlc-ai/binary-mlc-llm-libs/main/web-llm-models/v0_2_84/base/gemma3-1b-it-q4f16_1_cs1k-webgpu.wasm",
-      low_resource_required: true,
-      vram_required_MB: 3500,
     },
     {
       model: "https://huggingface.co/mlc-ai/gemma-2b-it-q4f16_1-MLC",
@@ -158,21 +156,29 @@ export const LocalLLMProvider: React.FC<{ children: ReactNode }> = ({ children }
   const engineRef = useRef<MLCEngineInterface | null>(null);
 
   /**
-   * Deterministic sovereign fallback for offline/unloaded local execution.
+   * Weights-specific cache probe (defect 5, Agent v0.1.1 pattern).
+   * True only when this model's own weight files are in the Cache API —
+   * matched by the model id in the cached request URL (Hugging Face weight
+   * files live under /<model_id>/resolve/). The wasm lib URL does not contain
+   * the model id, so a cached lib alone does not count. Callers must only
+   * claim "loading from cache" when this returns true.
    */
-  const generateDeterministicFallback = (prompt: string): string => {
-    const p = prompt.toLowerCase();
-    if (p.includes('status') || p.includes('health') || p.includes('diagnostic')) {
-      return "NVK 3D OS Sovereign Core Operational.\n- Architecture: Local-First Runtime\n- Security: HITL Sandboxed Capabilities\n- Storage: Sovereign Local Ledger\n- WebGPU Lattice: Standby / Ready to Hydrate";
+  const isModelCached = useCallback(async (modelId: string): Promise<boolean> => {
+    if (typeof window === 'undefined' || !window.caches) return false;
+    try {
+      const cacheNames = await window.caches.keys();
+      for (const name of cacheNames) {
+        const cache = await window.caches.open(name);
+        const keys = await cache.keys();
+        for (const req of keys) {
+          if (req.url.includes(modelId)) return true;
+        }
+      }
+      return false;
+    } catch {
+      return false;
     }
-    if (p.includes('capability') || p.includes('tool') || p.includes('action')) {
-      return "NVK Capability Registry active. Registered capabilities require explicit Human-in-the-Loop (HITL) confirmation for dangerous operations and emit cryptographic evidence to the sovereign ledger.";
-    }
-    if (p.includes('who are you') || p.includes('what is nvk') || p.includes('philosophy')) {
-      return "NVK is your local-first spatial operating system. AI you own. Your data stays with you by default. Tell NVK what you want to accomplish.";
-    }
-    return `[NVK Deterministic Core] Acknowledged: "${prompt.slice(0, 100)}". Local model lattice is in standby mode. Hydrate the local WebGPU core or connect local Ollama for full generative inference.`;
-  };
+  }, []);
 
   /**
    * Deep purge of the browser's Cache API for WebLLM.
@@ -219,11 +225,17 @@ export const LocalLLMProvider: React.FC<{ children: ReactNode }> = ({ children }
   }, []);
 
   const loadModel = useCallback(async (modelId?: string) => {
-    let targetModel = modelId || selectedModel;
-    
-    // Graceful fallback from non-compiled 4B model to verified 1B model of Gemma 3
-    if (targetModel === "gemma-3-4b-it-q4f16_1-MLC") {
-      targetModel = "gemma-3-1b-it-q4f16_1-MLC";
+    const targetModel = modelId || selectedModel;
+
+    // Defect 6 fix (2026-11-22): no silent substitution. A model that is not
+    // in the list (e.g. Gemma 3 4B, removed because its weights 404 upstream)
+    // errors honestly instead of loading a different model.
+    const knownModel = customAppConfig.model_list.some((m: any) => (m as any).model_id === targetModel);
+    if (!knownModel) {
+      const unavailableError = new Error(`Model ${targetModel} is not available. It was removed because its weights cannot load — pick a listed model instead.`);
+      setError(unavailableError);
+      setLoadStatus("Error");
+      return;
     }
 
     if (isModelLoaded && engineRef.current && selectedModel === targetModel) return;
@@ -237,7 +249,10 @@ export const LocalLLMProvider: React.FC<{ children: ReactNode }> = ({ children }
     }
 
     setIsModelLoaded(false);
-    setLoadStatus(`Awakening ${targetModel} Lattice...`);
+    // Honest load wording (defect 5): only claim cache when the
+    // weights-specific probe actually found this model's weights.
+    const weightsCached = await isModelCached(targetModel);
+    setLoadStatus(weightsCached ? `Loading ${targetModel} from cache...` : `Downloading ${targetModel} weights...`);
     setError(null);
 
     try {
@@ -303,9 +318,15 @@ export const LocalLLMProvider: React.FC<{ children: ReactNode }> = ({ children }
       engineRef.current = null;
       setIsModelLoaded(false);
     }
-  }, [isModelLoaded, selectedModel]);
+  }, [isModelLoaded, selectedModel, isModelCached]);
 
-  const generateText = useCallback(async (prompt: string, systemPrompt?: string): Promise<string | null> => {
+  // A2 (2026-11-22): temperature / maxTokens are now real parameters
+  // (defaults 0.6 / 2048) threaded through all three generation paths,
+  // instead of being dropped at the cloud boundary or hardcoded locally.
+  // Defect 4 (2026-11-22): no canned fallback anywhere. A missing model or
+  // a failed inference returns null and sets an honest error — callers must
+  // render the error, never a scripted answer.
+  const generateText = useCallback(async (prompt: string, systemPrompt?: string, temperature: number = 0.6, maxTokens: number = 2048): Promise<string | null> => {
     if (selectedProvider === 'ollama') {
       setIsGenerating(true);
       setError(null);
@@ -319,6 +340,7 @@ export const LocalLLMProvider: React.FC<{ children: ReactNode }> = ({ children }
               { role: 'system', content: systemPrompt || "You are a NVK Logic Core. Reason deeply and provide grounded insights." },
               { role: 'user', content: prompt }
             ],
+            options: { temperature, num_predict: maxTokens },
             stream: false
           })
         });
@@ -353,7 +375,9 @@ export const LocalLLMProvider: React.FC<{ children: ReactNode }> = ({ children }
             systemInstruction: systemPrompt || undefined,
             provider: selectedProvider,
             model: selectedModelName,
-            apiKey: clientApiKey || undefined
+            apiKey: clientApiKey || undefined,
+            temperature,
+            maxTokens
           }),
         });
 
@@ -375,8 +399,11 @@ export const LocalLLMProvider: React.FC<{ children: ReactNode }> = ({ children }
     }
 
     if (!engineRef.current) {
-      // Deterministic sovereign fallback when local engine is not yet hydrated
-      return generateDeterministicFallback(prompt);
+      // Defect 4: no model loaded — return null with an honest error.
+      // Never answer from canned text.
+      const noModelError = new Error("No local model loaded. Load a local model first — no answer can be generated without one.");
+      setError(noModelError);
+      return null;
     }
 
     setIsGenerating(true);
@@ -394,8 +421,8 @@ export const LocalLLMProvider: React.FC<{ children: ReactNode }> = ({ children }
 
       const reply = await engineRef.current.chat.completions.create({
         messages: messages as any,
-        temperature: 0.6,
-        max_tokens: 2048, 
+        temperature,
+        max_tokens: maxTokens,
       });
 
       clearTimeout(timeoutId);
@@ -404,8 +431,8 @@ export const LocalLLMProvider: React.FC<{ children: ReactNode }> = ({ children }
     } catch (err) {
       console.error("Error in local inference:", err);
       setIsGenerating(false);
-      // Fall back gracefully to deterministic sovereign response
-      return generateDeterministicFallback(prompt);
+      setError(err instanceof Error ? err : new Error("Local inference failed"));
+      return null;
     }
   }, [isCloudMode, selectedProvider, apiKeys, isModelLoaded]);
 
@@ -418,6 +445,7 @@ export const LocalLLMProvider: React.FC<{ children: ReactNode }> = ({ children }
       error,
       loadModel,
       generateText,
+      isModelCached,
       clearCache,
       selectedModel,
       setSelectedModel,

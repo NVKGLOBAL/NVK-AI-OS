@@ -145,13 +145,36 @@ CMD ["npm", "run", "start"]
 
 ## API Endpoints
 
-- `POST /api/ai/chat` - Unified multi-provider AI text generation
-- `GET /api/ai/config` - Status of configured AI providers and models
-- `POST /api/kernel/extrude` - Spatial intent routing and shard command extrusions
-- `POST /api/kernel/synthesize` - Standalone interactive SPA widget synthesis
-- `POST /api/gemini/generate` - Backward-compatible AI text generation route
-- `POST /api/gemini/generate-image` - Image generation route (Imagen)
-- `WS /api/live-ws` - Real-time audio streaming WebSocket gateway
+Verified against `server.ts` (2026-11-22). Routes that used to be listed
+here but never existed on the server — `/api/ai/config`,
+`/api/kernel/synthesize`, `/api/gemini/generate`, `/api/gemini/generate-image`,
+`WS /api/live-ws` — are removed. Do not re-add a route without implementing
+it in `server.ts` and listing it here.
+
+- `GET /api/health` — liveness probe, `{ status: "ok" }`
+- `POST /api/log-error` — client telemetry/error sink
+- `POST /api/browse` — connected web access (SSRF-guarded: public http(s) only)
+- `POST /api/webhooks/stripe` — Stripe webhook receiver (logs receipt only)
+- `GET /api/agent/manifest` and `GET /.well-known/agent.json` — agent manifest
+- `POST /api/agent/dispatch` — terminal / file actions. **Bearer-token auth required** (NVK_AGENT_TOKEN, else a token generated at startup and printed once to the server console). Destructive commands are shield-rejected. Every call is audit-logged to `uploads/dispatch-audit.jsonl`.
+- `POST /api/integrations/webhook/:userId/:connectionId` — wireboard webhook receiver
+- `POST /api/export/brief` — writes a real `.md`/`.txt` file to `uploads/`, returns a real same-origin download URL. `pdf` is refused — no PDF writer exists.
+- `POST /api/export/proposal` — same as brief, for proposals
+- `POST /api/share/shard` — stores a shard with expiry, returns a real same-origin URL (`/api/share/shard/:token`)
+- `GET /api/share/shard/:token` — serves a stored shard; 404 unknown, 410 expired
+- `POST /api/ai/chat` — narrow allowlisted cloud provider proxy (openai, anthropic), plain fetch, no provider SDK. Key comes from the request body only and is never logged or stored. No key → 400 "provide a key". Gemini is excluded by this repo's no-Gemini runtime rule (AGENTS.md §1, enforced by the build audit).
+- `POST /api/kernel/extrude` — thin wrapper: `commands` is always `[]` (no extrusion engine is connected); the response says so.
+- `GET /api/voice/status` — `{ liveVoice: false, localAvailable: true }`. Cloud live voice is not connected; local WebGPU voice is the working path.
+- `GET /api/proxy?url=` — fetch proxy (SSRF-guarded: public http(s) only)
+- `GET /api/fs/list?path=` — list files under `uploads/` (traversal-guarded)
+- `POST /api/fs/upload` — upload a file into `uploads/`
+- `GET /api/fs/download/:filename` — download a file from `uploads/` (traversal-guarded)
+- `POST /api/fs/write` — write a file inside `uploads/` (traversal-guarded)
+- `POST /api/fs/delete` — delete a file inside `uploads/` (traversal-guarded)
+- `POST /api/terminal` — shell execution. **Bearer-token auth required** (same dispatch token). Destructive commands are shield-rejected. Every call is audit-logged.
+
+Server binds `127.0.0.1` by default; set `NVK_HOST` to opt in to another
+interface (e.g. `NVK_HOST=0.0.0.0` for LAN use).
 
 ---
 

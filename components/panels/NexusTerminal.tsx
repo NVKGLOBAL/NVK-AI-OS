@@ -21,8 +21,31 @@ const NexusTerminal: React.FC<NexusTerminalProps> = ({ addThought, spawnSubAgent
   const [historyIndex, setHistoryIndex] = useState(-1);
   const [isHitlEnabled, setIsHitlEnabled] = useState(true);
   const [pendingCommand, setPendingCommand] = useState<string | null>(null);
+  // Dispatch-token unlock (defect 7 / A6, 2026-11-22): /api/terminal and
+  // /api/agent/dispatch require a bearer token. The token lives in
+  // sessionStorage ONLY — never localStorage, never a file, never logged.
+  // It is the token printed once at server startup, or NVK_AGENT_TOKEN.
+  const [dispatchToken, setDispatchToken] = useState<string>(() => {
+    try { return sessionStorage.getItem('nvk_dispatch_token') || ''; } catch { return ''; }
+  });
+  const [tokenInput, setTokenInput] = useState('');
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  const handleUnlock = () => {
+    const token = tokenInput.trim();
+    if (!token) return;
+    try { sessionStorage.setItem('nvk_dispatch_token', token); } catch {}
+    setDispatchToken(token);
+    setTokenInput('');
+    setHistory(prev => [...prev, { type: 'system', text: 'Terminal unlocked for this session.' }]);
+  };
+
+  const handleLock = () => {
+    try { sessionStorage.removeItem('nvk_dispatch_token'); } catch {}
+    setDispatchToken('');
+    setHistory(prev => [...prev, { type: 'system', text: 'Terminal locked. Enter the dispatch token to unlock.' }]);
+  };
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -31,12 +54,19 @@ const NexusTerminal: React.FC<NexusTerminalProps> = ({ addThought, spawnSubAgent
   const executeShellCommand = async (cmd: string) => {
     let output: TerminalLine | null = null;
     try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (dispatchToken) headers['Authorization'] = `Bearer ${dispatchToken}`;
       const response = await fetch('/api/terminal', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ command: cmd })
       });
-      
+
+      if (response.status === 401) {
+        output = { type: 'error', text: 'Dispatch token required — unlock the Terminal panel with the token printed once at server startup (or set NVK_AGENT_TOKEN).' };
+        setHistory(prev => [...prev, output!]);
+        return;
+      }
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
@@ -314,6 +344,28 @@ const NexusTerminal: React.FC<NexusTerminalProps> = ({ addThought, spawnSubAgent
           </div>
         </div>
       ) : (
+      <>
+      {/* Dispatch-token unlock (defect 7 / A6). Token kept in sessionStorage only. */}
+      <div className="z-10 flex items-center gap-2 border-t border-slate-800 pt-3">
+        {dispatchToken ? (
+          <>
+            <span className="text-emerald-400 text-xs font-bold">Terminal unlocked</span>
+            <button onClick={handleLock} className="px-3 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 rounded text-xs transition-colors">Lock</button>
+          </>
+        ) : (
+          <>
+            <input
+              type="password"
+              value={tokenInput}
+              onChange={(e) => setTokenInput(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleUnlock(); } }}
+              className="flex-grow bg-black/50 border border-slate-700 rounded px-2 py-1 text-xs text-slate-300 placeholder-slate-600 outline-none"
+              placeholder="Dispatch token (printed once at server startup)..."
+            />
+            <button onClick={handleUnlock} className="px-3 py-1 bg-cyan-600/20 hover:bg-cyan-600/40 text-cyan-300 border border-cyan-500/30 rounded text-xs font-bold transition-colors">Unlock</button>
+          </>
+        )}
+      </div>
       <form onSubmit={handleCommand} className="z-10 flex items-center gap-2 border-t border-slate-800 pt-4">
         <span className="text-emerald-500 font-bold">PS C:\ANGELIC_OS\NEXUS&gt;</span>
         <input 
@@ -327,6 +379,7 @@ const NexusTerminal: React.FC<NexusTerminalProps> = ({ addThought, spawnSubAgent
           autoFocus
         />
       </form>
+      </>
       )}
     </div>
   );

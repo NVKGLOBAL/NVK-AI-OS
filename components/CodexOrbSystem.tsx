@@ -3077,7 +3077,7 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
     <>
       <div ref={mountRef} id="codex-orb-canvas-container" className="absolute inset-0 z-10 pointer-events-auto touch-none" />
       
-      {/* 3D Navigation Controls HUD (Zoom, Focus Nexus Orb, Recenter) */}
+      {/* 3D Navigation Controls HUD (Zoom, Focus NVK, Recenter) */}
       <div className="absolute bottom-24 right-4 z-[500] flex flex-col gap-2 select-none pointer-events-auto">
         <button
           onClick={(e) => {
@@ -3137,7 +3137,7 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
             }
           }}
           className="w-10 h-10 rounded-xl bg-slate-950/85 border border-emerald-500/40 hover:border-emerald-400 text-emerald-400 flex items-center justify-center backdrop-blur-md transition-all shadow-[0_0_20px_rgba(16,185,129,0.3)] active:scale-95"
-          title="Focus Nexus Orb"
+          title="Focus NVK"
         >
           <i className="ri-focus-3-line text-xl"></i>
         </button>

@@ -242,7 +242,9 @@ export const HUD: React.FC<HUDProps> = ({ onBackToMain }) => {
       });
 
       if (!response.ok) {
-        throw new Error("Model Gateway request failed");
+        // Defect 9: name the actual failure instead of a generic message.
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || `Model Gateway request failed (${response.status})`);
       }
 
       const data: ModelGatewayResponse = await response.json();

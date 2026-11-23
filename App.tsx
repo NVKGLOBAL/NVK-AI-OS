@@ -1,6 +1,8 @@
 
 import React, { useState, useCallback, useMemo, useRef, useEffect, Suspense } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+// Single source of truth for the app version (defect 9): package.json.
+import { version as PACKAGE_VERSION } from './package.json';
 
 const CodexOrbSystem = React.lazy(() =>
   import('./components/CodexOrbSystem').then(m => ({ default: m.CodexOrbSystem }))
@@ -13,7 +15,7 @@ import { PANEL_DEFINITIONS, DOCK_APPS } from './constants';
 import { getPresetsForCodexMode, getCodexModeDefinition } from './components/core/CodexModes';
 import { OmniWheel } from './components/ui/OmniWheel';
 import { FlightController } from './components/ui/FlightController';
-import { GeoMode, OrbMode, CodexModeId, ParticleBackgroundMode, PanelLayout, ClusterType, Cluster, NavigationInput, FlightInput, AgentCoreState, GlyphInstance } from './types';
+import { GeoMode, OrbMode, CodexModeId, ParticleBackgroundMode, PanelLayout, ClusterType, Cluster, NavigationInput, FlightInput, AgentCoreState, GlyphInstance, NVKEvent } from './types';
 import { AgentName, HistoricalEventType } from './types';
 import { 
   ALL_CANONICAL_AXIOMS, INITIAL_ECHOES, BLOOD_INK_SPECIES_DATA, 
@@ -99,9 +101,9 @@ import { DocumentWorkspace } from './components/panels/DocumentWorkspace';
 import { WorkflowWorkspace } from './components/panels/WorkflowWorkspace';
 import { SubAgentConstellation } from './components/panels/SubAgentConstellation';
 import { NVKCommandLayer } from './components/spatial/NVKCommandLayer';
-import type { NVKOrbState, NVKWorkflow, NVKActivityStep } from './types';
-import type { ProcessedNVKIntent } from './services/nvkActionEngine';
+import type { NVKOrbState, NVKWorkflow, NVKActivityStep, ProcessedNVKIntent } from './types';
 import { eventBus } from './services/EventBus';
+import { nvkEventBus } from './src/nvk/events/NVKEventBus';
 
 import { SystemStateProvider, type SystemStateContextType } from './context/SystemContext';
 import { useEcho } from './context/EchoContext';
@@ -561,7 +563,13 @@ export const App: React.FC = () => {
       const prompt = `Synthesize the connections and potential emergent properties between the following active system nodes in the ${activeCluster.name} cluster: ${panelNames}. Provide a concise, high-level tactical brief.`;
       
       const response = await generateText(prompt, 'You are the NVK Core, the central intelligence of the NVK OS. Provide highly professional, analytical, and concise synthesis of business operations nodes.', 0.7, 500);
-      
+
+      // Defect 4: generateText returns null (no model / failed inference).
+      // Render that honestly — never print "null" or a canned answer.
+      if (response === null) {
+        addEchoMessage(AgentName.SystemCore, 'Synthesis unavailable: no model loaded or generation failed. Load a local model first.', 'text-red-400');
+        return;
+      }
       addEchoMessage(AgentName.SystemCore, `Synthesis Complete [${activeCluster.name}]:\n${response}`, 'text-green-400');
     } catch (error) {
       console.error('Synthesis failed:', error);
@@ -687,39 +695,95 @@ export const App: React.FC = () => {
   const [nvkOrbState, setNvkOrbState] = useState<NVKOrbState>('IDLE');
   const [activeNVKWorkflow, setActiveNVKWorkflow] = useState<NVKWorkflow | null>(null);
 
+  const [nvkActivitySteps, setNvkActivitySteps] = useState<NVKActivityStep[]>([]);
+
+  // Orb state is driven ONLY by real bus events (defect 1 fix, 2026-11-22).
+  // Two buses feed the orb: the services bus (CapabilityRegistry / TaskEngine
+  // events) and the src/nvk runtime bus (NVKRuntime / ExecutionEngine
+  // ui.state_changed). The CommandLayer's four direct transitions (voice start
+  // → LISTENING, send → THINKING, done/error → CALM, confirm → ACTING) are
+  // user-interaction moments, not runtime work; precedence is last-write-wins
+  // through the single setNvkOrbState. No timers, no scripted sequences.
   useEffect(() => {
-    const unsubscribe = eventBus.subscribe((event) => {
-      // Just a simple listener to trigger updates or log
-      console.log('App received event:', event);
-      if (event.type === 'TASK_STARTED' || event.type === 'TASK_COMPLETED' || event.type === 'TASK_FAILED') {
-         // Could sync to a state variable here for UI
+    const mapServicesEvent = (event: NVKEvent): NVKOrbState | null => {
+      switch (event.type) {
+        case 'MODEL_LOADING':
+        case 'TASK_STARTED':
+        case 'WEB_REQUEST_STARTED':
+          return 'THINKING';
+        case 'ACTION_STARTED':
+          return 'ACTING';
+        case 'APP_SPAWNED':
+        case 'FILE_CREATED':
+          return 'DISCOVERY';
+        case 'TASK_VERIFIED':
+        case 'ACTION_COMPLETED':
+        case 'TASK_COMPLETED':
+          return 'CALM';
+        case 'ACTION_FAILED':
+        case 'TASK_FAILED':
+          return 'ERROR';
+        default:
+          return null;
+      }
+    };
+    const mapRuntimeState = (state: string): NVKOrbState | null => {
+      switch (state) {
+        case 'THINKING':
+        case 'PLANNING':
+        case 'SEARCHING':
+        case 'RESEARCHING':
+        case 'VERIFYING':
+          return 'THINKING';
+        case 'PROCESSING':
+        case 'CREATING':
+        case 'EXECUTING':
+          return 'ACTING';
+        case 'COMPLETED':
+          return 'CALM';
+        case 'FAILED':
+          return 'ERROR';
+        case 'WAITING':
+        case 'IDLE':
+          return 'IDLE';
+        default:
+          return null;
+      }
+    };
+    // Mark the earliest still-open activity step from a real task event.
+    // Steps with no corresponding real task stay pending — that is honest.
+    const advanceEarliestOpenStep = (status: 'completed' | 'failed') => {
+      setNvkActivitySteps(prev => {
+        const idx = prev.findIndex(s => s.status === 'pending' || s.status === 'running');
+        if (idx === -1) return prev;
+        return prev.map((s, i) => (i === idx ? { ...s, status } : s));
+      });
+    };
+    const unsubServices = eventBus.subscribe((event) => {
+      const next = mapServicesEvent(event);
+      if (next) setNvkOrbState(next);
+      if (event.type === 'TASK_COMPLETED') advanceEarliestOpenStep('completed');
+      if (event.type === 'TASK_FAILED') advanceEarliestOpenStep('failed');
+    });
+    const unsubRuntime = nvkEventBus.subscribe((event) => {
+      if (event.type === 'ui.state_changed') {
+        const next = mapRuntimeState(event.state);
+        if (next) setNvkOrbState(next);
       }
     });
-    return () => unsubscribe();
+    return () => { unsubServices(); unsubRuntime(); };
   }, []);
 
-  const [nvkActivitySteps, setNvkActivitySteps] = useState<NVKActivityStep[]>([]);
   const [nvkCustomDocData, setNvkCustomDocData] = useState<any>(null);
 
   const handleExecuteNVKAction = useCallback((intent: ProcessedNVKIntent) => {
     CyberSynth.playCyberChime();
-    
-    // If activity steps provided, trigger sequential updates
+
+    // Activity steps arrive from the intent as given and are stored untouched.
+    // They are completed/failed only by real TASK_COMPLETED/TASK_FAILED bus
+    // events (see the subscription above) — never by timers.
     if (intent.activitySteps && intent.activitySteps.length > 0) {
       setNvkActivitySteps(intent.activitySteps);
-      // Sequentially mark them as complete
-      intent.activitySteps.forEach((step, idx) => {
-        setTimeout(() => {
-          setNvkActivitySteps(prev => prev.map((s, i) => {
-            if (i < idx) return { ...s, status: 'completed' };
-            if (i === idx) return { ...s, status: 'running' };
-            return { ...s, status: 'pending' };
-          }));
-        }, (idx + 1) * 600);
-      });
-      setTimeout(() => {
-        setNvkActivitySteps(prev => prev.map(s => ({ ...s, status: 'completed' })));
-      }, (intent.activitySteps.length + 1) * 600);
     }
 
     if (intent.workflow) {
@@ -857,7 +921,13 @@ export const App: React.FC = () => {
     try {
       const prompt = `Provide a concise, professional "Operational Brief" for the system node named "${panelDef.name}" within the ${activeCluster.name} cluster. Description: ${panelDef.description}. Focus on its role in the NVK OS.`;
       const response = await generateText(prompt, 'You are the NVK Core, the central intelligence of the NVK OS.', 0.7, 300);
-      
+
+      // Defect 4: generateText returns null (no model / failed inference).
+      // Render that honestly — never print "null" or a canned answer.
+      if (response === null) {
+        addEchoMessage(AgentName.SystemCore, `Operational Brief unavailable for ${panelDef.name}: no model loaded or generation failed. Load a local model first.`, 'text-red-400');
+        return;
+      }
       addEchoMessage(AgentName.SystemCore, `[OPERATIONAL BRIEF: ${panelDef.name}]\n${response}`, 'text-green-400');
     } catch (error) {
       console.error('Tactical Brief failed:', error);
@@ -932,7 +1002,7 @@ export const App: React.FC = () => {
   // Global Browser Agent Interoperability Bridge (OpenClaw / Hermes / Playwright)
   useEffect(() => {
     (window as any).NVK_OS = {
-      version: "2.5.0",
+      version: PACKAGE_VERSION,
       openPanel: (panelId: string, initialUrl?: string) => handleAppClick(panelId, initialUrl),
       closePanel: (instanceId: string) => {
         updateActiveCluster({ pinnedPanelIds: activeCluster.pinnedPanelIds.filter(pid => pid !== instanceId) });
@@ -945,9 +1015,16 @@ export const App: React.FC = () => {
       getClusters: () => clusters,
       setMode: (mode: '3d' | '2d') => setWorkspaceMode(mode),
       dispatchCommand: async (action: string, payload: any) => {
+        // Defect 7: dispatch requires the bearer token (sessionStorage,
+        // set by the Terminal panel unlock). Without it the server 401s.
+        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+        try {
+          const token = sessionStorage.getItem('nvk_dispatch_token');
+          if (token) headers['Authorization'] = `Bearer ${token}`;
+        } catch {}
         const res = await fetch('/api/agent/dispatch', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers,
           body: JSON.stringify({ action, payload })
         });
         return res.json();

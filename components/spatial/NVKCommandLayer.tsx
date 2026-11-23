@@ -12,12 +12,15 @@ import {
   NVKWorkflow, 
   NVKActivityStep 
 } from '../../types';
-import { nvkActionEngine, ProcessedNVKIntent } from '../../services/nvkActionEngine';
+import type { ProcessedNVKIntent } from '../../types';
 import { nvkRuntime } from '../../src/nvk/runtime/NVKRuntime';
 import { nvkEventBus } from '../../src/nvk/events/NVKEventBus';
 import { eventBus } from '../../services/EventBus';
 import { NVKEvent } from '../../types';
 import { useLocalLLM } from '../../context/LocalLLMContext';
+import { synthesizeShard, SHARD_VARIANTS } from '../../services/shardEngine';
+import type { ShardSpec, ShardVariant } from '../../services/shardEngine';
+import { ShardRenderer } from '../ui/ShardRenderer';
 
 interface NVKCommandLayerProps {
   orbState: NVKOrbState;
@@ -49,7 +52,7 @@ export const NVKCommandLayer: React.FC<NVKCommandLayerProps> = ({
   activitySteps = [],
   currentStatusText = 'Ready for instruction'
 }) => {
-  const { isModelLoaded, loadModel, loadStatus, generateText } = useLocalLLM();
+  const { isModelLoaded, loadModel, loadStatus, generateText, isCloudMode } = useLocalLLM();
   const [inputValue, setInputValue] = useState('');
   const [isMinimized, setIsMinimized] = useState(() => {
     if (typeof window !== 'undefined') {
@@ -79,7 +82,7 @@ export const NVKCommandLayer: React.FC<NVKCommandLayerProps> = ({
     posY: 24
   });
 
-  const [history, setHistory] = useState<Array<{ role: 'user' | 'nvk'; text: string; actionSummary?: string; buttons?: {label: string, action: string}[] }>>([
+  const [history, setHistory] = useState<Array<{ role: 'user' | 'nvk'; text: string; actionSummary?: string; buttons?: {label: string, action: string}[]; shard?: ShardSpec }>>([
     {
       role: 'nvk',
       text: "I'm NVK.\nTell me what you want to accomplish.\n\nTry: \"Build something for me...\""
@@ -88,6 +91,10 @@ export const NVKCommandLayer: React.FC<NVKCommandLayerProps> = ({
   const [isListening, setIsListening] = useState(false);
   const [liveEvents, setLiveEvents] = useState<{time: string, text: string}[]>([]);
   const [pendingConfirmation, setPendingConfirmation] = useState<any | null>(null);
+  // Shard synthesis (defect 8): real entry point for the shard engine.
+  const [shardVariant, setShardVariant] = useState<ShardVariant>('text-block');
+  const [isSynthesizingShard, setIsSynthesizingShard] = useState(false);
+  const [sharedShard, setSharedShard] = useState<{ index: number; url: string } | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   
@@ -256,10 +263,6 @@ export const NVKCommandLayer: React.FC<NVKCommandLayerProps> = ({
           createdAt: Date.now()
         },
         replyMessage: runtimeResponse.message,
-        orbStateSequence: [
-          { state: 'THINKING', delayMs: 300, statusText: 'Synthesizing...' },
-          { state: 'CALM', delayMs: 1000, statusText: 'Ready.' }
-        ],
         spawnAppId
       };
 
@@ -297,6 +300,46 @@ export const NVKCommandLayer: React.FC<NVKCommandLayerProps> = ({
     onSetOrbState('ACTING');
     onExecuteAction(confirmed);
   };
+
+  // Shard synthesis (defect 8): synthesizes a shard from the current input
+  // (or the last user message) via the LOCAL model. A null result means no
+  // model is loaded or the model's JSON failed validation — reported
+  // honestly, never replaced with placeholder content.
+  const handleSynthesizeShard = useCallback(async () => {
+    const intent = inputValue.trim() || [...history].reverse().find(m => m.role === 'user')?.text || '';
+    if (!intent) {
+      setHistory(prev => [...prev, { role: 'nvk', text: 'Type something first, then synthesize a shard from it.' }]);
+      return;
+    }
+    setIsSynthesizingShard(true);
+    try {
+      const shard = await synthesizeShard(intent, generateText, shardVariant);
+      if (shard) {
+        setHistory(prev => [...prev, { role: 'nvk', text: `Shard synthesized: ${shard.title}`, shard }]);
+      } else {
+        setHistory(prev => [...prev, { role: 'nvk', text: 'Shard synthesis unavailable — load a local model first, or the model returned invalid output.' }]);
+      }
+    } finally {
+      setIsSynthesizingShard(false);
+    }
+  }, [inputValue, history, generateText, shardVariant]);
+
+  // Share a synthesized shard via the real /api/share/shard endpoint and
+  // show the real same-origin URL it returns. Nothing is fabricated.
+  const handleShareShard = useCallback(async (index: number, shard: ShardSpec) => {
+    try {
+      const res = await fetch('/api/share/shard', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ shard })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `Share failed (${res.status})`);
+      setSharedShard({ index, url: data.url });
+    } catch (err: any) {
+      setHistory(prev => [...prev, { role: 'nvk', text: `Sharing the shard failed: ${err.message || String(err)}` }]);
+    }
+  }, []);
 
   const handleCancelAction = () => {
     setPendingConfirmation(null);
@@ -458,9 +501,23 @@ export const NVKCommandLayer: React.FC<NVKCommandLayerProps> = ({
                           ))}
                         </div>
                       )}
+                      {msg.shard && (
+                        <ShardRenderer
+                          shard={msg.shard}
+                          isGenerating={false}
+                          variant={msg.shard.variant}
+                          onShare={() => handleShareShard(idx, msg.shard!)}
+                          shareUrl={sharedShard?.index === idx ? sharedShard.url : null}
+                        />
+                      )}
                     </div>
                   </div>
                 ))}
+
+                {/* Shard synthesis in progress (defect 8) */}
+                {isSynthesizingShard && (
+                  <ShardRenderer shard={null} isGenerating={true} variant={shardVariant} />
+                )}
 
                 {/* Realtime Activity Steps Layer (NVK Showing Its Work) */}
                 {activitySteps.length > 0 && (
@@ -474,10 +531,12 @@ export const NVKCommandLayer: React.FC<NVKCommandLayerProps> = ({
                           <CheckCircle2 className="w-3 h-3 text-emerald-400 shrink-0" />
                         ) : step.status === 'running' ? (
                           <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping shrink-0" />
+                        ) : step.status === 'failed' ? (
+                          <AlertTriangle className="w-3 h-3 text-red-400 shrink-0" />
                         ) : (
                           <span className="w-2 h-2 rounded-full bg-slate-600 shrink-0" />
                         )}
-                        <span className={step.status === 'running' ? 'text-cyan-300 font-semibold' : ''}>
+                        <span className={step.status === 'running' ? 'text-cyan-300 font-semibold' : step.status === 'failed' ? 'text-red-300' : ''}>
                           {step.label}
                         </span>
                       </div>
@@ -539,6 +598,32 @@ export const NVKCommandLayer: React.FC<NVKCommandLayerProps> = ({
             </motion.div>
           )}
         </AnimatePresence>
+
+        {/* Shard synthesis controls (defect 8) */}
+        <div className="flex items-center gap-2">
+          <select
+            value={shardVariant}
+            onChange={(e) => setShardVariant(e.target.value as ShardVariant)}
+            className="bg-slate-900/90 border border-cyan-500/30 rounded-lg text-[11px] text-slate-200 px-2 py-1.5 focus:outline-none"
+            title="Shard format"
+          >
+            {SHARD_VARIANTS.map(v => (
+              <option key={v} value={v}>{v}</option>
+            ))}
+          </select>
+          <button
+            type="button"
+            onClick={handleSynthesizeShard}
+            disabled={isSynthesizingShard}
+            title="Synthesize a shard from the current input using the local model"
+            className="px-3 py-1.5 bg-slate-800/80 hover:bg-slate-800 disabled:opacity-40 text-cyan-300 border border-cyan-500/30 rounded-lg text-[11px] font-bold uppercase tracking-wider transition-all"
+          >
+            {isSynthesizingShard ? 'Synthesizing…' : 'Synthesize shard'}
+          </button>
+          {!isModelLoaded && !isCloudMode && (
+            <span className="text-[10px] text-slate-500">Load a local model to synthesize shards.</span>
+          )}
+        </div>
 
         {/* Input Bar & Voice Controls */}
         <form 

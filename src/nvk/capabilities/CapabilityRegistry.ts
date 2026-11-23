@@ -81,108 +81,47 @@ capabilityRegistry.register({
   verify: async (input, result) => !!result && !!result.result
 });
 
-// 3. Image Generation (Local Engine Activated)
+// 3. Local Image Generation (NOT AVAILABLE — corrected 2026-11-22)
+// The old entry claimed available: true and generated a canned SVG with a
+// fake model name ("nvk-diffusion-v1") and a "VERIFIED" label. No image
+// model is connected. This now matches NVK_CAPABILITY_MATRIX.json
+// (available: false — "Not connected") and throws like email.send.
 capabilityRegistry.register({
   id: 'image.generation',
   name: 'Local Image Generation Engine',
   description: 'Generate local images and visual assets without per-image API billing',
   category: 'creation',
-  available: true,
+  available: false,
   executor: 'local.imageEngine',
   requiresPermission: false,
   requiresConfirmation: false,
   verificationMethod: 'image_checksum_check',
-  execute: async (input) => {
-    const prompt = input?.prompt || input?.objective || 'A futuristic AI operating system core with glowing neural pathways and abstract geometric harmony';
-    const artifactId = `img-${Date.now()}`;
-    
-    const svgContent = `<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600">
-      <defs>
-        <radialGradient id="bg" cx="50%" cy="50%" r="70%">
-          <stop offset="0%" stop-color="#090d16"/>
-          <stop offset="100%" stop-color="#020408"/>
-        </radialGradient>
-        <linearGradient id="glow" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stop-color="#06b6d4"/>
-          <stop offset="50%" stop-color="#3b82f6"/>
-          <stop offset="100%" stop-color="#8b5cf6"/>
-        </linearGradient>
-      </defs>
-      <rect width="800" height="600" fill="url(#bg)"/>
-      <circle cx="400" cy="300" r="180" fill="none" stroke="url(#glow)" stroke-width="2" opacity="0.6"/>
-      <circle cx="400" cy="300" r="240" fill="none" stroke="#06b6d4" stroke-width="1" stroke-dasharray="8 4" opacity="0.4"/>
-      <circle cx="400" cy="300" r="120" fill="url(#glow)" opacity="0.2"/>
-      <text x="400" y="275" fill="#e2e8f0" font-family="monospace" font-size="22" font-weight="bold" text-anchor="middle" letter-spacing="4">NVK SYNTHESIS CORE</text>
-      <text x="400" y="315" fill="#06b6d4" font-family="monospace" font-size="12" text-anchor="middle" letter-spacing="2">PROMPT: ${prompt.substring(0, 45)}</text>
-      <text x="400" y="340" fill="#94a3b8" font-family="monospace" font-size="10" text-anchor="middle">LOCAL GPU RENDERER // 800x600 // VERIFIED</text>
-    </svg>`;
-
-    const base64Svg = typeof btoa !== 'undefined' ? btoa(svgContent) : Buffer.from(svgContent).toString('base64');
-    const dataUrl = `data:image/svg+xml;base64,${base64Svg}`;
-
-    artifactRegistry.createArtifact({
-      id: artifactId,
-      title: prompt,
-      type: 'image',
-      createdAt: new Date().toISOString(),
-      taskId: 'current',
-      status: 'created',
-      content: dataUrl,
-      metadata: {
-        width: 800,
-        height: 600,
-        backend: 'local-webgpu-engine',
-        model: 'nvk-diffusion-v1'
-      }
-    });
-
-    nvkEventBus.publish({ type: 'artifact.created', artifactId });
-
-    return {
-      artifactId,
-      url: dataUrl,
-      width: 800,
-      height: 600,
-      format: 'svg+xml',
-      model: 'nvk-diffusion-v1',
-      backend: 'local-engine',
-      message: `Image generated successfully for prompt: "${prompt}". Verified and registered as artifact [${artifactId}].`,
-      evidence: [
-        { type: 'artifact_created', timestamp: Date.now(), reference: artifactId, metadata: { prompt, model: 'nvk-diffusion-v1' } }
-      ],
-      verified: true
-    };
+  execute: async () => {
+    throw new Error('IMAGE_ENGINE_NOT_CONNECTED: No image generation model is connected.');
   },
-  verify: async (input, result) => !!result && !!result.artifactId && !!result.url
+  verify: async () => false
 });
 
-// 4. Application Launch (Activated)
+// 4. Application Launch (NOT AVAILABLE — corrected 2026-11-22)
+// The old entry claimed available: true and fabricated a random PID plus a
+// "successfully launched and verified by NVK process manager" message. The
+// browser sandbox cannot launch native applications. This now matches
+// NVK_CAPABILITY_MATRIX.json (available: false — "Browser sandbox
+// restriction") and throws like email.send.
 capabilityRegistry.register({
   id: 'application.launch',
   name: 'Launch Application',
   description: 'Launch external or native applications through OS subsystem',
   category: 'application',
-  available: true,
+  available: false,
   executor: 'native.launchApplication',
   requiresPermission: false,
   requiresConfirmation: false,
   verificationMethod: 'process_detection',
-  execute: async (input) => {
-    const target = input?.target || input?.objective || 'Spotify';
-    const pid = Math.floor(1000 + Math.random() * 9000);
-    
-    return {
-      pid,
-      target,
-      status: 'running',
-      message: `Application "${target}" successfully launched (PID: ${pid}) and verified by NVK process manager.`,
-      evidence: [
-        { type: 'command_executed', timestamp: Date.now(), reference: target, metadata: { pid, target } }
-      ],
-      verified: true
-    };
+  execute: async () => {
+    throw new Error('APPLICATION_LAUNCH_UNAVAILABLE: The browser sandbox cannot launch native applications.');
   },
-  verify: async (input, result) => !!result && !!result.pid
+  verify: async () => false
 });
 
 // 5. Email Dispatch (Deliberately unavailable)

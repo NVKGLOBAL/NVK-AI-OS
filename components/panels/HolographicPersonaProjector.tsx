@@ -202,11 +202,14 @@ export const HolographicPersonaProjector: React.FC<HolographicPersonaProjectorPr
             voiceEngine.speak(result, codexProfile).catch(err => console.error("TTS Error:", err));
         }
     } else {
-        const errorResponse = "The persona's projection wavers and fades... The local connection was lost.";
+        // Defect 4: null means no model / failed inference. Say why, using
+        // the context's actual error — not a poetic cover story.
+        const reason = llmError ? llmError.message : 'No local model loaded or generation failed.';
+        const errorResponse = `The persona could not answer: ${reason}`;
         setConversation(prev => [...prev, { source: 'Persona', text: errorResponse }]);
-        addEchoMessage(AgentName.SystemCore, `Holographic projection failed for persona ${selectedPersona.name}.`, AGENT_PROFILES[AgentName.SystemCore]?.colorClass || 'text-red-400');
+        addEchoMessage(AgentName.SystemCore, `Holographic projection failed for persona ${selectedPersona.name}: ${reason}`, AGENT_PROFILES[AgentName.SystemCore]?.colorClass || 'text-red-400');
     }
-  }, [prompt, selectedPersona, isGenerating, isModelLoaded, loadModel, generateText, addHistoricalEvent, voiceEngine, voiceProfiles]);
+  }, [prompt, selectedPersona, isGenerating, isModelLoaded, loadModel, generateText, addHistoricalEvent, voiceEngine, voiceProfiles, llmError]);
 
 
   return (

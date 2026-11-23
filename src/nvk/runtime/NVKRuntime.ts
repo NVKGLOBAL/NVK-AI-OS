@@ -3,7 +3,7 @@ import { planner } from '../planning/Planner';
 import { executionEngine } from './ExecutionEngine';
 import { nvkEventBus } from '../events/NVKEventBus';
 import { artifactRegistry, Artifact } from '../artifacts/ArtifactRegistry';
-import { Evidence } from '../evidence/EvidenceStore';
+import type { NVKEvidence } from '../../../types';
 
 export interface NVKRequest {
   input: string;
@@ -17,7 +17,10 @@ export interface NVKResponse {
   status: string;
   message: string;
   artifacts: Artifact[];
-  evidence: Evidence[];
+  // NVKEvidence (type/timestamp/reference/metadata) — the shape the
+  // ExecutionEngine actually returns. Was typed as the in-memory
+  // EvidenceStore's Evidence (source/claim), which is not what flows here.
+  evidence: NVKEvidence[];
 }
 
 export class NVKRuntime {

@@ -6,4 +6,4 @@ export type NVKEvent =
   | { type: "artifact.created"; artifactId: string }
   | { type: "task.completed"; taskId: string; result: unknown }
   | { type: "task.failed"; taskId: string; error: unknown }
-  | { type: "ui.state_changed"; state: "IDLE" | "THINKING" | "PLANNING" | "SEARCHING" | "RESEARCHING" | "PROCESSING" | "CREATING" | "VERIFYING" | "COMPLETED" | "FAILED" | "WAITING" };
+  | { type: "ui.state_changed"; state: "IDLE" | "THINKING" | "PLANNING" | "SEARCHING" | "RESEARCHING" | "PROCESSING" | "CREATING" | "EXECUTING" | "VERIFYING" | "COMPLETED" | "FAILED" | "WAITING" };

@@ -194,18 +194,32 @@ export default function NVKVoiceOrchestratorPanel() {
 
     try {
       const systemContext = `You are Nevik (NVK OS Neural Intelligence), speaking naturally to the user. Keep your voice response concise, smart, clear, and direct (1-3 short sentences).`;
-      const fullPrompt = `${systemContext}\nUser: ${userText}\nNevik:`;
+      const fullPrompt = `User: ${userText}\nNevik:`;
 
-      let tokenCount = 0;
-      const responseText = await generateText(fullPrompt, () => {
-        tokenCount++;
-        const elapsed = (performance.now() - startTime) / 1000;
-        if (elapsed > 0) {
-          setTokensPerSec(parseFloat((tokenCount / elapsed).toFixed(1)));
-        }
-      });
+      // Defect 4 fix (2026-11-22): the old second argument was a token-count
+      // callback passed where a system-prompt string belongs — a type error
+      // that could never run. generateText returns the whole reply at once,
+      // so there is no per-token stream; the rate below is computed post-hoc
+      // from the finished reply. A null return means no model answered.
+      const responseText = await generateText(fullPrompt, systemContext);
 
-      const cleanResponse = responseText.replace(/User:|Nevik:|System:/gi, '').trim() || "WebGPU core active and aligned.";
+      if (responseText === null) {
+        setErrorText("No local model loaded — load a model before using local voice.");
+        setCurrentSpeechText("No local model loaded.");
+        return;
+      }
+
+      const cleanResponse = responseText.replace(/User:|Nevik:|System:/gi, '').trim();
+      if (!cleanResponse) {
+        setErrorText("The local model returned an empty response.");
+        setCurrentSpeechText("The local model returned an empty response.");
+        return;
+      }
+
+      const elapsed = (performance.now() - startTime) / 1000;
+      if (elapsed > 0) {
+        setTokensPerSec(parseFloat((cleanResponse.split(/\s+/).length / elapsed).toFixed(1)));
+      }
       
       setCurrentSpeechText(cleanResponse);
       setTranscript(prev => [...prev, { sender: 'nevik', text: cleanResponse, timestamp: Date.now() }].slice(-20));
@@ -450,7 +464,25 @@ export default function NVKVoiceOrchestratorPanel() {
       startLocalSpeechRecognition();
 
     } else {
-      // cloud_ai Live WebSocket Mode
+      // cloud_ai Live WebSocket Mode — gated behind GET /api/voice/status
+      // (defect 9, 2026-11-22). There is no live-voice server: the status
+      // endpoint reports liveVoice: false, so this branch refuses to open a
+      // dead socket. The local WebGPU path is the working fallback.
+      let liveVoice = false;
+      try {
+        const statusRes = await fetch('/api/voice/status');
+        const status = await statusRes.json().catch(() => ({}));
+        liveVoice = status.liveVoice === true;
+      } catch {
+        liveVoice = false;
+      }
+      if (!liveVoice) {
+        setIsConnecting(false);
+        setErrorText('Cloud live voice is not connected — no live-voice server exists. Use the local WebGPU voice path instead.');
+        addEchoMessage(AgentName.SystemControl, 'Cloud live voice unavailable. Local WebGPU voice is the working path.', 'text-amber-400');
+        return;
+      }
+
       if (!audioCtxRef.current) {
         audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
       }

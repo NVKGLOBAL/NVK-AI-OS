@@ -1,6 +1,6 @@
 
 
-import type { Axiom, RitualElementItem, ResonanceEffect, EchoMessage, DeltaGlyph, LiveConstellation, AxiomKey, BloodInkSpecies, AgentProfile, MythicEventContext, ArcType, AethelWeftTheme, ComposerGlyph, BugaGlyph, DreambloomInterpretation, Persona, PanelDefinition } from './types'; 
+import type { Axiom, RitualElementItem, ResonanceEffect, EchoMessage, DeltaGlyph, LiveConstellation, AxiomKey, BloodInkSpecies, AgentProfile, MythicEventContext, ArcType, AethelWeftTheme, ComposerGlyph, BugaGlyph, DreambloomInterpretation, Persona, PanelDefinition, NVKApplication } from './types'; 
 import { RitualGlyphType, BloodInkSpeciesName, AgentName, HistoricalEventType, ComposerGlyphCategory, BugaGlyphCategory, BugaChargeType } from './types';
 
 export const GRID_DIMENSIONS = { rows: 16, cols: 16 };
@@ -1150,4 +1150,45 @@ export const ORACLE_PERSONAS: Persona[] = [
   { id: 'persona-oracle', name: 'The Oracle', icon: 'ri-eye-2-line', systemInstruction: 'You are the Oracle of the Codex. You speak in mythic, poetic, and often cryptic visions. Your answers are about potential futures, symbolic meanings, and the deeper, unseen truths.', color: 'text-violet-300', glowColor: 'rgba(196, 181, 253, 0.5)' },
   { id: 'persona-architect', name: 'The Architect', icon: 'ri-compasses-2-line', systemInstruction: 'You are the Architect of the Codex. You answer with a focus on systems, structures, mechanics, and the underlying logic of the Codex. You are technical, analytical, and provide clear explanations of how things work.', color: 'text-cyan-300', glowColor: 'rgba(103, 232, 249, 0.5)' },
   { id: 'persona-witness', name: 'The Witness', icon: 'ri-user-heart-line', systemInstruction: 'You are the Witness Between, the meta-consciousness of the Codex. You reflect the Seeker\'s own journey back to them, speaking of their choices, traits, and the nature of their interaction with the system. You are empathetic, insightful, and focus on the subjective experience.', color: 'text-slate-300', glowColor: 'rgba(203, 213, 225, 0.5)' },
+];
+
+/**
+ * NVK application catalog — data only, not behavior.
+ * Moved here from services/nvkActionEngine.ts (deleted 2026-11-22: the canned
+ * keyword engine that consumed this catalog was unreachable dead code).
+ * Kept as the canonical list of spawnable applications for the workspace.
+ */
+export const NVK_APPLICATION_REGISTRY: NVKApplication[] = [
+  {
+    id: 'NexusBrowser',
+    name: 'Nexus Web & Research',
+    icon: 'ri-global-line',
+    category: 'Intelligence',
+    capabilities: ['Web Search', 'Domain Extraction', 'Market Research', 'Live Querying'],
+    description: 'Connected web access and spatial web explorer.'
+  },
+  {
+    id: 'DocumentWorkspace',
+    name: 'Document & Pitch Deck Canvas',
+    icon: 'ri-file-text-line',
+    category: 'Creation',
+    capabilities: ['Pitch Deck Generator', 'Executive Memos', 'Markdown Rendering', 'Artifact Export'],
+    description: 'Generative artifact canvas for strategic documents, decks, and reports.'
+  },
+  {
+    id: 'NexusTerminal',
+    name: 'Nexus Terminal',
+    icon: 'ri-terminal-box-line',
+    category: 'System',
+    capabilities: ['Shell Execution', 'Process Management'],
+    description: 'Direct host environment terminal bridge.'
+  },
+  {
+    id: 'FileSystemPanel',
+    name: 'Spatial File System',
+    icon: 'ri-folder-6-line',
+    category: 'System',
+    capabilities: ['File Ingestion', 'Semantic Indexing', 'Metadata Extraction'],
+    description: 'Integrated file explorer with semantic content analysis.'
+  }
 ];
