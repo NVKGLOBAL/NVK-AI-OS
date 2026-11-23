@@ -249,6 +249,10 @@ export const App: React.FC = () => {
   });
   const [active2dNodeId, setActive2dNodeId] = useState<string | null>(null);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  // Voice listening toggle (N7: orb click toggles it; Esc stops it; passed
+  // to the 3D scene as isLiveActive and to NVKCommandLayer). Was referenced
+  // at 9 use sites but never declared — uncaught ReferenceError on render.
+  const [isVoiceActive, setIsVoiceActive] = useState(false);
 
   // Drag and drop states
   const [isDragging, setIsDragging] = useState(false);
@@ -369,7 +373,10 @@ export const App: React.FC = () => {
   useEffect(() => {
     const checkMobile = () => {
       const mobile = window.innerWidth < 768 || /Mobi|Android/i.test(navigator.userAgent);
-      setIsMobile(mobile);
+      // NOTE 2026-11-23: setIsMobile(mobile) was called here but no such setter
+      // exists — isMobile is derived from the shared useIsMobile() hook (line 232,
+      // S5 single breakpoint source). The call threw ReferenceError on mount,
+      // the same crash class as isVoiceActive. Deleted; performance tier kept.
       // Automatically downgrade performance on mobile or small screens
       setPerformanceTier(mobile ? 'low' : 'high');
     };
