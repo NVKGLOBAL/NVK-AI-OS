@@ -5,6 +5,63 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <script>
+    /* TEMPORARY DIAGNOSTIC SCAFFOLDING — added 2026-11-23 for the startup-crash
+       diagnosis (NVK-AI-OS black page: app never mounts). This trap records any
+       uncaught error / unhandled rejection into the DOM and localStorage so a
+       browser retest can read it WITHOUT DevTools. It must be REMOVED, or gated
+       behind an explicit flag, before any production build ships. It never POSTs
+       anywhere and never depends on React mounting. */
+    (function () {
+      var KEY = 'nvk-startup-diagnostics';
+      var MAX = 10;
+      function safe(fn) { try { fn(); } catch (e) { /* trap must never itself throw */ } }
+      function record(kind, message, source, line, col, stack) {
+        safe(function () {
+          var entry = {
+            kind: kind,
+            message: String(message || 'Unknown error'),
+            source: String(source || ''),
+            line: line || 0,
+            col: col || 0,
+            stack: String(stack || ''),
+            url: window.location.href,
+            at: new Date().toISOString()
+          };
+          window.__NVK_STARTUP_ERRORS__ = window.__NVK_STARTUP_ERRORS__ || [];
+          window.__NVK_STARTUP_ERRORS__.push(entry);
+          try {
+            var prev = [];
+            try { prev = JSON.parse(window.localStorage.getItem(KEY) || '[]'); } catch (e) { prev = []; }
+            if (!Array.isArray(prev)) prev = [];
+            prev.push(entry);
+            window.localStorage.setItem(KEY, JSON.stringify(prev.slice(-MAX)));
+          } catch (e) { /* storage may be unavailable; DOM + console still carry it */ }
+          var host = document.body || document.documentElement;
+          if (!host) return;
+          var el = document.getElementById('nvk-startup-error-trap');
+          if (!el) {
+            el = document.createElement('div');
+            el.id = 'nvk-startup-error-trap';
+            el.setAttribute('style', 'position:fixed;left:0;top:0;right:0;z-index:2147483647;background:#3b0000;color:#fff;font-family:monospace;font-size:13px;line-height:1.5;padding:12px 16px;white-space:pre-wrap;word-break:break-word;max-height:100vh;overflow:auto;text-align:left;');
+            host.appendChild(el);
+          }
+          var text = 'NVK STARTUP ERROR (' + kind + ')\n' + entry.message + '\n' +
+            (entry.source ? entry.source + ':' + entry.line + ':' + entry.col + '\n' : '') +
+            (entry.stack ? entry.stack + '\n' : '') +
+            'Recorded to localStorage["' + KEY + '"].';
+          el.textContent = text;
+        });
+      }
+      window.addEventListener('error', function (event) {
+        record('error', event.message || (event.error && event.error.message), event.filename, event.lineno, event.colno, event.error && event.error.stack);
+      });
+      window.addEventListener('unhandledrejection', function (event) {
+        var r = event.reason;
+        record('unhandledrejection', r instanceof Error ? r.message : String(r), '', 0, 0, r instanceof Error ? r.stack : '');
+      });
+    })();
+  </script>
+  <script>
     // System-wide proactive error logging and telemetry
     window.addEventListener('error', function(event) {
       const errorMsg = event.message || (event.error ? event.error.message : 'Unknown script or resource error');

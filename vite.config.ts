@@ -32,9 +32,6 @@ export default defineConfig(({ mode }) => {
                 if (id.includes('/react/') || id.includes('/react-dom/') || id.includes('/scheduler/') || id.includes('@radix-ui')) {
                   return 'vendor-react';
                 }
-                if (id.includes('three') || id.includes('@react-three')) {
-                  return 'vendor-three';
-                }
                 if (id.includes('@mlc-ai/web-llm')) {
                   return 'vendor-webllm';
                 }
@@ -44,7 +41,19 @@ export default defineConfig(({ mode }) => {
                 if (id.includes('dexie') || id.includes('yjs') || id.includes('y-websocket') || id.includes('socket.io')) {
                   return 'vendor-state';
                 }
-                return 'vendor-utils';
+                // Everything else in node_modules — three, @react-three/fiber,
+                // @react-three/drei, @monogrid/gainmap-js, zustand, suspend-react,
+                // react-reconciler and the rest — goes into ONE chunk, vendor-three.
+                // DO NOT split this group again. three/fiber/drei/gainmap form a
+                // circular import graph (gainmap's Loader extends three's Loader;
+                // fiber needs zustand/suspend-react helpers), and splitting them
+                // across chunks made ES-module evaluation throw
+                // "ReferenceError: Cannot access 'Bn' before initialization"
+                // during module evaluation, before React ever mounted — the
+                // black page on the live site (diagnosed 2026-11-22). Keeping
+                // the cycle inside a single chunk lets Rollup order the class
+                // definitions so three's Loader initializes first.
+                return 'vendor-three';
               }
             }
           }
