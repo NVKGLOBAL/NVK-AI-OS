@@ -13,7 +13,7 @@ import {
   NVKActivityStep 
 } from '../../types';
 import type { ProcessedNVKIntent } from '../../types';
-import { nvkRuntime } from '../../src/nvk/runtime/NVKRuntime';
+import { nvkRuntime, type NVKPlanStep } from '../../src/nvk/runtime/NVKRuntime';
 import { nvkEventBus } from '../../src/nvk/events/NVKEventBus';
 import { eventBus } from '../../services/EventBus';
 import { NVKEvent } from '../../types';
@@ -21,6 +21,7 @@ import { useLocalLLM } from '../../context/LocalLLMContext';
 import { synthesizeShard, SHARD_VARIANTS } from '../../services/shardEngine';
 import type { ShardSpec, ShardVariant } from '../../services/shardEngine';
 import { ShardRenderer } from '../ui/ShardRenderer';
+import { useIsMobile } from '../../lib/useIsMobile';
 
 interface NVKCommandLayerProps {
   orbState: NVKOrbState;
@@ -42,6 +43,16 @@ const SUGGESTED_COMMANDS = [
   { label: 'Open Spotify', icon: Layers }
 ];
 
+// A1 follow-up (2026-11-22): a pending confirmation is a real plan the
+// user was asked to approve — the prompt, the steps that require
+// confirmation, and the details the confirm UI renders (action, target,
+// consequence — never a generic "Permission Confirmation").
+interface PendingConfirmation {
+  prompt: string;
+  steps: NVKPlanStep[];
+  confirmationDetails: { title: string; description: string };
+}
+
 export const NVKCommandLayer: React.FC<NVKCommandLayerProps> = ({
   orbState,
   onSetOrbState,
@@ -53,6 +64,10 @@ export const NVKCommandLayer: React.FC<NVKCommandLayerProps> = ({
   currentStatusText = 'Ready for instruction'
 }) => {
   const { isModelLoaded, loadModel, loadStatus, generateText, isCloudMode } = useLocalLLM();
+  // S5 (2026-11-22): shared mobile breakpoint. On mobile the layer docks
+  // to the bottom as a bottom sheet (see the outer div); on desktop it
+  // stays a draggable floating panel at the persisted position.
+  const isMobile = useIsMobile();
   const [inputValue, setInputValue] = useState('');
   const [isMinimized, setIsMinimized] = useState(() => {
     if (typeof window !== 'undefined') {
@@ -90,7 +105,7 @@ export const NVKCommandLayer: React.FC<NVKCommandLayerProps> = ({
   ]);
   const [isListening, setIsListening] = useState(false);
   const [liveEvents, setLiveEvents] = useState<{time: string, text: string}[]>([]);
-  const [pendingConfirmation, setPendingConfirmation] = useState<any | null>(null);
+  const [pendingConfirmation, setPendingConfirmation] = useState<PendingConfirmation | null>(null);
   // Shard synthesis (defect 8): real entry point for the shard engine.
   const [shardVariant, setShardVariant] = useState<ShardVariant>('text-block');
   const [isSynthesizingShard, setIsSynthesizingShard] = useState(false);
@@ -118,6 +133,8 @@ export const NVKCommandLayer: React.FC<NVKCommandLayerProps> = ({
   const speechRecognitionRef = useRef<any>(null);
 
   const handlePointerDown = (e: React.PointerEvent) => {
+    // S5: no floating position to drag on mobile — the layer is docked.
+    if (isMobile) return;
     // Only allow drag from header/handle
     isDraggingRef.current = true;
     dragStartRef.current = {
@@ -227,21 +244,17 @@ export const NVKCommandLayer: React.FC<NVKCommandLayerProps> = ({
     }
   };
 
-  const handleSendCommand = useCallback(async (textToSend?: string) => {
-    const prompt = (textToSend || inputValue).trim();
-    if (!prompt) return;
-
-    // Add user message to history
-    setHistory(prev => [...prev, { role: 'user', text: prompt }]);
-    setInputValue('');
-
-    // Trigger thinking state on NVK Orb
-    onSetOrbState('THINKING');
-
+  // A1 follow-up (2026-11-22): the single execution path. `context` is
+  // the confirmation the user actually gave for this run — absent/false
+  // means unconfirmed, and the engine blocks any capability that requires
+  // confirmation. The caller (send vs. confirm) decides the context;
+  // this function never invents one.
+  const executeAndRender = useCallback(async (prompt: string, context: { confirmedByUser: boolean; confirmedAt?: number }) => {
     try {
       const runtimeResponse = await nvkRuntime.execute({
         input: prompt,
-        sessionId: 'session-1'
+        sessionId: 'session-1',
+        context
       });
 
       let spawnAppId: string | undefined = undefined;
@@ -287,19 +300,77 @@ export const NVKCommandLayer: React.FC<NVKCommandLayerProps> = ({
         text: `Execution failed: ${err.message || err}` 
       }]);
     }
-  }, [inputValue, onSetOrbState, onExecuteAction]);
+  }, [onSetOrbState, onExecuteAction]);
 
-  const handleConfirmAction = () => {
+  const handleSendCommand = useCallback(async (textToSend?: string) => {
+    const prompt = (textToSend || inputValue).trim();
+    if (!prompt) return;
+
+    // A pending confirmation belongs to an earlier prompt — a new send
+    // supersedes it. The earlier plan is abandoned, never executed, and
+    // no grant or denial is recorded for it (the user neither granted
+    // nor denied; they moved on).
+    if (pendingConfirmation) setPendingConfirmation(null);
+
+    // Add user message to history
+    setHistory(prev => [...prev, { role: 'user', text: prompt }]);
+    setInputValue('');
+
+    // Trigger thinking state on NVK Orb
+    onSetOrbState('THINKING');
+
+    try {
+      // A1: preview first — build the plan WITHOUT executing anything.
+      // If any planned step both requires confirmation AND can actually
+      // run, stop here and ask the user. Nothing executes until they
+      // grant. Steps that require confirmation but are unavailable are
+      // not gated here — the engine reports them unavailable instead.
+      const preview = nvkRuntime.preview(prompt);
+      if (preview.needsInput) {
+        onSetOrbState('CALM');
+        setHistory(prev => [...prev, { role: 'nvk', text: preview.needsInput! }]);
+        return;
+      }
+      const confirmSteps = preview.steps.filter(s => s.requiresConfirmation && s.available);
+      if (confirmSteps.length > 0) {
+        const names = confirmSteps.map(s => s.name).join(', ');
+        const details = confirmSteps.map(s =>
+          `${s.name} (${s.capabilityId}) — ${s.description || 'No description.'} Objective: ${s.objective}.`
+        ).join('\n');
+        setPendingConfirmation({
+          prompt,
+          steps: confirmSteps,
+          confirmationDetails: {
+            title: `Confirm: ${names}`,
+            description: `${details}\n\nThis action requires your explicit approval. Confirming runs it now; denying leaves nothing changed.`
+          }
+        });
+        return;
+      }
+      await executeAndRender(prompt, { confirmedByUser: false });
+    } catch (err: any) {
+      onSetOrbState('CALM');
+      setHistory(prev => [...prev, {
+        role: 'nvk',
+        text: `Execution failed: ${err.message || err}`
+      }]);
+    }
+  }, [inputValue, onSetOrbState, executeAndRender, pendingConfirmation]);
+
+  const handleConfirmAction = useCallback(async () => {
     if (!pendingConfirmation) return;
-    const confirmed = { ...pendingConfirmation, requiresConfirmation: false };
+    const { prompt } = pendingConfirmation;
     setPendingConfirmation(null);
     setHistory(prev => [...prev, { 
       role: 'nvk', 
       text: "Operation authorized by operator. Executing requested task." 
     }]);
     onSetOrbState('ACTING');
-    onExecuteAction(confirmed);
-  };
+    // A1: the grant is real — the user just tapped Confirm. The grant
+    // timestamp is threaded so the ledger records hitl_confirmed with
+    // when it actually happened, not when the run finished.
+    await executeAndRender(prompt, { confirmedByUser: true, confirmedAt: Date.now() });
+  }, [pendingConfirmation, executeAndRender, onSetOrbState]);
 
   // Shard synthesis (defect 8): synthesizes a shard from the current input
   // (or the last user message) via the LOCAL model. A null result means no
@@ -341,14 +412,29 @@ export const NVKCommandLayer: React.FC<NVKCommandLayerProps> = ({
     }
   }, []);
 
-  const handleCancelAction = () => {
+  const handleCancelAction = useCallback(async () => {
+    if (!pendingConfirmation) return;
+    const pending = pendingConfirmation;
     setPendingConfirmation(null);
-    setHistory(prev => [...prev, { 
-      role: 'nvk', 
-      text: "Operation aborted. No changes made." 
-    }]);
+    try {
+      // A1: a denial is a real audit event — record it as hitl_rejected
+      // so the ledger shows the user was asked and said no. Nothing
+      // executes on this path.
+      const entries = await nvkRuntime.recordDenial(pending.steps, pending.prompt);
+      setHistory(prev => [...prev, {
+        role: 'nvk',
+        text: `Operation aborted. No changes made. Denial recorded in the ledger as hitl_rejected (${entries.map(e => e.id).join(', ')}).`
+      }]);
+    } catch (err: any) {
+      // The denial itself could not be recorded — say so plainly rather
+      // than claiming a record that does not exist.
+      setHistory(prev => [...prev, {
+        role: 'nvk',
+        text: `Operation aborted. No changes made. Warning: the denial could not be recorded in the ledger (${err.message || err}).`
+      }]);
+    }
     onSetOrbState('CALM');
-  };
+  }, [pendingConfirmation, onSetOrbState]);
 
   const getOrbStateBadge = () => {
     switch (orbState) {
@@ -370,9 +456,14 @@ export const NVKCommandLayer: React.FC<NVKCommandLayerProps> = ({
   const badge = getOrbStateBadge();
 
   return (
-    <div 
-      className="fixed z-[1000] w-[92vw] sm:w-[480px] max-w-[94vw] font-mono pointer-events-none transition-shadow"
-      style={{
+    <div
+      // S5 (2026-11-22): on mobile the CommandLayer is a bottom sheet —
+      // full-width minus small margins, anchored above the dock (the Dock
+      // footer sits at bottom-12, so 128px clears it) — instead of floating
+      // top-left over the orb. Desktop keeps the draggable persisted
+      // top-left position exactly as before.
+      className={`fixed z-[1000] font-mono pointer-events-none transition-shadow ${isMobile ? 'left-2 right-2' : 'w-[92vw] sm:w-[480px] max-w-[94vw]'}`}
+      style={isMobile ? { bottom: '128px' } : {
         left: `${position.x}px`,
         top: `${position.y}px`
       }}
@@ -387,14 +478,14 @@ export const NVKCommandLayer: React.FC<NVKCommandLayerProps> = ({
         <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-cyan-400 to-transparent opacity-80" />
 
         {/* Top Header Bar / Drag Handle */}
-        <div 
+        <div
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
-          className="flex items-center justify-between cursor-move select-none active:cursor-grabbing pb-1 border-b border-cyan-500/20"
+          className={`flex items-center justify-between select-none pb-1 border-b border-cyan-500/20 ${isMobile ? 'cursor-default' : 'cursor-move active:cursor-grabbing'}`}
         >
           <div className="flex items-center gap-2">
-            <GripHorizontal className="w-3.5 h-3.5 text-cyan-400/70 hover:text-cyan-300" />
+            {!isMobile && <GripHorizontal className="w-3.5 h-3.5 text-cyan-400/70 hover:text-cyan-300" />}
             <div className="w-2 h-2 rounded-full bg-cyan-400 shadow-[0_0_8px_rgba(0,229,255,0.8)] animate-pulse" />
             <div className="flex items-baseline gap-1.5">
               <span className="text-xs font-bold tracking-wider text-slate-100 uppercase">NVK</span>

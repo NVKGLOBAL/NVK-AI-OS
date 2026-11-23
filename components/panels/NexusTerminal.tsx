@@ -366,6 +366,12 @@ const NexusTerminal: React.FC<NexusTerminalProps> = ({ addThought, spawnSubAgent
           </>
         )}
       </div>
+      {/* S3 recovery text: the locked state says how to recover the token. */}
+      {!dispatchToken && (
+        <p className="z-10 text-[10px] text-slate-500 leading-relaxed mt-2">
+          Locked out? The token was printed once when the server started. Restart the server with NVK_AGENT_TOKEN=&lt;your token&gt; to set your own. You can also paste a token in Settings → Terminal dispatch token.
+        </p>
+      )}
       <form onSubmit={handleCommand} className="z-10 flex items-center gap-2 border-t border-slate-800 pt-4">
         <span className="text-emerald-500 font-bold">PS C:\ANGELIC_OS\NEXUS&gt;</span>
         <input 

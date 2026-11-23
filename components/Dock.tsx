@@ -30,8 +30,10 @@ export const Dock: React.FC<DockProps> = ({
   const centerIndex = (total - 1) / 2;
 
   return (
-    <footer className="fixed bottom-12 left-0 right-0 flex justify-center items-end z-[1100] pointer-events-none">
-      <div className="flex items-end justify-center gap-2 px-6 py-3 pointer-events-auto max-w-[98vw]">
+    <footer className="dock-container fixed bottom-12 left-0 right-0 flex justify-center items-end z-[1100] pointer-events-none">
+      {/* S5: the dock scrolls horizontally on narrow screens instead of
+          overflowing off the right edge. */}
+      <div className="flex items-end justify-center gap-2 px-6 py-3 pointer-events-auto max-w-[98vw] overflow-x-auto custom-scrollbar">
         {items.map((item, index) => {
           const dist = index - centerIndex;
           
@@ -43,7 +45,9 @@ export const Dock: React.FC<DockProps> = ({
           // Curve upwards at the side boundaries
           const translateY = -1.3225 * (radius - radius * Math.cos(angleRad)); 
 
-          const isOpen = item.type === 'app' && openAppIds.some(id => id.startsWith(item.id));
+          // P1: App passes the one derived active-panel set (panel ids),
+          // so this is an exact match — not a prefix match.
+          const isOpen = item.type === 'app' && openAppIds.includes(item.id);
 
           return (
             <div 

@@ -8,35 +8,30 @@ interface TutorialStep {
   icon: string;
 }
 
+/**
+ * F2 (nav/UX fix spec, 2026-11-22): the old tour had five steps,
+ * including a "NVK Service Tiers" step that pointed at a pricing /
+ * upgrade flow that does not exist, and a "Logic Core" step targeting
+ * #nvk-core-button. The tour is now exactly the spec's three steps:
+ * the orb, the panels, and loading a model.
+ */
 const TUTORIAL_STEPS: TutorialStep[] = [
   {
-    title: "Welcome to NVK OS",
-    content: "Welcome to the Angelic Business Operations OS. We have designed an incredibly simple, step-by-step onboarding sequence for you. Let's explore your new sovereign command system!",
-    icon: "ri-shield-star-line"
-  },
-  {
-    title: "1. The Core Orb",
-    content: "This central 3D WebGL sphere represents the intelligence center of your machine. Click directly on nodes to boot up systems, or click and drag the orb to explore its geometry.",
+    title: "1. This is NVK",
+    content: "This is NVK, your agent. Tap it to talk.",
     target: "#codex-orb-canvas-container",
     icon: "ri-bubble-chart-line"
   },
   {
-    title: "2. The System Dock",
-    content: "Located at the bottom center, the Dock houses all your main interfaces. Click any icon here to immediately toggle its corresponding panel open or closed.",
+    title: "2. Panels live around NVK",
+    content: "Panels live around NVK. Click a node to open one — the Dock at the bottom opens any panel too.",
     target: ".dock-container",
     icon: "ri-menu-line"
   },
   {
-    title: "3. NVK Logic Core",
-    content: "This glowing floating reactor is your autonomous AI assistant. Click it to open the real-time speech and command deck, where you can issue directions or run diagnostics.",
-    target: "#nvk-core-button",
-    icon: "ri-coreos-line"
-  },
-  {
-    title: "4. NVK Service Tiers",
-    content: "Need higher token bandwidth or dedicated logic units? Click the NVK Service Tiers app icon in your Dock to configure and upgrade your sovereign systems.",
-    target: "#dock-app-PricingPage",
-    icon: "ri-flashlight-line"
+    title: "3. Load a model",
+    content: "Load a model to think locally, or connect a provider. Open the Model Orchestrator from the Dock to pick one.",
+    icon: "ri-brain-line"
   }
 ];
 

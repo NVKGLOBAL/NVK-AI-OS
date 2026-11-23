@@ -1,8 +1,10 @@
 import { intentEngine } from '../intent/IntentEngine';
 import { planner } from '../planning/Planner';
 import { executionEngine } from './ExecutionEngine';
+import { capabilityRegistry } from '../capabilities/CapabilityRegistry';
 import { nvkEventBus } from '../events/NVKEventBus';
 import { artifactRegistry, Artifact } from '../artifacts/ArtifactRegistry';
+import { sovereignLedger, type SovereignLedgerEntry } from '../../../services/SovereignLedger';
 import type { NVKEvidence } from '../../../types';
 
 export interface NVKRequest {
@@ -21,9 +23,92 @@ export interface NVKResponse {
   // ExecutionEngine actually returns. Was typed as the in-memory
   // EvidenceStore's Evidence (source/claim), which is not what flows here.
   evidence: NVKEvidence[];
+  // Ledger entries written for this run (success and failure alike), so the
+  // UI can render a hash the user can match against the real ledger.
+  ledgerEntries: SovereignLedgerEntry[];
+}
+
+/**
+ * A1 (2026-11-22): a plan built WITHOUT executing. The CommandLayer calls
+ * this before executing so it can ask the user to confirm any planned
+ * capability that requires confirmation. Each step carries the live
+ * requiresConfirmation + available flags from the runtime registry.
+ */
+export interface NVKPlanStep {
+  capabilityId: string;
+  name: string;
+  description: string;
+  requiresConfirmation: boolean;
+  available: boolean;
+  objective: string;
+}
+
+export interface NVKPlanPreview {
+  intent: string;
+  /** Set when the intent needs a missing input before any plan can exist. */
+  needsInput?: string;
+  steps: NVKPlanStep[];
 }
 
 export class NVKRuntime {
+  /**
+   * Classify the input and build the plan the engine would run, without
+   * executing anything. No capability runs, no ledger entry is written.
+   */
+  preview(input: string): NVKPlanPreview {
+    const parsed = intentEngine.classify(input);
+
+    if (parsed.intent === 'open_application' && !parsed.target) {
+      return { intent: parsed.intent, needsInput: 'Which application should I open?', steps: [] };
+    }
+    if (parsed.intent === 'run_task' && !parsed.objective) {
+      return { intent: parsed.intent, needsInput: 'What task do you want me to start?', steps: [] };
+    }
+
+    const graph = planner.createPlan(`preview-${Date.now()}`, parsed, input);
+    const steps: NVKPlanStep[] = graph.nodes.map((node) => {
+      const cap = capabilityRegistry.getCapability(node.capability);
+      return {
+        capabilityId: node.capability,
+        name: cap?.name ?? node.capability,
+        description: cap?.description ?? '',
+        requiresConfirmation: cap?.requiresConfirmation ?? false,
+        available: cap?.available ?? false,
+        objective: node.objective
+      };
+    });
+    return { intent: parsed.intent, steps };
+  }
+
+  /**
+   * A1 follow-up (2026-11-22): record a user's DENIAL of a confirmation
+   * in the ledger — one hitl_rejected entry per step that required
+   * confirmation. Nothing executes here: no capability runs, no plan is
+   * executed, no other ledger entry is written. The denial itself is a
+   * real audit event (the user was asked and said no), so it belongs in
+   * the ledger with the same hashing as any other entry.
+   */
+  async recordDenial(steps: NVKPlanStep[], input: string): Promise<SovereignLedgerEntry[]> {
+    const entries: SovereignLedgerEntry[] = [];
+    for (const step of steps) {
+      if (!step.requiresConfirmation) continue;
+      const entry = await sovereignLedger.append({
+        capabilityId: step.capabilityId,
+        authorization: 'hitl_rejected',
+        riskLevel: 'safe',
+        result: {
+          success: false,
+          capabilityId: step.capabilityId,
+          error: `User denied confirmation for "${step.name}" — nothing executed.`,
+          evidence: []
+        },
+        input
+      });
+      entries.push(entry);
+    }
+    return entries;
+  }
+
   async execute(req: NVKRequest): Promise<NVKResponse> {
     const taskId = `task-${Date.now()}`;
     
@@ -41,7 +126,8 @@ export class NVKRuntime {
         status: 'needs_input',
         message: 'Which application should I open?',
         artifacts: [],
-        evidence: []
+        evidence: [],
+        ledgerEntries: []
       };
     }
 
@@ -53,7 +139,8 @@ export class NVKRuntime {
         status: 'needs_input',
         message: 'What task do you want me to start?',
         artifacts: [],
-        evidence: []
+        evidence: [],
+        ledgerEntries: []
       };
     }
     
@@ -61,8 +148,13 @@ export class NVKRuntime {
     // 2. Create Plan
     const graph = planner.createPlan(taskId, parsed, req.input);
     
-    // 3. Execute with Verification Engine
-    const execResult = await executionEngine.executePlan(graph);
+    // 3. Execute with Verification Engine. The confirmedByUser flag is
+    // threaded from the caller's context (A1): it is true ONLY when the
+    // user explicitly granted confirmation for this run. Absent or false,
+    // the engine blocks any capability that requires confirmation.
+    const confirmedByUser = req.context?.confirmedByUser === true;
+    const confirmedAt = typeof req.context?.confirmedAt === 'number' ? req.context.confirmedAt : undefined;
+    const execResult = await executionEngine.executePlan(graph, { confirmedByUser, confirmedAt });
     
     if (execResult.error) {
        nvkEventBus.publish({ type: 'ui.state_changed', state: 'FAILED' });
@@ -72,7 +164,10 @@ export class NVKRuntime {
          status: 'failed',
          message: String(execResult.error.message || execResult.error),
          artifacts: [],
-         evidence: []
+         // Failure evidence (including the gate-block record and its ledger
+         // hash) flows through so the UI can render it, not just the text.
+         evidence: execResult.evidence || [],
+         ledgerEntries: execResult.ledgerEntries || []
        };
     }
     
@@ -94,7 +189,8 @@ export class NVKRuntime {
       status: 'complete',
       message: message,
       artifacts: artifactRegistry.getAllArtifacts().filter(a => a.taskId === 'current' || a.taskId === taskId),
-      evidence: execResult.evidence || []
+      evidence: execResult.evidence || [],
+      ledgerEntries: execResult.ledgerEntries || []
     };
   }
 }

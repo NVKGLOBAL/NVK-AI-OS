@@ -38,37 +38,26 @@ class CapabilityRegistry {
   ): Promise<NVKCapabilityResult> {
     const cap = this.capabilities.get(capabilityId);
     if (!cap) {
-      const errRes: NVKCapabilityResult = {
+      // A1 (2026-11-22): nothing executed here, so no ledger entry is
+      // written — a ledger append would stamp an authorization claim
+      // ('auto_approved') for an execution that never happened.
+      return {
         success: false,
         capabilityId,
         error: `Capability "${capabilityId}" not found in sovereign registry.`
       };
-      await sovereignLedger.append({
-        capabilityId,
-        authorization: 'auto_approved',
-        riskLevel: 'safe',
-        result: errRes,
-        input
-      });
-      return errRes;
     }
 
     // Availability Check
     const isAvailable = await cap.available();
     if (!isAvailable) {
-      const errRes: NVKCapabilityResult = {
+      // A1 (2026-11-22): same as above — the capability did not run, so
+      // no ledger entry and no authorization claim.
+      return {
         success: false,
         capabilityId,
         error: `Capability "${cap.name}" is currently unavailable or offline.`
       };
-      await sovereignLedger.append({
-        capabilityId,
-        authorization: 'auto_approved',
-        riskLevel: cap.riskLevel,
-        result: errRes,
-        input
-      });
-      return errRes;
     }
 
     // Human-in-the-Loop (HITL) Authorization Guard

@@ -1,14 +1,14 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import type { PanelDefinition } from '../../types';
+import type { PanelDefinition, WorkspaceMode } from '../../types';
 import { PANEL_DEFINITIONS } from '../../constants';
 
 interface OmniSearchModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSelectPanel: (panelId: string) => void;
-  workspaceMode: '3d' | '2d';
-  onWorkspaceModeChange: (mode: '3d' | '2d') => void;
+  workspaceMode: WorkspaceMode;
+  onWorkspaceModeChange: (mode: WorkspaceMode) => void;
   onCloseAllPanels: () => void;
   onOpenAllPanels: () => void;
   onTriggerAction?: (actionName: string) => void;
@@ -150,7 +150,9 @@ export const OmniSearchModal: React.FC<OmniSearchModalProps> = ({
       } else {
         const panelIdx = selectedIndex - filteredCommands.length;
         const panel = filteredPanels[panelIdx];
-        if (panel) {
+        // P6: blocked panels never open from search either (click path
+        // has the same guard; handleAppClick is the backstop).
+        if (panel && !(panel.availability && panel.availability.status !== 'available')) {
           onSelectPanel(panel.id);
           onClose();
         }
@@ -300,33 +302,45 @@ export const OmniSearchModal: React.FC<OmniSearchModalProps> = ({
                   {filteredPanels.map((panel, idx) => {
                     const actualIdx = filteredCommands.length + idx;
                     const isSelected = selectedIndex === actualIdx;
+                    // P6: blocked panels are badged and unselectable.
+                    const blocked = panel.availability && panel.availability.status !== 'available';
                     return (
                       <div
                         key={panel.id}
                         onClick={() => {
+                          if (blocked) return;
                           onSelectPanel(panel.id);
                           onClose();
                         }}
                         onMouseEnter={() => setSelectedIndex(actualIdx)}
-                        className={`flex items-start gap-3 p-2.5 rounded-xl cursor-pointer transition-all border ${
-                          isSelected
-                            ? 'bg-cyan-950/50 border-cyan-500 text-cyan-100 shadow-[0_0_15px_rgba(6,182,212,0.25)] scale-[1.01]'
-                            : 'bg-slate-950/40 border-slate-800/80 text-slate-300 hover:bg-slate-800/60 hover:border-slate-700'
+                        title={blocked ? `${panel.name} — ${panel.availability!.reason}` : panel.name}
+                        className={`flex items-start gap-3 p-2.5 rounded-xl transition-all border ${
+                          blocked
+                            ? 'bg-slate-950/30 border-slate-800/60 text-slate-600 cursor-not-allowed'
+                            : isSelected
+                              ? 'bg-cyan-950/50 border-cyan-500 text-cyan-100 shadow-[0_0_15px_rgba(6,182,212,0.25)] scale-[1.01] cursor-pointer'
+                              : 'bg-slate-950/40 border-slate-800/80 text-slate-300 hover:bg-slate-800/60 hover:border-slate-700 cursor-pointer'
                         }`}
                       >
                         <div className={`w-9 h-9 rounded-lg flex items-center justify-center text-xl shrink-0 ${
-                          isSelected ? 'bg-cyan-500/30 text-cyan-300' : 'bg-slate-800/80 text-cyan-400 border border-slate-700'
+                          blocked ? 'bg-slate-800/50 text-slate-600 border border-slate-800' : isSelected ? 'bg-cyan-500/30 text-cyan-300' : 'bg-slate-800/80 text-cyan-400 border border-slate-700'
                         }`}>
                           <i className={panel.icon}></i>
                         </div>
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center justify-between gap-1">
-                            <span className="text-xs font-semibold truncate text-slate-100">{panel.name}</span>
-                            <span className="text-[9px] font-mono text-slate-500 bg-slate-800/80 px-1.5 py-0.5 rounded shrink-0">
-                              {panel.category || 'Core'}
-                            </span>
+                            <span className={`text-xs font-semibold truncate ${blocked ? 'text-slate-600' : 'text-slate-100'}`}>{panel.name}</span>
+                            {blocked ? (
+                              <span className="text-[9px] font-mono font-bold text-amber-500/80 bg-amber-950/40 border border-amber-500/40 px-1.5 py-0.5 rounded shrink-0">
+                                BLOCKED
+                              </span>
+                            ) : (
+                              <span className="text-[9px] font-mono text-slate-500 bg-slate-800/80 px-1.5 py-0.5 rounded shrink-0">
+                                {panel.category || 'Core'}
+                              </span>
+                            )}
                           </div>
-                          <p className="text-[11px] text-slate-400 line-clamp-1 mt-0.5">{panel.description}</p>
+                          <p className="text-[11px] text-slate-400 line-clamp-1 mt-0.5">{blocked ? panel.availability!.reason : panel.description}</p>
                         </div>
                       </div>
                     );

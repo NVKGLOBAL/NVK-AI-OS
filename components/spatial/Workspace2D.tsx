@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from 'react';
-import { 
-  Terminal, Sparkles, Sliders, Layers, RefreshCw, Activity, Check, 
-  Settings, Zap, Maximize2, Monitor, Eye, EyeOff, Layout, Type, Palette, Save, Play, RefreshCcw
+import React, { useState } from 'react';
+import {
+  Settings, Zap, Layout
 } from 'lucide-react';
-import { Cluster, PanelDefinition } from '../../types';
+import { Cluster, PanelDefinition, WorkspaceMode } from '../../types';
 import { GlassmorphismSlider } from '../ui/GlassmorphismSlider';
+import { useIsMobile } from '../../lib/useIsMobile';
+import { version as PACKAGE_VERSION } from '../../package.json';
 
 interface Workspace2DProps {
   activeCluster: Cluster;
@@ -16,11 +17,20 @@ interface Workspace2DProps {
   handlePinPanel: (id: string) => void;
   getPanelContent: (id: string) => React.ReactNode;
   PANEL_DEFINITIONS: PanelDefinition[];
-  setWorkspaceMode: (mode: '3d' | '2d') => void;
-  workspaceMode: '3d' | '2d';
+  setWorkspaceMode: (mode: WorkspaceMode) => void;
+  workspaceMode: WorkspaceMode;
+  /**
+   * S7: the 2D desk config lives in App's single settings store
+   * (nvk_settings_v1) and is edited in the Settings panel. Workspace2D
+   * renders it — it no longer owns it, and the z-2000 drawer is gone.
+   */
+  deskConfig: WorkspaceConfig;
+  onDeskConfigChange: (next: WorkspaceConfig) => void;
+  /** S7: the desk Settings button opens the Settings panel. */
+  onOpenSettings: () => void;
 }
 
-interface WorkspaceConfig {
+export interface WorkspaceConfig {
   lowLagMode: boolean;
   theme: 'emerald' | 'cyan' | 'amber' | 'amethyst' | 'crimson' | 'cyberpunk' | 'monochrome';
   layoutType: 'tab' | 'grid' | 'stack' | 'single';
@@ -43,65 +53,24 @@ export const Workspace2D: React.FC<Workspace2DProps> = ({
   getPanelContent,
   PANEL_DEFINITIONS,
   setWorkspaceMode,
-  workspaceMode
+  workspaceMode,
+  deskConfig: config,
+  onDeskConfigChange,
+  onOpenSettings
 }) => {
-  // Load config from localStorage if present
-  const [config, setConfig] = useState<WorkspaceConfig>(() => {
-    const defaults: WorkspaceConfig = {
-      lowLagMode: false,
-      theme: 'emerald',
-      layoutType: 'tab',
-      showOrb: true,
-      compactMode: false,
-      customTitle: 'NVK 3D OS Workspace',
-      panelOpacity: 0.90,
-      bgWallpaper: 'grid',
-      columnCount: 2
-    };
-
-    try {
-      const saved = localStorage.getItem('nvk_2d_workspace_config');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed.customTitle === 'NVK OS ECO-LATTICE' || !parsed.customTitle) {
-          parsed.customTitle = 'NVK 3D OS Workspace';
-        }
-        return { ...defaults, ...parsed };
-      }
-    } catch (e) {
-      console.warn("Storage restricted or unreadable:", e);
-    }
-    return defaults;
-  });
-
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  // S7: the desk config is owned by App (single settings store). This
+  // component only renders it; edits go through onDeskConfigChange.
   const [editingTitle, setEditingTitle] = useState(config.customTitle);
   const [alertMsg, setAlertMsg] = useState<string | null>(null);
   const [isEditingTitleInline, setIsEditingTitleInline] = useState(false);
 
-  const [isMobile, setIsMobile] = useState(false);
+  // S5: one mobile breakpoint source (shared useIsMobile hook, <768px).
+  const isMobile = useIsMobile();
   const [isMenuOpenOnMobile, setIsMenuOpenOnMobile] = useState(false);
 
-  useEffect(() => {
-    const handleResize = () => {
-      setIsMobile(window.innerWidth < 768);
-    };
-    handleResize();
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
-
-  // Auto-persist setup changes
+  // Persist desk-config edits through App's single settings store.
   const updateConfig = (newSettings: Partial<WorkspaceConfig>) => {
-    setConfig(prev => {
-      const next = { ...prev, ...newSettings };
-      try {
-        localStorage.setItem('nvk_2d_workspace_config', JSON.stringify(next));
-      } catch (e) {
-        // Safe fail
-      }
-      return next;
-    });
+    onDeskConfigChange({ ...config, ...newSettings });
   };
 
   // Trigger alert messages
@@ -298,7 +267,7 @@ export const Workspace2D: React.FC<Workspace2DProps> = ({
           ) : (
             <div className="flex items-center gap-2">
               <span className={`font-mono text-[10px] md:text-xs font-semibold uppercase tracking-widest ${themeClasses.text}`}>
-                {config.customTitle} // SAFE WORKSPACE
+                {config.customTitle} // SAFE WORKSPACE <span className="text-slate-500 normal-case tracking-normal">v{PACKAGE_VERSION}</span>
               </span>
               <button 
                 onClick={() => {
@@ -372,13 +341,11 @@ export const Workspace2D: React.FC<Workspace2DProps> = ({
             </button>
           )}
 
-          {/* Configuration Menu Toggle */}
+          {/* Configuration Menu Toggle — S7: opens the one Settings panel */}
           <button
-            onClick={() => setIsSettingsOpen(!isSettingsOpen)}
-            className={`p-1.5 rounded transition-all cursor-pointer ${
-              isSettingsOpen ? 'bg-slate-800 text-white border border-cyan-400/40' : 'text-slate-400 hover:text-white'
-            }`}
-            title="Desk Preferences & Layout Panel"
+            onClick={onOpenSettings}
+            className="p-1.5 rounded transition-all cursor-pointer text-slate-400 hover:text-white"
+            title="Settings — desk, workspace mode, model, keys, reset"
           >
             <Settings className="w-4 h-4" />
           </button>
@@ -386,7 +353,7 @@ export const Workspace2D: React.FC<Workspace2DProps> = ({
           {/* Switch matrix mode button */}
           <button
             onClick={() => {
-              setWorkspaceMode('3d');
+              setWorkspaceMode('immersive');
               showAlert("Powering Up 3D WebGL Matrix...");
             }}
             className={`px-3 py-1 font-mono text-[9px] uppercase font-bold rounded tracking-widest transition-all cursor-pointer border ${themeClasses.text} ${themeClasses.border} hover:bg-white/5`}
@@ -407,216 +374,6 @@ export const Workspace2D: React.FC<Workspace2DProps> = ({
           />
         )}
         
-        {/* PREFERENCES PANEL SLIDEOUT (Drawer OVER overlay) */}
-        {isSettingsOpen && (
-          <div className="absolute top-3 right-3 bottom-3 w-[calc(100%-24px)] sm:w-72 bg-slate-900/95 backdrop-blur-md rounded-xl border border-white/10 z-[2000] p-4 flex flex-col gap-4 shadow-2xl overflow-y-auto animate-fade-in">
-            <div className="flex justify-between items-center border-b border-white/5 pb-2 animate-fade-in">
-              <span className="font-mono text-[10px] text-cyan-400 uppercase tracking-widest font-bold flex items-center gap-1.5">
-                <Sliders className="w-4 h-4" /> Customize 2D Desk
-              </span>
-              <button 
-                onClick={() => setIsSettingsOpen(false)}
-                className="text-slate-500 hover:text-white text-xs font-mono cursor-pointer"
-              >
-                CLOSE
-              </button>
-            </div>
-
-            {/* Performance Controls */}
-            <div className="flex flex-col gap-2">
-              <span className="text-[9px] font-mono text-slate-500 uppercase">LAG-FREE PROFILE</span>
-              <div 
-                className={`p-2.5 rounded-lg border cursor-pointer hover:bg-slate-800/40 transition-all ${
-                  config.lowLagMode ? 'border-amber-500/50 bg-amber-950/10 shadow-[0_0_8px_rgba(245,158,11,0.15)]' : 'border-white/5'
-                }`}
-                onClick={() => {
-                  updateConfig({ lowLagMode: !config.lowLagMode });
-                  showAlert(!config.lowLagMode ? "Lag-Free ON (Maximum Processing Economy)" : "Lag-Free OFF (Standard Assets)");
-                }}
-              >
-                <div className="flex items-center justify-between mb-1">
-                  <span className="font-mono text-xs text-white font-bold flex items-center gap-1">
-                    <Zap className="w-3.5 h-3.5 text-amber-400 animate-pulse" /> ULTRA-LOW LAG
-                  </span>
-                  <div className={`w-3.5 h-3.5 rounded border flex items-center justify-center ${config.lowLagMode ? 'border-amber-500 bg-amber-500 text-slate-950' : 'border-slate-700'}`}>
-                    {config.lowLagMode && <Check className="w-2.5 h-2.5 stroke-[4]" />}
-                  </div>
-                </div>
-                <p className="text-[8.5px] text-slate-400 leading-normal font-mono">
-                  Deactivates coordinate glow, particle clusters, vector orbit loops, and active blur filtering to yield absolute maximum frame-rate.
-                </p>
-              </div>
-            </div>
-
-            {/* Themes presets */}
-            <div className="flex flex-col gap-2">
-              <span className="text-[9px] font-mono text-slate-500 uppercase flex items-center gap-1"><Palette className="w-3 h-3" /> System Visual Color theme</span>
-              <div className="grid grid-cols-4 gap-1 p-1 bg-slate-950/40 border border-white/5 rounded-lg">
-                {(['emerald', 'cyan', 'amber', 'amethyst', 'crimson', 'cyberpunk', 'monochrome'] as const).map(t => (
-                  <button
-                    key={t}
-                    onClick={() => updateConfig({ theme: t })}
-                    className={`py-1 font-mono text-[8.5px] uppercase font-bold rounded border text-center transition-all ${
-                      config.theme === t 
-                        ? 'bg-slate-850 text-white border-white font-bold' 
-                        : 'bg-transparent text-slate-400 border-transparent hover:text-slate-200 hover:bg-white/5'
-                    }`}
-                  >
-                    {t === 'cyberpunk' ? 'CYBER' : t === 'monochrome' ? 'MONO' : t.slice(0,4).toUpperCase()}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Wallpaper Selection */}
-            <div className="flex flex-col gap-2">
-              <span className="text-[9px] font-mono text-slate-500 uppercase flex items-center gap-1"><Layers className="w-3 h-3" /> Canvas Wallpaper Backing</span>
-              <div className="grid grid-cols-3 gap-1 p-1 bg-slate-950/40 border border-white/5 rounded-lg">
-                {[
-                  { id: 'grid', label: 'GRAPH' },
-                  { id: 'dots', label: 'DOTS' },
-                  { id: 'carbon', label: 'WEAVE' },
-                  { id: 'matrix', label: 'CODE' },
-                  { id: 'eco', label: 'SOLID' }
-                ].map(wp => (
-                  <button
-                    key={wp.id}
-                    onClick={() => {
-                      updateConfig({ bgWallpaper: wp.id as any });
-                      showAlert(`Wallpaper backing set to ${wp.label}`);
-                    }}
-                    className={`py-1 font-mono text-[8px] uppercase rounded border transition-all ${
-                      config.bgWallpaper === wp.id
-                        ? 'bg-slate-850 text-white border-white font-bold'
-                        : 'bg-transparent text-slate-400 border-transparent hover:text-slate-200 hover:bg-white/5'
-                    }`}
-                  >
-                    {wp.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Opacity Slider */}
-            <div className="flex flex-col gap-1.5 p-1.5 bg-slate-950/20 border border-white/5 rounded-lg">
-              <div className="flex justify-between text-[9px] font-mono text-slate-500 uppercase">
-                <span>Panel glass opacity</span>
-                <span className="text-cyan-400">{(activeCluster.panelOpacity ?? config.panelOpacity ?? 0.8).toFixed(2)}</span>
-              </div>
-              <input 
-                type="range" 
-                min="0.10" 
-                max="1.00" 
-                step="0.05"
-                value={activeCluster.panelOpacity ?? config.panelOpacity ?? 0.8}
-                onChange={(e) => {
-                  const val = parseFloat(e.target.value);
-                  updateConfig({ panelOpacity: val });
-                  updateActiveCluster({ panelOpacity: val });
-                }}
-                className="w-full accent-cyan-500 bg-slate-950 h-1.5 rounded-full appearance-none cursor-pointer"
-              />
-            </div>
-
-            {/* Layout Options */}
-            <div className="flex flex-col gap-2">
-              <span className="text-[9px] font-mono text-slate-500 uppercase flex items-center gap-1"><Layout className="w-3 h-3" /> Layout Deck mode</span>
-              <div className="grid grid-cols-4 gap-1 bg-slate-950 p-0.5 rounded border border-white/5">
-                {[
-                  { id: 'tab', label: 'TAB' },
-                  { id: 'grid', label: 'GRID' },
-                  { id: 'stack', label: 'STACK' },
-                  { id: 'single', label: 'SINGLE' }
-                ].map(l => (
-                  <button
-                    key={l.id}
-                    onClick={() => {
-                      updateConfig({ layoutType: l.id as any });
-                      showAlert(`Layout deck mode set: ${l.label.toUpperCase()}`);
-                    }}
-                    className={`py-1 font-mono text-[8.5px] uppercase rounded transition-all ${
-                      config.layoutType === l.id 
-                        ? 'bg-slate-800 text-white font-bold' 
-                        : 'text-slate-500 hover:text-slate-300'
-                    }`}
-                  >
-                    {l.label}
-                  </button>
-                ))}
-              </div>
-              <p className="text-[8px] text-slate-400 font-mono italic leading-snug">
-                {config.layoutType === 'grid' && "Provides horizontal multi-column side-by-side diagnostic cards."}
-                {config.layoutType === 'tab' && "Standard tabbed sheets focusing on a single active subsystem."}
-                {config.layoutType === 'stack' && "A vertically stacked diagnostic log frame."}
-                {config.layoutType === 'single' && "Maximizes focused diagnostic panel to 100% space."}
-              </p>
-            </div>
-
-            {/* Grid Columns option (only visible if layoutType is grid) */}
-            {config.layoutType === 'grid' && (
-              <div className="flex flex-col gap-1.5 border-t border-white/5 pt-1.5">
-                <span className="text-[9px] font-mono text-slate-500 uppercase flex items-center gap-1">Grid Split Columns</span>
-                <div className="grid grid-cols-3 gap-1 bg-slate-950 p-0.5 rounded border border-white/5">
-                  {[1, 2, 3].map(cols => (
-                    <button
-                      key={cols}
-                      onClick={() => {
-                        updateConfig({ columnCount: cols });
-                        showAlert(`Grid configured to show ${cols} column(s)`);
-                      }}
-                      className={`py-0.5 font-mono text-[8.5px] rounded transition-all ${
-                        (config.columnCount ?? 2) === cols
-                          ? 'bg-slate-850 text-white font-bold'
-                          : 'text-slate-500 hover:text-slate-300'
-                      }`}
-                    >
-                      {cols} COL
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Font scaling */}
-            <div className="flex flex-col gap-2">
-              <span className="text-[9px] font-mono text-slate-500 uppercase flex items-center gap-1"><Type className="w-3 h-3" /> Screen Font density</span>
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] text-slate-300 uppercase">Micro Compact Layout</span>
-                <input 
-                  type="checkbox"
-                  checked={config.compactMode}
-                  onChange={(e) => updateConfig({ compactMode: e.target.checked })}
-                  className="w-4 h-4 accent-cyan-500"
-                />
-              </div>
-            </div>
-
-            {/* Spinning vector core toggle */}
-            <div className="flex flex-col gap-2">
-              <span className="text-[9px] font-mono text-slate-500 uppercase flex items-center gap-1"><Monitor className="w-3 h-3" /> Vector Core View</span>
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] text-slate-300 uppercase">Show 2D Core Orb</span>
-                <input 
-                  type="checkbox"
-                  checked={config.showOrb}
-                  onChange={(e) => updateConfig({ showOrb: e.target.checked })}
-                  className="w-4 h-4 accent-cyan-500"
-                />
-              </div>
-            </div>
-
-            {/* Save Status / confirmation button */}
-            <button
-              onClick={() => {
-                setIsSettingsOpen(false);
-                showAlert("Configurations Loaded & Saved");
-              }}
-              className="mt-auto py-2 bg-slate-800 hover:bg-slate-700 border border-white/15 rounded text-[10px] font-mono uppercase text-white font-semibold transition-all cursor-pointer"
-            >
-              Apply Grid Schema
-            </button>
-          </div>
-        )}
 
         {/* Left column: Lattice Subsystems Directory */}
         <div 

@@ -194,6 +194,18 @@ const AXIOM_NODES_DATA: (NodeInfo & { label: string })[] = [
   { label: 'Status', axiom: 'AX-PEACE.05', role: 'Codex Resonance, Seeker Reflection' },
 ];
 
+// N10: axiom taps fire a Tactical Brief for the closest real panel.
+// Every axiom maps to a real PANEL_DEFINITIONS id (constants.ts), so no
+// axiom node is ever a dead tap target.
+const AXIOM_TACTICAL_BRIEF_PANEL: Record<string, string> = {
+  Network: 'EmergentLogicWeb', // Interconnectivity — the live web of glyphs/axioms
+  Security: 'TraitGatePanel', // Boundary logic / trait shielding — trait gates
+  'Data Streams': 'CosmicResonanceDashboardPanel', // Live signal/stream monitoring
+  Archive: 'DriftArchivePanel', // Lore shard / drift archive
+  Analytics: 'EntropyDiagnosticsPanel', // Drift + entropy analytics
+  Status: 'SystemHealthPanel', // System health / resonance status
+};
+
 interface CodexOrbSystemProps {
   onNodeHover: (info: NodeInfo | null) => void;
   axiomsRevealed: boolean;
@@ -222,14 +234,19 @@ interface CodexOrbSystemProps {
   flightInput?: FlightInput | null;
   recenterTrigger?: number;
   autoRecenter?: boolean;
+  onToggleAutoRecenter?: () => void;
   onRendererError?: (hasError: boolean) => void;
   torusFactor?: number;
   flowFactor?: number;
   gridFactor?: number;
   scanlineFactor?: number;
   isLiveActive?: boolean;
-  liveVolume?: number;
   nvkOrbState?: NVKOrbState;
+  // S1: Header slider overrides (0–10 scale, matching the Header sliders).
+  // A non-null value replaces the orb's internal entropy input for the core;
+  // null/undefined keeps the orb's existing internal behavior exactly.
+  entropyOverride?: number | null;
+  negentropyOverride?: number | null;
 }
 
 type PanelObject = {
@@ -265,15 +282,17 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
   navigationInput,
   flightInput,
   recenterTrigger = 0,
-  autoRecenter = true,
+  autoRecenter = false,
+  onToggleAutoRecenter,
   onRendererError,
   torusFactor = 1.8,
   flowFactor = 4.0,
   gridFactor = 2.2,
   scanlineFactor = 0.12,
   isLiveActive = false,
-  liveVolume = 0,
   nvkOrbState = 'IDLE',
+  entropyOverride,
+  negentropyOverride,
 }) => {
   const mountRef = useRef<HTMLDivElement>(null);
   const navigationInputRef = useRef<NavigationInput | null>(null);
@@ -289,6 +308,13 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const controlsRef = useRef<OrbitControls | null>(null);
   const focusedNodeIdRef = useRef<string | null>(null);
+  // N3: mirror of the openNodeIds prop for the animate loop, whose effect
+  // closure predates prop changes.
+  const openNodeIdsRef = useRef(openNodeIds);
+  // N8: pending damped HUD-zoom target distance (null = no button zoom in flight).
+  const zoomTargetDistanceRef = useRef<number | null>(null);
+  // N4: node the camera flew to and is following; null when released.
+  const [followedNodeId, setFollowedNodeId] = useState<string | null>(null);
   const isTransitioningRef = useRef<boolean>(false);
   const focusSpeedMultiplierRef = useRef<number>(1.0);
   const prevOpenNodeIdsRef = useRef<string[]>([]);
@@ -310,15 +336,10 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
   const gridFactorRef = useRef(gridFactor);
   const scanlineFactorRef = useRef(scanlineFactor);
   const isLiveActiveRef = useRef(isLiveActive);
-  const liveVolumeRef = useRef(liveVolume);
 
   useEffect(() => {
     isLiveActiveRef.current = isLiveActive;
   }, [isLiveActive]);
-
-  useEffect(() => {
-    liveVolumeRef.current = liveVolume;
-  }, [liveVolume]);
 
   const hoveredCoreRef = useRef<THREE.Object3D | null>(null);
   const autoRecenterRef = useRef(autoRecenter);
@@ -356,6 +377,22 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
     autoRecenterRef.current = autoRecenter;
   }, [autoRecenter]);
 
+  // S1: mirrors of the Header slider override props for the animate loop.
+  const entropyOverrideRef = useRef(entropyOverride);
+  const negentropyOverrideRef = useRef(negentropyOverride);
+
+  useEffect(() => {
+    entropyOverrideRef.current = entropyOverride;
+  }, [entropyOverride]);
+
+  useEffect(() => {
+    negentropyOverrideRef.current = negentropyOverride;
+  }, [negentropyOverride]);
+
+  useEffect(() => {
+    openNodeIdsRef.current = openNodeIds;
+  }, [openNodeIds]);
+
   useEffect(() => {
     onNodeHoverRef.current = onNodeHover;
     onPanelNodeClickRef.current = onPanelNodeClick;
@@ -388,6 +425,37 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
     nodeFlowRef.current = nodeFlow;
   }, [nodeFlow]);
 
+  // N2: one shared camera clamp for every zoom path — the wheel (bounded
+  // below by the OrbitControls limits) and the HUD zoom buttons (zoomBy).
+  // Keeps the camera 6–40 units from its target and the polar angle inside
+  // 0.15π–0.85π. The pan-target clamp is skipped while following a panel
+  // or mid-tween, because those targets are set by code, not by panning.
+  const clampCamera = useCallback((opts?: { clampTarget?: boolean }) => {
+    const camera = cameraRef.current;
+    const controls = controlsRef.current;
+    if (!camera || !controls) return;
+    if (opts?.clampTarget !== false && controls.target.length() > 30) {
+      controls.target.setLength(30);
+    }
+    const offset = new THREE.Vector3().subVectors(camera.position, controls.target);
+    const spherical = new THREE.Spherical().setFromVector3(offset);
+    spherical.radius = THREE.MathUtils.clamp(spherical.radius, 6, 40);
+    spherical.phi = THREE.MathUtils.clamp(spherical.phi, Math.PI * 0.15, Math.PI * 0.85);
+    camera.position.copy(controls.target).add(new THREE.Vector3().setFromSpherical(spherical));
+  }, []);
+
+  // N8: HUD zoom buttons set a target distance; the animate loop eases the
+  // camera toward it (damped) instead of gsap-tweening the camera. The
+  // wheel sets the same distance through OrbitControls, so both paths
+  // stop at the same limits.
+  const zoomBy = useCallback((factor: number) => {
+    const camera = cameraRef.current;
+    const controls = controlsRef.current;
+    if (!camera || !controls) return;
+    const dist = camera.position.distanceTo(controls.target);
+    zoomTargetDistanceRef.current = THREE.MathUtils.clamp(dist * factor, 6, 40);
+  }, []);
+
   const focusOnPanelNode = useCallback((nodeId: string) => {
     const currentCamera = cameraRef.current;
     const currentControls = controlsRef.current;
@@ -397,13 +465,15 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
     const panelNode = currentPanelNodesGroup.getObjectByName(nodeId);
     if (panelNode) {
       focusedNodeIdRef.current = nodeId;
+      setFollowedNodeId(nodeId);
       isTransitioningRef.current = true;
 
       const targetPos = new THREE.Vector3();
       panelNode.getWorldPosition(targetPos);
 
-      // Deep Focus Zoom Target: Zoom distance offset of 5.5 units
-      const cameraOffset = new THREE.Vector3(0, 0, 5.5);
+      // Deep Focus Zoom Target: 6.5 units — kept outside the OrbitControls
+      // minDistance of 6 (N2) so the tween and the clamp never fight.
+      const cameraOffset = new THREE.Vector3(0, 0, 6.5);
       cameraOffset.applyQuaternion(panelNode.quaternion);
       const newCameraPos = targetPos.clone().add(cameraOffset);
 
@@ -818,14 +888,36 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
     controls.rotateSpeed = 0.5;
     controls.panSpeed = 0.5;
     controls.screenSpacePanning = true;
+    // N2: bounded orbit — the wheel can no longer pass through the orb or
+    // lose it. Pan is clamped to a radius around the origin by clampCamera().
+    controls.minDistance = 6;
+    controls.maxDistance = 40;
+    controls.minPolarAngle = Math.PI * 0.15;
+    controls.maxPolarAngle = Math.PI * 0.85;
     
     let lastInteractionTime = Date.now();
     controls.addEventListener('change', () => {
       lastInteractionTime = Date.now();
     });
+
+    // N3: any pointer/keyboard activity anywhere in the stage resets the
+    // auto-recenter idle timer — reading or typing in a panel counts.
+    const markStageInteraction = () => { lastInteractionTime = Date.now(); };
+    window.addEventListener('pointermove', markStageInteraction, { passive: true });
+    window.addEventListener('pointerdown', markStageInteraction, { passive: true });
+    window.addEventListener('keydown', markStageInteraction);
     
     controls.addEventListener('start', () => {
-      focusedNodeIdRef.current = null;
+      // N4: user input takes over immediately — cancel any pending damped
+      // HUD zoom and any in-flight focus tween. Follow state is NOT dropped
+      // here; it releases via the "Following" chip, Recenter, or orb tap.
+      zoomTargetDistanceRef.current = null;
+      if (isTransitioningRef.current) {
+        gsap.killTweensOf(camera.position);
+        gsap.killTweensOf(controls.target);
+        isTransitioningRef.current = false;
+      }
+      lastInteractionTime = Date.now();
     });
     
     const raycaster = new THREE.Raycaster();
@@ -1080,7 +1172,8 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
         }
 
         // Touch target proximity fallback: if ray passes within 6.5 units of origin (0,0,0) and no specific panel node was hit
-        if (!isCoreOrb && (!targetObj || targetObj.userData?.type !== 'panel')) {
+        // N10: never steal an axiom tap — axiom nodes are handled by their own branch below.
+        if (!isCoreOrb && targetObj?.userData?.type !== 'axiom' && (!targetObj || targetObj.userData?.type !== 'panel')) {
             const ray = clickRaycaster.ray;
             const closestPointOnRay = new THREE.Vector3();
             ray.closestPointToPoint(new THREE.Vector3(0, 0, 0), closestPointOnRay);
@@ -1095,21 +1188,17 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
             playHaptic([40, 25, 40]);
 
             focusedNodeIdRef.current = null;
+            setFollowedNodeId(null);
             isTransitioningRef.current = false;
 
-            // Instant spring impulse & rotational reaction
+            // Instant spring impulse (deterministic tap feedback — N11)
             clickScaleImpulseRef.current = 0.55;
             clickWobbleVelRef.current = 0.9;
             triggerClickWave(clientX, clientY);
 
-            if (defaultOrbObjectsRef.current) {
-                defaultOrbObjectsRef.current.rotation.y += Math.PI * 0.6;
-                defaultOrbObjectsRef.current.rotation.z += (Math.random() - 0.5) * 0.5;
-            }
-            if (modeObjectsRef.current) {
-                modeObjectsRef.current.rotation.y += Math.PI * 0.6;
-                modeObjectsRef.current.rotation.z += (Math.random() - 0.5) * 0.5;
-            }
+            // N11: deterministic tap feedback only — the spring impulse and
+            // click wave fired above, plus the LISTENING color/entropy shift
+            // driven by nvkOrbState when voice actually starts. No random spin.
 
             onCoreOrbClickRef.current();
 
@@ -1129,6 +1218,16 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
                     ease: "power2.out",
                     onUpdate: () => controlsRef.current?.update()
                 });
+            }
+        } else if (targetObj && targetObj.userData?.type === 'axiom') {
+            // N10: axiom nodes fire a Tactical Brief for their closest real
+            // panel (see AXIOM_TACTICAL_BRIEF_PANEL above).
+            const panelId = AXIOM_TACTICAL_BRIEF_PANEL[targetObj.userData.label as string];
+            if (panelId && onTacticalBriefRef.current) {
+                CyberSynth.playClick();
+                playHaptic(25);
+                triggerClickWave(clientX, clientY);
+                onTacticalBriefRef.current(panelId);
             }
         } else if (targetObj && targetObj.userData?.type === 'panel') {
             CyberSynth.playClick();
@@ -1251,7 +1350,20 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
             restorePoints(modeObjectsRef.current);
 
             // --- Entropy Heart Visuals ---
-            const entropyValue = systemState.entropy;
+            // S1: Header slider overrides (0–10 scale, normalized to the
+            // orb's internal 0–1 range). An explicit entropy target replaces
+            // the internal entropy; otherwise a negentropy target sets the
+            // orb's order level — the complement of the entropy the shaders
+            // consume (the orb has no separate negentropy channel, so
+            // negentropy biases the same uEntropy input inversely);
+            // otherwise the internal value stands, exactly as before.
+            const entropyOverrideValue = entropyOverrideRef.current;
+            const negentropyOverrideValue = negentropyOverrideRef.current;
+            const entropyValue = entropyOverrideValue != null
+              ? THREE.MathUtils.clamp(entropyOverrideValue / 10, 0, 1)
+              : negentropyOverrideValue != null
+                ? THREE.MathUtils.clamp(1 - negentropyOverrideValue / 10, 0, 1)
+                : systemState.entropy;
             const pulseSpeed = 1 + entropyValue * 3;
             const pulseIntensity = 0.5 + entropyValue * 0.5;
             const currentSpeed = speedRef.current || 0.5;
@@ -1320,15 +1432,10 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
               }
             }
             
+            // N12: liveVolume deleted — its only source was a constant 0, so
+            // the volume-driven pulse/rotation was dead. The orb still reacts
+            // to real voice activity via nvkOrbState (LISTENING color/entropy).
             let basePulseScale = 1 + Math.sin(elapsedTime * pulseSpeed * 2) * 0.05 * pulseIntensity;
-            if (isLiveActiveRef.current) {
-               basePulseScale += liveVolumeRef.current * 0.5;
-               // Add extra rotation based on volume
-               orb.rotation.y += liveVolumeRef.current * 0.2 * dtSim;
-               if (modeObjectsRef.current) {
-                 modeObjectsRef.current.rotation.y += liveVolumeRef.current * 0.2 * dtSim;
-               }
-            }
 
             const finalCoreScale = (basePulseScale + clickScaleImpulseRef.current) * hoverScaleRef.current;
             orb.scale.setScalar(finalCoreScale);
@@ -1481,7 +1588,7 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
                 if (storm && storm.userData?.velocities) {
                     const positions = storm.geometry.attributes.position;
                     const velocities = storm.userData.velocities;
-                    const entropyFactor = systemState.entropy * (orbMode === OrbMode.ChaoticNucleus ? 0.35 : 0.2);
+                    const entropyFactor = entropyValue * (orbMode === OrbMode.ChaoticNucleus ? 0.35 : 0.2);
                     for (let i=0; i < positions.count; i++) {
                         velocities[i].x += (Math.random() - 0.5) * entropyFactor * 0.01;
                         velocities[i].y += (Math.random() - 0.5) * entropyFactor * 0.01;
@@ -1707,7 +1814,7 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
             if (hoveredCoreRef.current) {
                 document.body.style.cursor = 'default';
                 if ((hoveredCoreRef.current as THREE.Mesh).material instanceof THREE.ShaderMaterial) {
-                    gsap.to(((hoveredCoreRef.current as THREE.Mesh).material as THREE.ShaderMaterial).uniforms.uEntropy, { value: systemState.entropy, duration: 0.3 });
+                    gsap.to(((hoveredCoreRef.current as THREE.Mesh).material as THREE.ShaderMaterial).uniforms.uEntropy, { value: entropyValue, duration: 0.3 });
                 }
                 hoveredCoreRef.current = null;
             }
@@ -2177,28 +2284,22 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
             }
         }
 
-        // Active follow-lock to keep camera and OrbitControls aligned to focused panel
-        if (focusedNodeIdRef.current && !isTransitioningRef.current) {
-            const panelNode = panelNodesGroupRef.current.getObjectByName(focusedNodeIdRef.current);
-            if (panelNode) {
-                const targetPos = new THREE.Vector3();
-                panelNode.getWorldPosition(targetPos);
-                
-                // lerp OrbitControls target smoothly
-                controls.target.lerp(targetPos, 0.08 * dtSim);
-                
-                // lerp camera position to maintain perfect parallel orientation at 5.5 units distance
-                const cameraOffset = new THREE.Vector3(0, 0, 5.5);
-                cameraOffset.applyQuaternion(panelNode.quaternion);
-                const idealCamPos = targetPos.clone().add(cameraOffset);
-                camera.position.lerp(idealCamPos, 0.08 * dtSim);
-            }
-        }
+        // N4: follow-lock is a one-shot tween in focusOnPanelNode (which
+        // completes and releases control). No per-frame camera/target lerp
+        // runs here — the user orbits the followed panel freely, and the
+        // "Following" chip is the release path.
 
-        // --- Auto Recenter Idle Logic ---
+        // --- Auto Recenter Idle Logic (N3) ---
+        // 30 s idle, only when no panel is open and the pointer is not over
+        // a panel. Any pointer/keyboard activity in the stage (see the
+        // markStageInteraction listeners) resets the timer.
         if (autoRecenterRef.current && !focusedNodeIdRef.current) {
             const now = Date.now();
-            if (now - lastInteractionTime > 7000) {
+            const anyPanelOpen = openNodeIdsRef.current.length > 0;
+            const pointerOverPanel = Array.from(panelObjectsRef.current.values()).some(
+                (panelObj) => panelObj.domElement.matches(':hover')
+            );
+            if (!anyPanelOpen && !pointerOverPanel && now - lastInteractionTime > 30000) {
                 const defaultPos = new THREE.Vector3(0, 0, 25);
                 const defaultTarget = new THREE.Vector3(0, 0, 0);
                 camera.position.lerp(defaultPos, 0.015 * dtSim);
@@ -2207,6 +2308,24 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
         }
 
         controls.update();
+
+        // N2/N8: shared camera clamp (pan radius, distance, polar angle)
+        // plus the damped HUD zoom toward zoomTargetDistanceRef.
+        const following = focusedNodeIdRef.current !== null || isTransitioningRef.current;
+        clampCamera({ clampTarget: !following });
+        if (zoomTargetDistanceRef.current !== null && !isTransitioningRef.current) {
+            const zoomOffset = new THREE.Vector3().subVectors(camera.position, controls.target);
+            const zoomDist = zoomOffset.length();
+            const zoomTarget = zoomTargetDistanceRef.current;
+            const nextDist = zoomDist + (zoomTarget - zoomDist) * Math.min(0.25 * dtSim, 1);
+            if (Math.abs(zoomTarget - nextDist) < 0.05) {
+                zoomTargetDistanceRef.current = null;
+                camera.position.copy(controls.target).addScaledVector(zoomOffset.normalize(), zoomTarget);
+            } else {
+                camera.position.copy(controls.target).addScaledVector(zoomOffset.normalize(), nextDist);
+            }
+            clampCamera({ clampTarget: focusedNodeIdRef.current === null });
+        }
         try {
             if (composer) {
                 composer.render();
@@ -2222,23 +2341,12 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
         });
         cssRenderer.render(scene, camera);
         } catch (frameErr: any) {
-            console.error("CodexOrb frame error caught, recovering:", frameErr);
-            if (document.getElementById('debug-error')) {
-                document.getElementById('debug-error')!.innerText = frameErr.toString() + '\\n' + frameErr.stack;
-            } else {
-                const div = document.createElement('div');
-                div.id = 'debug-error';
-                div.style.position = 'absolute';
-                div.style.top = '0';
-                div.style.left = '0';
-                div.style.zIndex = '9999';
-                div.style.color = 'red';
-                div.style.backgroundColor = 'rgba(0,0,0,0.8)';
-                div.style.padding = '10px';
-                div.style.pointerEvents = 'none';
-                div.innerText = frameErr.toString() + '\\n' + frameErr.stack;
-                document.body.appendChild(div);
-            }
+            // S8: log the stack to the console only. Never paint a stack
+            // dump into the DOM. Hand the user the existing "3D Engine
+            // Context Lost" fallback + RETRY instead of a dead scene.
+            console.error("CodexOrb frame error caught:", frameErr);
+            setRendererError(true);
+            onRendererErrorRef.current?.(true);
         }
     };
     animate();
@@ -2250,6 +2358,9 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
     return () => {
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('click', handleClick);
+      window.removeEventListener('pointermove', markStageInteraction);
+      window.removeEventListener('pointerdown', markStageInteraction);
+      window.removeEventListener('keydown', markStageInteraction);
       window.removeEventListener('resize', handleResize);
       window.removeEventListener('touchmove', handleTouchMove);
       window.removeEventListener('pointerdown', handlePointerDown);
@@ -3023,6 +3134,7 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
   useEffect(() => {
     if (recenterTrigger > 0 && controlsRef.current && cameraRef.current) {
         focusedNodeIdRef.current = null;
+        setFollowedNodeId(null);
         gsap.to(cameraRef.current.position, {
             x: 0,
             y: 0,
@@ -3040,6 +3152,10 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
         });
     }
   }, [recenterTrigger]);
+
+  // N4: label for the "Following" chip.
+  const followedNode = followedNodeId ? clusterNodes.find((n) => n.id === followedNodeId) : undefined;
+  const followedLabel = followedNode?.label || (followedNode ? panels.find((p) => p.id === followedNode.panelId)?.name : undefined) || followedNodeId || '';
 
   if (rendererError) {
     return (
@@ -3082,20 +3198,9 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
         <button
           onClick={(e) => {
             e.stopPropagation();
-            if (cameraRef.current && controlsRef.current) {
-              const dir = new THREE.Vector3().subVectors(cameraRef.current.position, controlsRef.current.target);
-              const currentDist = dir.length();
-              const newDist = Math.max(4, currentDist - 5);
-              dir.normalize().multiplyScalar(newDist);
-              gsap.to(cameraRef.current.position, {
-                x: controlsRef.current.target.x + dir.x,
-                y: controlsRef.current.target.y + dir.y,
-                z: controlsRef.current.target.z + dir.z,
-                duration: 0.5,
-                ease: 'power2.out',
-                onUpdate: () => controlsRef.current?.update()
-              });
-            }
+            // N8: damped target-distance zoom on the same clamped camera
+            // the wheel uses — no gsap camera tween.
+            zoomBy(0.75);
           }}
           className="w-10 h-10 rounded-xl bg-slate-950/85 border border-cyan-500/30 hover:border-cyan-400 text-cyan-400 flex items-center justify-center backdrop-blur-md transition-all shadow-[0_0_15px_rgba(0,255,255,0.2)] active:scale-95"
           title="Zoom In 3D Space"
@@ -3106,20 +3211,9 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
         <button
           onClick={(e) => {
             e.stopPropagation();
-            if (cameraRef.current && controlsRef.current) {
-              const dir = new THREE.Vector3().subVectors(cameraRef.current.position, controlsRef.current.target);
-              const currentDist = dir.length();
-              const newDist = Math.min(120, currentDist + 5);
-              dir.normalize().multiplyScalar(newDist);
-              gsap.to(cameraRef.current.position, {
-                x: controlsRef.current.target.x + dir.x,
-                y: controlsRef.current.target.y + dir.y,
-                z: controlsRef.current.target.z + dir.z,
-                duration: 0.5,
-                ease: 'power2.out',
-                onUpdate: () => controlsRef.current?.update()
-              });
-            }
+            // N8: damped target-distance zoom on the same clamped camera
+            // the wheel uses — no gsap camera tween.
+            zoomBy(1.33);
           }}
           className="w-10 h-10 rounded-xl bg-slate-950/85 border border-cyan-500/30 hover:border-cyan-400 text-cyan-400 flex items-center justify-center backdrop-blur-md transition-all shadow-[0_0_15px_rgba(0,255,255,0.2)] active:scale-95"
           title="Zoom Out 3D Space"
@@ -3133,7 +3227,7 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
             if (cameraRef.current && controlsRef.current) {
               gsap.to(cameraRef.current.position, { x: 0, y: 0, z: 14, duration: 1, ease: 'power2.inOut' });
               gsap.to(controlsRef.current.target, { x: 0, y: 0, z: 0, duration: 1, ease: 'power2.inOut', onUpdate: () => controlsRef.current?.update() });
-              onCoreOrbClickRef.current();
+              // N7: camera only — Focus must never start the microphone.
             }
           }}
           className="w-10 h-10 rounded-xl bg-slate-950/85 border border-emerald-500/40 hover:border-emerald-400 text-emerald-400 flex items-center justify-center backdrop-blur-md transition-all shadow-[0_0_20px_rgba(16,185,129,0.3)] active:scale-95"
@@ -3147,6 +3241,7 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
             e.stopPropagation();
             if (cameraRef.current && controlsRef.current) {
               focusedNodeIdRef.current = null;
+              setFollowedNodeId(null);
               gsap.to(cameraRef.current.position, { x: 0, y: 0, z: 25, duration: 1, ease: 'power2.inOut' });
               gsap.to(controlsRef.current.target, { x: 0, y: 0, z: 0, duration: 1, ease: 'power2.inOut', onUpdate: () => controlsRef.current?.update() });
             }
@@ -3156,7 +3251,43 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
         >
           <i className="ri-refresh-line text-lg"></i>
         </button>
+
+        {/* N3: visible auto-recenter toggle — rendered only when the parent
+            owns the toggle (onToggleAutoRecenter provided). */}
+        {onToggleAutoRecenter && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleAutoRecenter();
+            }}
+            className={`w-10 h-10 rounded-xl bg-slate-950/85 border flex items-center justify-center backdrop-blur-md transition-all shadow-[0_0_15px_rgba(0,255,255,0.2)] active:scale-95 ${autoRecenter ? 'border-emerald-500/60 text-emerald-400' : 'border-slate-600/40 text-slate-500'}`}
+            title={autoRecenter ? 'Auto-recenter: ON — camera returns home after 30s idle' : 'Auto-recenter: OFF — camera stays where you leave it'}
+            aria-pressed={autoRecenter}
+          >
+            <i className="ri-home-line text-lg"></i>
+          </button>
+        )}
       </div>
+
+      {/* N4: "Following" chip — appears after a one-shot focus fly-to,
+          releases follow without touching the camera. */}
+      {followedNodeId && (
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[500] flex items-center gap-2 rounded-full bg-slate-950/85 border border-amber-500/40 px-3 py-1.5 backdrop-blur-md select-none pointer-events-auto">
+          <span className="text-xs font-mono text-amber-300">Following: {followedLabel}</span>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              focusedNodeIdRef.current = null;
+              setFollowedNodeId(null);
+            }}
+            className="text-slate-400 hover:text-white text-sm leading-none"
+            title="Release follow"
+            aria-label="Release follow"
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
       {Object.entries(panelContainers).map(([nodeId, container]) => 
         createPortal(getPanelContent(nodeId), container, nodeId)

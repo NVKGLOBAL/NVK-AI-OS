@@ -67,12 +67,16 @@ async function runTests() {
   }
 
   // 3. REAL execution: write a temp file through the TaskEngine.
+  // A1 follow-up (2026-11-22): filesystem.write requires confirmation,
+  // so the test passes an explicit grant — the same grant a user tapping
+  // Confirm in the CommandLayer would give. The old code passed because
+  // TaskEngine hardcoded confirmedByUser: true; that bypass is closed.
   const filename = `__evidence-test-${Date.now()}.txt`;
   const content = `NVK evidence test — ${new Date().toISOString()}\nIf you can read this, the write really happened.`;
   const ledgerBefore = sovereignLedger.getEntries().length;
 
-  console.log('Testing Write Capability execution via TaskEngine (real write)...');
-  await taskEngine.runCapability(task.id, 'filesystem.write', { filename, content });
+  console.log('Testing Write Capability execution via TaskEngine (real write, real grant)...');
+  await taskEngine.runCapability(task.id, 'filesystem.write', { filename, content }, { confirmedByUser: true });
 
   const finalTask = taskEngine.getTask(task.id);
   if (finalTask?.status !== 'COMPLETED') {
@@ -102,6 +106,12 @@ async function runTests() {
   const entry = ledgerAfter[ledgerAfter.length - 1];
   if (entry.capabilityId !== 'filesystem.write') {
     fail(`Ledger entry capabilityId should be filesystem.write, got ${entry.capabilityId}`);
+  }
+  // A1 follow-up (2026-11-22): the write ran on a real grant, so the
+  // ledger must stamp hitl_confirmed — never auto_approved for a
+  // capability that requires confirmation.
+  if (entry.authorization !== 'hitl_confirmed') {
+    fail(`Ledger entry authorization should be hitl_confirmed (real grant), got ${entry.authorization}`);
   }
   if (!/^[0-9a-f]{64}$/.test(entry.entryHash)) {
     fail(`Ledger entry has no valid SHA-256 hash: ${entry.entryHash}`);

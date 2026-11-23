@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion } from 'motion/react';
 import * as webllm from '@mlc-ai/web-llm';
-import { useLocalLLM } from '../../context/LocalLLMContext';
+import { useLocalLLM, formatBytes } from '../../context/LocalLLMContext';
 import { useSystemState } from '../../context/SystemContext';
 import { LLMCore } from '../../src/llm-core/llm-core';
 
@@ -132,9 +132,20 @@ const ModelOrchestratorPanel: React.FC = () => {
     isCloudMode, setIsCloudMode,
     ollamaConfig, setOllamaConfig,
     clearCache,
+    getModelCacheBytes,
+    keyMigrationNotice,
     hfToken, setHfToken,
     error
   } = useLocalLLM();
+
+  // F7: confirm with the real cached size before purging, and report what
+  // was actually freed after.
+  const handleClearCache = async () => {
+    const bytes = await getModelCacheBytes();
+    if (!window.confirm(`Purge the model cache? This frees about ${formatBytes(bytes)} of cached model weights. You will need to re-download any model you use next.`)) return;
+    const freed = await clearCache();
+    alert(`Cache purged — ${formatBytes(freed)} freed. Reload the page to fully clear WebGPU state.`);
+  };
   
   useEffect(() => {
     const handleOAuthMessage = (event: MessageEvent) => {
@@ -154,9 +165,18 @@ const ModelOrchestratorPanel: React.FC = () => {
   const { isMobile } = useSystemState();
   const [customModelId, setCustomModelId] = useState('');
 
+  // F5: the 8B model needs 5.5 GB VRAM. Gate its card on devices that
+  // cannot provide it (mobile, or < 8 GB reported device memory) instead
+  // of letting it fail or crash the tab.
+  const deviceMemoryGB = typeof navigator !== 'undefined'
+    ? (navigator as unknown as { deviceMemory?: number }).deviceMemory
+    : undefined;
+  const eightBBlocked = isMobile || (typeof deviceMemoryGB === 'number' && deviceMemoryGB < 8);
+
   const handleFallBackToCloud = () => {
-    setIsCloudMode(true);
-    setSelectedProvider('cloud_ai');
+    // F5: 'cloud_ai' is not a real provider — the old fallback selected it
+    // and cloud mode then failed with no key and no route. The fallback now
+    // opens the providers tab so a real provider can be picked.
     setActiveTab('providers');
   };
 
@@ -630,9 +650,15 @@ const ModelOrchestratorPanel: React.FC = () => {
         {activeTab === 'providers' && (
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
             <div className="bg-slate-900/50 p-5 rounded-lg border border-slate-700">
-              <h3 className="text-lg font-medium text-white mb-4">Select Primary LLM Provider</h3>
+              <h3 className="text-lg font-medium text-white mb-1">Select Primary LLM Provider</h3>
+              <p className="text-[11px] text-slate-500 mb-4 leading-relaxed">Local is the default — a model runs in your browser. Pick a cloud provider only if you have its API key; keys are kept for this session only.</p>
+              {keyMigrationNotice && (
+                <div className="mb-4 p-3 bg-amber-950/30 border border-amber-500/30 rounded text-[11px] text-amber-200 leading-relaxed">
+                  {keyMigrationNotice}
+                </div>
+              )}
               <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                {['cloud_ai', 'ollama', 'openai', 'anthropic', 'mistral', 'nvidia', 'deepseek', 'openrouter', 'together', 'huggingface'].map(provider => (
+                {['ollama', 'openai', 'anthropic', 'mistral', 'nvidia', 'deepseek', 'openrouter', 'together', 'huggingface'].map(provider => (
                   <div 
                     key={provider}
                     onClick={() => {
@@ -646,8 +672,7 @@ const ModelOrchestratorPanel: React.FC = () => {
                       {selectedProvider === provider && <i className="ri-check-line text-indigo-400"></i>}
                     </div>
                     <p className="text-[11px] text-slate-500 mt-2 leading-tight">
-                      {provider === 'cloud_ai' ? 'Default NVK Core.' : 
-                       provider === 'ollama' ? 'Local LLM Orchestrator.' :
+                      {provider === 'ollama' ? 'Local LLM Orchestrator.' :
                        provider === 'nvidia' ? 'NVIDIA NIM Microservices.' : 
                        provider === 'deepseek' ? 'DeepSeek Reasoning Node.' :
                        provider === 'openrouter' ? 'Open-Source Model Directory.' :
@@ -827,8 +852,8 @@ const ModelOrchestratorPanel: React.FC = () => {
                     <i className="ri-error-warning-line text-sm"></i> WebGPU Lattice Disturbance
                   </div>
                   <p className="mb-2">{error.message}</p>
-                  <button 
-                    onClick={() => clearCache()}
+                  <button
+                    onClick={handleClearCache}
                     className="px-3 py-1 bg-rose-900/30 hover:bg-rose-900/50 border border-rose-800 text-rose-300 rounded font-mono text-[10px] transition-colors"
                   >
                     Reset & Purge Client Cache
@@ -853,7 +878,7 @@ const ModelOrchestratorPanel: React.FC = () => {
                     </p>
                   )}
                   <div className="pt-2 border-t border-amber-500/10 flex flex-wrap items-center justify-between gap-2 font-sans">
-                    <span className="text-[10px] text-amber-400 italic">Trouble loading? Use cloud_ai Cloud Server instead:</span>
+                    <span className="text-[10px] text-amber-400 italic">Trouble loading? Use a cloud provider instead:</span>
                     <button 
                       onClick={handleFallBackToCloud}
                       className="px-3 py-1 bg-gradient-to-r from-amber-600 to-orange-650 hover:from-amber-500 hover:to-orange-550 text-white rounded text-[10px] font-mono font-bold uppercase tracking-wider transition-all shadow-md animate-pulse"
@@ -874,62 +899,84 @@ const ModelOrchestratorPanel: React.FC = () => {
                 {/* Recommended Models */}
                 <div className="space-y-3">
                   <h4 className="text-xs font-mono text-slate-500 uppercase tracking-widest border-b border-slate-800 pb-1">Recommended for NVK Core</h4>
-                  {RECOMMENDED_MODELS.map(model => (
-                    <div 
+                  {RECOMMENDED_MODELS.map(model => {
+                    // F5: the 8B card is gated on devices that cannot run it.
+                    const is8B = model.id === 'Llama-3.1-8B-Instruct-q4f16_1-MLC';
+                    const gated = is8B && eightBBlocked;
+                    return (
+                    <div
                       key={model.id}
-                      onClick={() => setSelectedModel(model.id)}
-                      className={`p-4 rounded border cursor-pointer transition-all flex flex-col gap-2 ${selectedModel === model.id ? 'border-emerald-500 bg-emerald-900/20' : 'border-slate-700 bg-slate-800/30 hover:border-slate-600'}`}
+                      onClick={() => { if (!gated) setSelectedModel(model.id); }}
+                      className={`p-4 rounded border transition-all flex flex-col gap-2 ${gated ? 'border-slate-800 bg-slate-900/30 opacity-60 cursor-not-allowed' : `cursor-pointer ${selectedModel === model.id ? 'border-emerald-500 bg-emerald-900/20' : 'border-slate-700 bg-slate-800/30 hover:border-slate-600'}`}`}
                     >
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
                           <span className="font-mono text-sm text-white">{model.name}</span>
                           <span className="text-[9px] bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded border border-slate-700">{model.vram} VRAM</span>
                           <span className={`text-[9px] px-1.5 py-0.5 rounded border ${
-                            model.tag === 'RECOMMENDED' ? 'bg-emerald-900/50 text-emerald-400 border-emerald-800' : 
+                            model.tag === 'RECOMMENDED' ? 'bg-emerald-900/50 text-emerald-400 border-emerald-800' :
                             model.tag === 'HIGH FIDELITY' ? 'bg-indigo-900/50 text-indigo-400 border-indigo-800' :
                             'bg-slate-900/50 text-slate-400 border-slate-800'
                           }`}>
                             {model.tag}
                           </span>
                         </div>
-                        {isModelLoaded && selectedModel === model.id ? (
+                        {gated ? (
+                          <span className="text-[10px] text-amber-400 border border-amber-500/40 bg-amber-950/40 px-2 py-1 rounded">
+                            Not available on this device
+                          </span>
+                        ) : isModelLoaded && selectedModel === model.id ? (
                           <span className="text-xs text-emerald-400 flex items-center gap-1">
                             <i className="ri-check-line"></i> Active
                           </span>
                         ) : selectedModel === model.id ? (
-                          <button 
+                          <button
                             onClick={(e) => { e.stopPropagation(); setIsCloudMode(false); loadModel(model.id); }}
                             disabled={loadStatus !== "Idle" && loadStatus !== "Error" && loadStatus !== "Ready"}
                             className={`text-xs px-3 py-1 rounded transition-colors ${loadStatus !== "Idle" && loadStatus !== "Error" && loadStatus !== "Ready" ? 'bg-slate-700 text-slate-400 cursor-not-allowed' : 'bg-emerald-600 text-white hover:bg-emerald-50'}`}
                           >
-                            {loadStatus !== "Idle" && loadStatus !== "Error" && loadStatus !== "Ready" ? 'Loading...' : 'Hydrate'}
+                            {loadStatus !== "Idle" && loadStatus !== "Error" && loadStatus !== "Ready" ? 'Loading...' : 'Load'}
                           </button>
                         ) : (
                           <i className="ri-download-cloud-2-line text-slate-500"></i>
                         )}
                       </div>
                       <p className="text-xs text-slate-500 leading-relaxed">{model.desc}</p>
+                      {gated && (
+                        <p className="text-[11px] text-amber-300/90 leading-relaxed">
+                          Needs 5.5 GB VRAM{isMobile ? ' — mobile GPUs share memory with system RAM and cannot run this model.' : (typeof deviceMemoryGB === 'number' ? ` — this device reports ${deviceMemoryGB} GB of memory.` : ' — this device cannot report its memory, so the 8B model is disabled here.')}
+                        </p>
+                      )}
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
 
                 {/* Standard Models */}
                 <div className="space-y-3">
                   <h4 className="text-xs font-mono text-slate-500 uppercase tracking-widest border-b border-slate-800 pb-1">Standard WebGPU Library</h4>
                   {availableLocalModels.length > 0 ? (
-                    availableLocalModels.map(model => (
-                      <div 
+                    availableLocalModels.map(model => {
+                      // F5: same 8B gate as the recommended cards — the
+                      // standard list can surface the 8B model too.
+                      const gated8B = model === 'Llama-3.1-8B-Instruct-q4f16_1-MLC' && eightBBlocked;
+                      return (
+                      <div
                         key={model}
-                        onClick={() => setSelectedModel(model)}
-                        className={`p-3 rounded border cursor-pointer transition-all flex items-center justify-between ${selectedModel === model ? 'border-emerald-500 bg-emerald-900/20' : 'border-slate-700 bg-slate-800/30 hover:border-slate-600'}`}
+                        onClick={() => { if (!gated8B) setSelectedModel(model); }}
+                        className={`p-3 rounded border transition-all flex items-center justify-between ${gated8B ? 'border-slate-800 bg-slate-900/30 opacity-60 cursor-not-allowed' : `cursor-pointer ${selectedModel === model ? 'border-emerald-500 bg-emerald-900/20' : 'border-slate-700 bg-slate-800/30 hover:border-slate-600'}`}`}
                       >
                         <span className="font-mono text-sm text-slate-300">{model}</span>
-                        {isModelLoaded && selectedModel === model ? (
+                        {gated8B ? (
+                          <span className="text-[10px] text-amber-400 border border-amber-500/40 bg-amber-950/40 px-2 py-1 rounded">
+                            Not available on this device — needs 5.5 GB VRAM
+                          </span>
+                        ) : isModelLoaded && selectedModel === model ? (
                           <span className="text-xs bg-emerald-900/50 text-emerald-400 px-3 py-1 rounded border border-emerald-800 flex items-center gap-1">
                             <i className="ri-check-line"></i> Loaded
                           </span>
                         ) : selectedModel === model ? (
-                          <button 
+                          <button
                             onClick={(e) => { e.stopPropagation(); setIsCloudMode(false); loadModel(model); }}
                             disabled={loadStatus !== "Idle" && loadStatus !== "Error" && loadStatus !== "Ready"}
                             className={`text-xs px-3 py-1 rounded transition-colors ${loadStatus !== "Idle" && loadStatus !== "Error" && loadStatus !== "Ready" ? 'bg-slate-700 text-slate-400 cursor-not-allowed' : 'bg-emerald-600 text-white hover:bg-emerald-500'}`}
@@ -940,7 +987,8 @@ const ModelOrchestratorPanel: React.FC = () => {
                           <i className="ri-download-cloud-2-line text-slate-500"></i>
                         )}
                       </div>
-                    ))
+                      );
+                    })
                   ) : (
                     <div className="text-center p-8 text-slate-500">
                       <i className="ri-loader-4-line animate-spin text-2xl mb-2 block"></i>
@@ -989,8 +1037,8 @@ const ModelOrchestratorPanel: React.FC = () => {
                       </div>
                    </div>
 
-                   <button 
-                    onClick={clearCache}
+                   <button
+                    onClick={handleClearCache}
                     className="w-full py-2 bg-rose-900/10 hover:bg-rose-900/20 border border-rose-500/10 text-rose-500 text-[10px] font-mono rounded transition-all flex items-center justify-center gap-2"
                    >
                      <i className="ri-delete-bin-line"></i> Purge Logic Core Cache

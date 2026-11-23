@@ -37,7 +37,7 @@ export const SystemMonitorPanel: React.FC = () => {
             <div className="flex justify-between"><span>Model:</span> <span className="text-cyan-400">{selectedModel || 'None'}</span></div>
             <div className="flex justify-between"><span>Status:</span> 
               <span className={isModelLoaded ? "text-emerald-400" : "text-amber-400"}>
-                {isModelLoaded ? 'ONLINE' : (loadProgress > 0 ? \`LOADING (\${Math.round(loadProgress)}%)\` : 'OFFLINE')}
+                {isModelLoaded ? 'ONLINE' : (loadProgress > 0 ? `LOADING (${Math.round(loadProgress)}%)` : 'OFFLINE')}
               </span>
             </div>
             <div className="flex justify-between"><span>Cloud Mode:</span> <span className={isCloudMode ? "text-amber-400" : "text-slate-500"}>{isCloudMode ? 'ACTIVE' : 'INACTIVE'}</span></div>

@@ -2,6 +2,7 @@ import React, { useRef, useState, useEffect } from 'react';
 import { motion, useDragControls } from 'motion/react';
 import type { PanelDefinition } from '../types';
 import { GlassmorphismSlider } from './ui/GlassmorphismSlider';
+import { useIsMobile } from '../lib/useIsMobile';
 
 class PanelErrorBoundary extends React.Component<{ children: React.ReactNode, panelName: string }, { hasError: boolean, error: Error | null }> {
     constructor(props: any) {
@@ -70,6 +71,13 @@ interface PinnedPanelProps {
     onToggleMaximize?: () => void;
     zIndex?: number;
     onBringToFront?: () => void;
+    /**
+     * P7: tiling as state. When present, this is the panel's layout target
+     * (left = tile CENTER — the panel centers with x: '-50%'). It comes
+     * from cluster.tileLayout, computed by App's handleTilePanels. When
+     * absent, the panel falls back to its default offset position.
+     */
+    tileTarget?: { left: number; top: number; width: number; height: number };
 }
 
 export const PinnedPanel: React.FC<PinnedPanelProps> = ({ 
@@ -91,7 +99,8 @@ export const PinnedPanel: React.FC<PinnedPanelProps> = ({
     onToggleMinimize,
     onToggleMaximize,
     zIndex = 1050,
-    onBringToFront
+    onBringToFront,
+    tileTarget
 }) => {
     const dragControls = useDragControls();
     const constraintsRef = useRef(null);
@@ -103,7 +112,8 @@ export const PinnedPanel: React.FC<PinnedPanelProps> = ({
     const isMinimized = propMinimized !== undefined ? propMinimized : localMinimized;
     const isMaximized = propMaximized !== undefined ? propMaximized : localMaximized;
     
-    const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
+    // S5: one mobile breakpoint source (shared useIsMobile hook, <768px).
+    const isMobile = useIsMobile();
     const [zoomFactor, setZoomFactor] = useState(1.0);
     const [autoScale, setAutoScale] = useState(isMobile);
     const [dimensions, setDimensions] = useState({ width: 850, height: 750 });
@@ -258,13 +268,13 @@ export const PinnedPanel: React.FC<PinnedPanelProps> = ({
                     borderColor: isFocused 
                         ? 'rgba(245, 158, 11, 0.6)' 
                         : `rgba(100, 116, 139, ${Math.min(0.7, 0.25 + (1 - panelOpacity) * 0.45)})`,
-                    top: isMobile ? `${70 + offset}px` : `${80 + offset}px`, // Offset top
-                    left: isMobile ? '50%' : `calc(50% + ${offset}px)`, // Offset left (keep centered on mobile)
+                    top: tileTarget ? `${tileTarget.top}px` : (isMobile ? `${70 + offset}px` : `${80 + offset}px`), // P7: tile target wins; otherwise the default offset
+                    left: tileTarget ? `${tileTarget.left}px` : (isMobile ? '50%' : `calc(50% + ${offset}px)`), // P7: left is the tile CENTER (x: '-50%' centers it)
                     x: '-50%',   // Center anchor
                     minWidth: isMobile ? '280px' : '300px',
                     minHeight: '200px',
-                    width: isMobile ? '95vw' : 'min(850px, 95vw)', // Initial width
-                    height: isMobile ? 'min(440px, calc(100vh - 140px))' : '750px', // Initial height
+                    width: tileTarget ? `${tileTarget.width}px` : (isMobile ? '95vw' : 'min(850px, 95vw)'), // P7: tile target wins
+                    height: tileTarget ? `${tileTarget.height}px` : (isMobile ? 'min(440px, calc(100vh - 140px))' : '750px'), // P7: tile target wins
                     zIndex: isFocused ? 1110 : zIndex,
                     pointerEvents: somePanelFocused && !isFocused ? 'none' : 'auto',
                 }}

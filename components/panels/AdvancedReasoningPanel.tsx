@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { TreeOfThoughtReasoner, SelfReflectiveAgent, ContinualLearningSystem } from '../../lib/reasoning/ReasoningCore';
-import { useLocalLLM } from '../../context/LocalLLMContext';
+import { useLocalLLM, formatBytes } from '../../context/LocalLLMContext';
 import { Button } from '../ui/Button';
 import { Textarea } from '../ui/Textarea';
 import { AgentName, AdvancedReasoningPanelProps } from '../../types';
@@ -17,8 +17,9 @@ const AdvancedReasoningPanel: React.FC<AdvancedReasoningPanelProps> = ({  width,
     generateText, 
     isGenerating, 
     error, 
-    clearCache, 
-    isCloudMode, 
+    clearCache,
+    getModelCacheBytes,
+    isCloudMode,
     setIsCloudMode,
     selectedProvider, 
     setSelectedProvider,
@@ -75,9 +76,11 @@ const AdvancedReasoningPanel: React.FC<AdvancedReasoningPanelProps> = ({  width,
   };
 
   const handlePurgeCache = async () => {
-    if (window.confirm("This will purge the locally cached Gemma 3 weights (approx. 3.5GB). Use this if the download is stuck or throwing 'Cache' errors. Proceed?")) {
-      await clearCache();
-      addEchoMessage(AgentName.SystemControl, "Local neural lattice purged. Awaiting re-hydration.", 'text-amber-400');
+    // F7: confirm with the real cached size, not a hardcoded estimate.
+    const bytes = await getModelCacheBytes();
+    if (window.confirm(`This will purge the locally cached model weights (${formatBytes(bytes)}). Use this if the download is stuck or throwing 'Cache' errors. Proceed?`)) {
+      const freed = await clearCache();
+      addEchoMessage(AgentName.SystemControl, `Local neural lattice purged — ${formatBytes(freed)} freed. Awaiting re-hydration.`, 'text-amber-400');
     }
   };
 

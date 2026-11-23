@@ -19,7 +19,15 @@ class TaskEngine {
     return task;
   }
 
-  async runCapability(taskId: string, capabilityId: string, input: any) {
+  // A1 follow-up (2026-11-22): the confirmation is the CALLER's to give.
+  // It defaults to unconfirmed — previously this hardcoded
+  // `confirmedByUser: true`, which silently granted every capability
+  // routed through runCapability, including ones that require
+  // confirmation. A caller passes confirmedByUser: true only when a real
+  // user grant happened (the evidence test models one); the audit guard
+  // then stamps hitl_confirmed, and without it the run is blocked with
+  // a hitl_rejected ledger entry.
+  async runCapability(taskId: string, capabilityId: string, input: any, options: { confirmedByUser?: boolean } = {}) {
     const task = this.tasks.get(taskId);
     if (!task) return;
 
@@ -28,7 +36,7 @@ class TaskEngine {
     task.lastUpdate = Date.now();
     
     try {
-      const result = await capabilityRegistry.executeWithAudit(capabilityId, input, { cwd: '.', confirmedByUser: true });
+      const result = await capabilityRegistry.executeWithAudit(capabilityId, input, { cwd: '.', confirmedByUser: options.confirmedByUser === true });
       
       if (result.success) {
         task.status = 'COMPLETED';

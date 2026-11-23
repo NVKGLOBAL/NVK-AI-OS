@@ -13,9 +13,7 @@ import { PanelManager } from './components/PanelManager';
 import { OrbModeSelector } from './components/ui/OrbModeSelector';
 import { PANEL_DEFINITIONS, DOCK_APPS } from './constants';
 import { getPresetsForCodexMode, getCodexModeDefinition } from './components/core/CodexModes';
-import { OmniWheel } from './components/ui/OmniWheel';
-import { FlightController } from './components/ui/FlightController';
-import { GeoMode, OrbMode, CodexModeId, ParticleBackgroundMode, PanelLayout, ClusterType, Cluster, NavigationInput, FlightInput, AgentCoreState, GlyphInstance, NVKEvent } from './types';
+import { GeoMode, OrbMode, CodexModeId, ParticleBackgroundMode, PanelLayout, ClusterType, Cluster, AgentCoreState, GlyphInstance, NVKEvent } from './types';
 import { AgentName, HistoricalEventType } from './types';
 import { 
   ALL_CANONICAL_AXIOMS, INITIAL_ECHOES, BLOOD_INK_SPECIES_DATA, 
@@ -83,6 +81,7 @@ import ModelOrchestratorPanel from './components/panels/ModelOrchestratorPanel';
 import OperationsDashboardPanel from './components/panels/OperationsDashboardPanel';
 import EthicalFrameworkPanel from './components/panels/EthicalFrameworkPanel';
 import SystemHealthPanel from './components/panels/SystemHealthPanel';
+import { SystemMonitorPanel } from './components/panels/SystemMonitorPanel';
 import IntegrationHubPanel from './components/panels/IntegrationHubPanel';
 import CommandBridgePanel from './components/panels/CommandBridgePanel';
 import NexusTerminal from './components/panels/NexusTerminal';
@@ -101,7 +100,7 @@ import { DocumentWorkspace } from './components/panels/DocumentWorkspace';
 import { WorkflowWorkspace } from './components/panels/WorkflowWorkspace';
 import { SubAgentConstellation } from './components/panels/SubAgentConstellation';
 import { NVKCommandLayer } from './components/spatial/NVKCommandLayer';
-import type { NVKOrbState, NVKWorkflow, NVKActivityStep, ProcessedNVKIntent } from './types';
+import type { NVKOrbState, NVKWorkflow, NVKActivityStep, ProcessedNVKIntent, WorkspaceMode, SubAgent } from './types';
 import { eventBus } from './services/EventBus';
 import { nvkEventBus } from './src/nvk/events/NVKEventBus';
 
@@ -136,8 +135,11 @@ const Cyber3DLoader: React.FC = () => (
 );
 
 import { NVKSpaceBridge } from './integration/spaceBridge';
-import { HUD } from './components/spatial/HUD';
 import { Workspace2D } from './components/spatial/Workspace2D';
+import type { WorkspaceConfig } from './components/spatial/Workspace2D';
+import { SettingsPanel } from './components/panels/SettingsPanel';
+import { useIsMobile } from './lib/useIsMobile';
+import AshfallEffect from './components/visuals/AshfallEffect';
 
 class ThreeErrorBoundary extends React.Component<
   { fallback: React.ReactNode; onError?: () => void; children: React.ReactNode },
@@ -167,16 +169,67 @@ class ThreeErrorBoundary extends React.Component<
   }
 }
 
-export const App: React.FC = () => {
-  const [isVoiceActive, setIsVoiceActive] = useState(false);
-  const [nodeInfo, setNodeInfo] = useState<{axiom: string, role: string} | null>(null);
-  const [systemBooted, setSystemBooted] = useState(true); 
-  const [isMobile, setIsMobile] = useState<boolean>(() => {
-    if (typeof window !== 'undefined') {
-      return window.innerWidth < 768 || /Mobi|Android/i.test(navigator.userAgent);
+const CLUSTER_STORAGE_KEY = 'nvk_cluster_v1';
+
+// P10: the default cluster (used on first load and by Reset Workspace).
+const DEFAULT_CLUSTERS: Cluster[] = [
+  {
+    id: 'default-cluster',
+    name: 'Main Workspace',
+    type: ClusterType.Standard,
+    nodes: [],
+    openNodeIds: [],
+    pinnedPanelIds: [],
+    layout: PanelLayout.TAB_BROWSER,
+    orbMode: OrbMode.HolographicCore,
+    particleMode: ParticleBackgroundMode.Orbital,
+    nodeAnimationSpeed: 0.5,
+    masterPanelSize: 1.0,
+    nodeSpacing: 1.0,
+    nodeFlow: 0.5,
+    panelOpacity: 0.8,
+    torusFactor: 1.8,
+    flowFactor: 4.0,
+    gridFactor: 2.2,
+    scanlineFactor: 0.12
+  }
+];
+
+// P10: restore the persisted cluster layout (nodes, positions, pinned,
+// tiles) on load; fall back to the default cluster when nothing valid
+// was saved.
+function loadPersistedClusters(fallback: Cluster[]): Cluster[] {
+  try {
+    const saved = localStorage.getItem(CLUSTER_STORAGE_KEY);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed) && parsed.length > 0 && parsed.every(c => c && typeof c.id === 'string' && Array.isArray(c.nodes) && Array.isArray(c.openNodeIds) && Array.isArray(c.pinnedPanelIds))) {
+        return parsed as Cluster[];
+      }
     }
-    return false;
+  } catch {}
+  return fallback;
+}
+
+export const App: React.FC = () => {
+  // N3 follow-up (2026-11-22): auto-recenter defaults OFF — the camera
+  // never drifts away from a panel the user is reading unless they turn
+  // it on. The orb HUD toggle (visible once onToggleAutoRecenter is
+  // passed) owns the switch; App only holds the state.
+  const [autoRecenter, setAutoRecenter] = useState(false);
+  const [nodeInfo, setNodeInfo] = useState<{axiom: string, role: string} | null>(null);
+  // F1: the boot sequence runs on first load only. systemBooted starts true
+  // on return visits (nvk_boot_seen set), false on first load.
+  const [systemBooted, setSystemBooted] = useState(() => {
+    try { return !!localStorage.getItem('nvk_boot_seen'); } catch { return true; }
   });
+  // F2: first-run tour, opened by handleBootSystem on first load and by
+  // the Help menu afterwards.
+  const [showTutorial, setShowTutorial] = useState(false);
+  // S1: Ashfall overlay is real state — the Header toggle drives it.
+  const [showAshfall, setShowAshfall] = useState(false);
+  // S5: one mobile breakpoint source (shared useIsMobile hook, <768px).
+  const isMobile = useIsMobile();
   const [performanceTier, setPerformanceTier] = useState<'low' | 'high'>(() => {
     if (typeof window !== 'undefined') {
       const mobile = window.innerWidth < 768 || /Mobi|Android/i.test(navigator.userAgent);
@@ -184,20 +237,22 @@ export const App: React.FC = () => {
     }
     return 'high';
   });
-  const [workspaceMode, setWorkspaceMode] = useState<string>(() => {
-    if (typeof window !== 'undefined') {
+  // N9: one WorkspaceMode union. '3d' is gone — a legacy saved value
+  // migrates to 'immersive'; anything unknown falls back to 'immersive'.
+  const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>(() => {
+    try {
       const saved = localStorage.getItem('nvk_workspace_mode');
-      if (saved) return saved;
-    }
-    return '3d';
+      if (saved === '3d') return 'immersive';
+      if (saved === 'immersive' || saved === 'split' || saved === 'grid' || saved === '2d') return saved;
+    } catch {}
+    return 'immersive';
   });
   const [active2dNodeId, setActive2dNodeId] = useState<string | null>(null);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
 
-  // Drag and drop / Auto-recenter states
+  // Drag and drop states
   const [isDragging, setIsDragging] = useState(false);
   const [isOverCore, setIsOverCore] = useState(false);
-  const [autoRecenter, setAutoRecenter] = useState(true);
   const [desktopShortcuts, setDesktopShortcuts] = useState<Array<{ name: string; size: number; x: number; y: number }>>([
     { name: 'system_core.bin', size: 5242880, x: 50, y: 120 },
     { name: 'axiom_definitions.json', size: 45000, x: 50, y: 220 },
@@ -333,28 +388,7 @@ export const App: React.FC = () => {
   }, [workspaceMode]);
   
   // Cluster Management
-  const [clusters, setClusters] = useState<Cluster[]>([
-    {
-      id: 'default-cluster',
-      name: 'Main Workspace',
-      type: ClusterType.Standard,
-      nodes: [],
-      openNodeIds: [],
-      pinnedPanelIds: [],
-      layout: PanelLayout.TAB_BROWSER,
-      orbMode: OrbMode.HolographicCore,
-      particleMode: ParticleBackgroundMode.Orbital,
-      nodeAnimationSpeed: 0.5,
-      masterPanelSize: 1.0,
-      nodeSpacing: 1.0,
-      nodeFlow: 0.5,
-      panelOpacity: 0.8,
-      torusFactor: 1.8,
-      flowFactor: 4.0,
-      gridFactor: 2.2,
-      scanlineFactor: 0.12
-    }
-  ]);
+  const [clusters, setClusters] = useState<Cluster[]>(() => loadPersistedClusters(DEFAULT_CLUSTERS));
   const [activeClusterId, setActiveClusterId] = useState<string>('default-cluster');
   const [swappingNodeId, setSwappingNodeId] = useState<string | null>(null);
   const [showClusterMenu, setShowClusterMenu] = useState(false);
@@ -363,11 +397,84 @@ export const App: React.FC = () => {
     clusters.find(c => c.id === activeClusterId) || clusters[0],
   [clusters, activeClusterId]);
 
+  // P1: ONE derived active-panel set (open nodes ∪ pinned instances, as
+  // panel ids). Dock, PanelManager and the NVK_OS bridge all read this —
+  // no more three different sources.
+  const activePanelIdList = useMemo(() => {
+    const ids = new Set<string>();
+    for (const nodeId of activeCluster.openNodeIds) {
+      const node = activeCluster.nodes.find(n => n.id === nodeId);
+      if (node) ids.add(node.panelId);
+      // Legacy swap path stores a bare panel id in openNodeIds.
+      else if (PANEL_DEFINITIONS.some(d => d.id === nodeId)) ids.add(nodeId);
+    }
+    for (const instanceId of activeCluster.pinnedPanelIds) {
+      const [panelId, nodeId] = instanceId.split('::');
+      const node = nodeId ? activeCluster.nodes.find(n => n.id === nodeId) : undefined;
+      ids.add(node ? node.panelId : panelId);
+    }
+    return [...ids];
+  }, [activeCluster]);
+
   const updateActiveCluster = useCallback((updates: Partial<Cluster>) => {
     setClusters(prev => prev.map(c => 
       c.id === activeClusterId ? { ...c, ...updates } : c
     ));
   }, [activeClusterId]);
+
+  // P10: persist the cluster layout on every change (nodes, positions,
+  // pinned, tiles) so the workspace survives a reload.
+  useEffect(() => {
+    try { localStorage.setItem(CLUSTER_STORAGE_KEY, JSON.stringify(clusters)); } catch {}
+  }, [clusters]);
+
+  // S7: one settings store. The 2D desk config lives here, persisted to
+  // nvk_settings_v1 (migrated once from the legacy nvk_2d_workspace_config
+  // key). The Settings panel edits it; Workspace2D renders it.
+  const [deskConfig, setDeskConfig] = useState<WorkspaceConfig>(() => {
+    const defaults: WorkspaceConfig = {
+      lowLagMode: false,
+      theme: 'emerald',
+      layoutType: 'tab',
+      showOrb: true,
+      compactMode: false,
+      customTitle: 'NVK 3D OS Workspace',
+      panelOpacity: 0.90,
+      bgWallpaper: 'grid',
+      columnCount: 2
+    };
+    try {
+      const saved = localStorage.getItem('nvk_settings_v1') || localStorage.getItem('nvk_2d_workspace_config');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.customTitle === 'NVK OS ECO-LATTICE' || !parsed.customTitle) parsed.customTitle = 'NVK 3D OS Workspace';
+        return { ...defaults, ...parsed };
+      }
+    } catch {}
+    return defaults;
+  });
+  useEffect(() => {
+    try { localStorage.setItem('nvk_settings_v1', JSON.stringify(deskConfig)); } catch {}
+  }, [deskConfig]);
+
+  // P10/S7: Reset Workspace — clears the persisted layout + settings and
+  // restores the default cluster. Called from the Settings panel and the
+  // Core Controls modal. (useEcho is destructured here, above this callback,
+  // because the reset handler references addEchoMessage in its dep array.)
+  const { echoes, addEchoMessage } = useEcho();
+  const handleResetWorkspace = useCallback(() => {
+    try {
+      localStorage.removeItem(CLUSTER_STORAGE_KEY);
+      localStorage.removeItem('nvk_settings_v1');
+      localStorage.removeItem('nvk_2d_workspace_config');
+    } catch {}
+    setClusters(DEFAULT_CLUSTERS);
+    setActiveClusterId('default-cluster');
+    setMinimizedPanelIds([]);
+    setMaximizedPanelIds([]);
+    setFocusedPanelId(null);
+    addEchoMessage(AgentName.SystemControl, 'Workspace reset to defaults.', 'text-cyan-400');
+  }, [addEchoMessage]);
 
   // Dynamic Window Manager / Focus Mode States
   const [minimizedPanelIds, setMinimizedPanelIds] = useState<string[]>([]);
@@ -425,66 +532,62 @@ export const App: React.FC = () => {
   }, []);
 
   const handleCloseAll = useCallback(() => {
-    updateActiveCluster({ pinnedPanelIds: [] });
+    updateActiveCluster({ pinnedPanelIds: [], tileLayout: {}, tileMode: null });
     setMinimizedPanelIds([]);
     setMaximizedPanelIds([]);
     setFocusedPanelId(null);
   }, [updateActiveCluster]);
 
+  // P7: tiling is CLUSTER STATE, not DOM writes. The layout (left = tile
+  // CENTER — PinnedPanel centers with x: '-50%') is computed from the
+  // pinned instances and stored in cluster.tileLayout + tileMode; each
+  // PinnedPanel reads its entry as its layout target. Framer-motion
+  // animates to the new values; a window resize reflows from state.
   const handleTilePanels = useCallback((mode: 'grid' | 'cols' | 'rows') => {
     const panels = activeCluster.pinnedPanelIds;
     if (panels.length === 0) return;
-    
+
     setMinimizedPanelIds([]);
     setMaximizedPanelIds([]);
     setFocusedPanelId(null);
-    
-    setTimeout(() => {
-      const panelElements = document.querySelectorAll('.pinned-panel');
-      if (panelElements.length === 0) return;
-      
-      const count = panelElements.length;
-      const workspaceWidth = window.innerWidth;
-      const workspaceHeight = window.innerHeight - 140; // 60px header + 80px dock
-      const topOffset = 60;
-      
-      if (mode === 'cols') {
-        const colWidth = workspaceWidth / count;
-        panelElements.forEach((el, index) => {
-          const htmlEl = el as HTMLElement;
-          htmlEl.style.width = `${colWidth - 16}px`;
-          htmlEl.style.height = `${workspaceHeight - 16}px`;
-          htmlEl.style.left = `${index * colWidth + 8 + (colWidth - 16)/2}px`;
-          htmlEl.style.top = `${topOffset + 8}px`;
-        });
-      } else if (mode === 'rows') {
-        const rowHeight = workspaceHeight / count;
-        panelElements.forEach((el, index) => {
-          const htmlEl = el as HTMLElement;
-          htmlEl.style.width = `${workspaceWidth - 16}px`;
-          htmlEl.style.height = `${rowHeight - 16}px`;
-          htmlEl.style.left = `50%`;
-          htmlEl.style.top = `${topOffset + index * rowHeight + 8}px`;
-        });
-      } else if (mode === 'grid') {
-        const cols = Math.ceil(Math.sqrt(count));
-        const rows = Math.ceil(count / cols);
-        const colWidth = workspaceWidth / cols;
-        const rowHeight = workspaceHeight / rows;
-        
-        panelElements.forEach((el, index) => {
-          const htmlEl = el as HTMLElement;
-          const r = Math.floor(index / cols);
-          const c = index % cols;
-          
-          htmlEl.style.width = `${colWidth - 16}px`;
-          htmlEl.style.height = `${rowHeight - 16}px`;
-          htmlEl.style.left = `${c * colWidth + 8 + (colWidth - 16)/2}px`;
-          htmlEl.style.top = `${topOffset + r * rowHeight + 8}px`;
-        });
-      }
-    }, 50);
-  }, [activeCluster.pinnedPanelIds]);
+
+    const count = panels.length;
+    const workspaceWidth = window.innerWidth;
+    const workspaceHeight = window.innerHeight - 140; // 60px header + 80px dock
+    const topOffset = 60;
+    const layout: Record<string, { left: number; top: number; width: number; height: number }> = {};
+
+    if (mode === 'cols') {
+      const colWidth = workspaceWidth / count;
+      panels.forEach((id, index) => {
+        layout[id] = { left: index * colWidth + 8 + (colWidth - 16) / 2, top: topOffset + 8, width: colWidth - 16, height: workspaceHeight - 16 };
+      });
+    } else if (mode === 'rows') {
+      const rowHeight = workspaceHeight / count;
+      panels.forEach((id, index) => {
+        layout[id] = { left: workspaceWidth / 2, top: topOffset + index * rowHeight + 8, width: workspaceWidth - 16, height: rowHeight - 16 };
+      });
+    } else {
+      const cols = Math.ceil(Math.sqrt(count));
+      const rows = Math.ceil(count / cols);
+      const colWidth = workspaceWidth / cols;
+      const rowHeight = workspaceHeight / rows;
+      panels.forEach((id, index) => {
+        const r = Math.floor(index / cols);
+        const c = index % cols;
+        layout[id] = { left: c * colWidth + 8 + (colWidth - 16) / 2, top: topOffset + r * rowHeight + 8, width: colWidth - 16, height: rowHeight - 16 };
+      });
+    }
+    updateActiveCluster({ tileLayout: layout, tileMode: mode });
+  }, [activeCluster.pinnedPanelIds, updateActiveCluster]);
+
+  // P7: reflow the tile layout from state when the window resizes.
+  useEffect(() => {
+    if (!activeCluster.tileMode) return;
+    const onResize = () => handleTilePanels(activeCluster.tileMode as 'grid' | 'cols' | 'rows');
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, [activeCluster.tileMode, handleTilePanels]);
 
   // System keyboard shortcuts
   useEffect(() => {
@@ -494,11 +597,18 @@ export const App: React.FC = () => {
         return;
       }
 
-      if (e.key === 'Escape' && focusedPanelId) {
-        setFocusedPanelId(null);
+      // S2: ⌘K / Ctrl+K opens search (the Dock button advertises it).
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setIsSearchOpen(true);
+      } else if (e.key === 'Escape') {
+        // A6: Esc stops voice listening as well as closing focus/search.
+        if (isVoiceActive) setIsVoiceActive(false);
+        if (focusedPanelId) setFocusedPanelId(null);
+        if (isSearchOpen) setIsSearchOpen(false);
       } else if (e.altKey && e.shiftKey && e.key.toLowerCase() === 'm') {
         e.preventDefault();
-        setWorkspaceMode(prev => prev === '3d' ? '2d' : '3d');
+        setWorkspaceMode(prev => prev === 'immersive' ? '2d' : 'immersive');
       } else if (e.altKey && e.key.toLowerCase() === 'm') {
         e.preventDefault();
         if (minimizedPanelIds.length > 0) {
@@ -513,11 +623,11 @@ export const App: React.FC = () => {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [focusedPanelId, minimizedPanelIds.length, handleRestoreAll, handleMinimizeAll, handleTilePanels]);
+  }, [focusedPanelId, minimizedPanelIds.length, handleRestoreAll, handleMinimizeAll, handleTilePanels, isVoiceActive, isSearchOpen]);
 
   const [isOrbModeSelectorOpen, setIsOrbModeSelectorOpen] = useState(false);
   const [isSynthesizing, setIsSynthesizing] = useState(false);
-  const { generateText } = useLocalLLM();
+  const { generateText, isModelLoaded, selectedModel } = useLocalLLM();
 
   const spawnAgent = (name: string, task: string, panelId?: string) => {
     // Legacy agent spawning replaced by node creation in cluster
@@ -530,23 +640,26 @@ export const App: React.FC = () => {
 
     addEchoMessage(AgentName.SystemControl, `Manifesting Service Node: ${name}`, 'text-fuchsia-400');
   };
-  const { echoes, addEchoMessage } = useEcho();
 
   const handleSwapPanel = useCallback((nodeId: string) => {
     setSwappingNodeId(nodeId);
   }, []);
 
-  const handlePerformSwap = useCallback((newNodeId: string) => {
+  const handlePerformSwap = useCallback((newPanelId: string) => {
     if (!swappingNodeId) return;
-    
+
+    // P6: never swap to a blocked panel.
+    const def = PANEL_DEFINITIONS.find(p => p.id === newPanelId);
+    if (def?.availability && def.availability.status !== 'available') return;
+
     setClusters(prev => prev.map(c => {
       if (c.id === activeClusterId) {
-        const openNodeIds = c.openNodeIds.map(id => id === swappingNodeId ? newNodeId : id);
+        const openNodeIds = c.openNodeIds.map(id => id === swappingNodeId ? newPanelId : id);
         return { ...c, openNodeIds };
       }
       return c;
     }));
-    
+
     setSwappingNodeId(null);
   }, [swappingNodeId, activeClusterId]);
 
@@ -580,17 +693,21 @@ export const App: React.FC = () => {
   }, [activeCluster, generateText, addEchoMessage]);
 
   const handleCloseAllPanels = useCallback(() => {
-    updateActiveCluster({ openNodeIds: [], pinnedPanelIds: [] });
+    // P7: closing everything clears the tile layout too.
+    updateActiveCluster({ openNodeIds: [], pinnedPanelIds: [], tileLayout: {}, tileMode: null });
     setMinimizedPanelIds([]);
     setMaximizedPanelIds([]);
     setFocusedPanelId(null);
     addEchoMessage(AgentName.SystemControl, 'All neural panels collapsed.', 'text-red-400');
   }, [updateActiveCluster, addEchoMessage]);
 
+  // P9: Open All is capped at 8 — opening every node at once kills the
+  // layout and the frame rate.
   const handleOpenAllPanels = useCallback(() => {
     const allNodeIds = activeCluster.nodes.map(n => n.id);
-    updateActiveCluster({ openNodeIds: allNodeIds });
-    addEchoMessage(AgentName.SystemControl, 'All neural panels expanded.', 'text-emerald-400');
+    const capped = allNodeIds.slice(0, 8);
+    updateActiveCluster({ openNodeIds: capped });
+    addEchoMessage(AgentName.SystemControl, allNodeIds.length > 8 ? `Opened 8 of ${allNodeIds.length} panels (Open All cap).` : 'All neural panels expanded.', 'text-emerald-400');
   }, [activeCluster.nodes, updateActiveCluster, addEchoMessage]);
 
   const handleActivateCodexMode = useCallback((modeId: CodexModeId) => {
@@ -641,13 +758,9 @@ export const App: React.FC = () => {
 
   const [particleMode, setParticleMode] = useState<ParticleBackgroundMode>(ParticleBackgroundMode.Orbital);
   const [isParticleSelectorOpen, setIsParticleSelectorOpen] = useState(false);
-  const [navigationInput, setNavigationInput] = useState<NavigationInput | null>(null);
-  const [flightInput, setFlightInput] = useState<FlightInput>({
-    translation: { x: 0, y: 0, z: 0 },
-    rotation: { pitch: 0, yaw: 0, roll: 0 },
-    isLocked: false
-  });
-  const [recenterTrigger, setRecenterTrigger] = useState(0);
+  // N5: the flight-nav plumbing is deleted — FlightController was never
+  // mounted, and navigationInput/flightInput/recenterTrigger were
+  // write-only state passed to a dead flight path.
   const invokeGemini = async () => ""; const generateImage = async () => ""; const isGenerating = false;
   const voiceEngine = useMemo(() => new VoiceEngine(), []);
 
@@ -685,10 +798,10 @@ export const App: React.FC = () => {
   const [historicalEvents, setHistoricalEvents] = useState<HistoricalEvent[]>([]);
   const [nodeAnimationSpeed, setNodeAnimationSpeed] = useState(0.5);
   const [isBugaModeActive, setIsBugaModeActive] = useState(false);
-  const [subAgents, setSubAgents] = useState<SubAgent[]>([
-    { id: '1', name: 'Nexus', task: 'Monitoring Entropy', status: 'working', color: '#00ffb3' },
-    { id: '2', name: 'Weaver', task: 'Idle', status: 'idle', color: '#ff00ff' }
-  ]);
+  // A5: no fabricated sub-agents. The fleet starts empty; agents appear
+  // only when spawned from the Terminal (spawnSubAgent) with the task the
+  // user typed. Live task-bus wiring arrives with workspace Phase 2.
+  const [subAgents, setSubAgents] = useState<SubAgent[]>([]);
   const [thoughts, setThoughts] = useState<ThoughtGlyph[]>([]);
 
   // NVK Living Intelligence Interface States
@@ -850,7 +963,15 @@ export const App: React.FC = () => {
   }, []);
 
   const handleBootSystem = useCallback(() => {
+    // F1: first load only — record the boot so return visits skip it, and
+    // open the first-run tour (F2) right after the boot on first load.
+    let firstLoad = false;
+    try {
+      firstLoad = !localStorage.getItem('nvk_boot_seen');
+      localStorage.setItem('nvk_boot_seen', '1');
+    } catch {}
     setSystemBooted(true);
+    if (firstLoad) setShowTutorial(true);
   }, []);
 
   useEffect(() => {
@@ -911,6 +1032,23 @@ export const App: React.FC = () => {
     });
   }, [activeCluster, updateActiveCluster]);
   
+  // S1: the Header's "Contextual Query" is real — one concise operational
+  // insight generated from the actual workspace state via the local model
+  // (generateText returns null with no model; that renders honestly).
+  const handleContextualOracleQuery = useCallback(async () => {
+    const context = `Active panels: ${activePanelIdList.join(', ') || 'none'}. Workspace mode: ${workspaceMode}. Orb state: ${nvkOrbState}. Open nodes: ${activeCluster.openNodeIds.length}. Pinned panels: ${activeCluster.pinnedPanelIds.length}.`;
+    const response = await generateText(
+      `Given this NVK OS workspace state, give one concise operational insight (one or two sentences, no fluff): ${context}`,
+      'You are NVK, the autonomous agent inside the orb. Answer from the workspace state given, nothing else.',
+      0.6, 300
+    );
+    if (response === null) {
+      addEchoMessage(AgentName.SystemCore, 'Contextual query unavailable: no model loaded or generation failed. Load a local model first.', 'text-red-400');
+      return;
+    }
+    addEchoMessage(AgentName.SystemCore, response, 'text-cyan-300');
+  }, [activePanelIdList, workspaceMode, nvkOrbState, activeCluster.openNodeIds.length, activeCluster.pinnedPanelIds.length, generateText, addEchoMessage]);
+
   const handleTacticalBrief = useCallback(async (panelId: string) => {
     const basePanelId = panelId.split('::')[0];
     const panelDef = PANEL_DEFINITIONS.find(p => p.id === basePanelId);
@@ -936,68 +1074,92 @@ export const App: React.FC = () => {
   }, [generateText, addEchoMessage, activeCluster.name]);
 
   const handleAppClick = useCallback((panelId: string, initialUrl?: string) => {
-    // Generate a unique instance ID for this panel
-    let instanceId = `${panelId}::${Date.now()}`;
-    if (initialUrl) {
-      instanceId += `::${encodeURIComponent(initialUrl)}`;
+    // P6: one open path, with the availability guard as backstop. Blocked
+    // panels are badged in every list and never open as if working.
+    const def = PANEL_DEFINITIONS.find(p => p.id === panelId);
+    if (def?.availability && def.availability.status !== 'available') {
+      addEchoMessage(AgentName.SystemControl, `${def.name} is not available: ${def.availability.reason || 'backing capability missing'}.`, 'text-amber-400');
+      return;
     }
-    
+    // Reuse the cluster node for this panel (or create one) so the pinned
+    // instance and the node share one identity: instanceId = panelId::nodeId
+    // (plus ::encodedUrl for a browser window opened with a URL).
+    let node = activeCluster.nodes.find(n => n.panelId === panelId);
+    let nodes = activeCluster.nodes;
+    if (!node) {
+      const nodeId = `${activeClusterId}-${panelId.toLowerCase()}`;
+      node = { id: nodeId, panelId, label: def?.name || panelId };
+      nodes = [...nodes, node];
+    }
+    const instanceId = initialUrl
+      ? `${panelId}::${node.id}::${encodeURIComponent(initialUrl)}`
+      : `${panelId}::${node.id}`;
+    // P3: already open/pinned → focus it instead of spawning a duplicate.
+    if (activeCluster.pinnedPanelIds.includes(instanceId)) {
+      setFocusedPanelId(instanceId);
+      return;
+    }
     updateActiveCluster({
+      nodes,
+      openNodeIds: [...new Set([...activeCluster.openNodeIds, node.id])],
       pinnedPanelIds: [...activeCluster.pinnedPanelIds, instanceId]
     });
+    setFocusedPanelId(instanceId);
     addEchoMessage(AgentName.SystemControl, `Deploying ${panelId} instance to operational interface.`, 'text-cyan-400');
-  }, [activeCluster, updateActiveCluster, addEchoMessage]);
+  }, [activeCluster, activeClusterId, updateActiveCluster, addEchoMessage]);
 
   const handlePinPanel = useCallback((nodeId: string) => {
     const node = activeCluster.nodes.find(n => n.id === nodeId);
     if (!node) return;
-    
-    // Create a unique instance ID for the pinned panel
+
+    // P2: pin keeps the node — the node stays open in the cluster AND the
+    // panel floats. Nothing is deleted on pin.
     const instanceId = `${node.panelId}::${nodeId}`;
-    
+    if (activeCluster.pinnedPanelIds.includes(instanceId)) return;
+
     updateActiveCluster({
       pinnedPanelIds: [...new Set([...activeCluster.pinnedPanelIds, instanceId])],
-      openNodeIds: activeCluster.openNodeIds.filter(id => id !== nodeId)
+      openNodeIds: [...new Set([...activeCluster.openNodeIds, nodeId])]
     });
     addEchoMessage(AgentName.SystemControl, `Panel ${node.label} pinned to dashboard.`, 'text-emerald-400');
   }, [activeCluster, updateActiveCluster, addEchoMessage]);
 
   const handleUnpinPanel = useCallback((instanceId: string) => {
     const [panelId, originalNodeId] = instanceId.split('::');
-    
-    // Check if the original node exists or if we should find/create one
+
+    // P4: unpin returns the panel to its node. The node never left (pin
+    // keeps it open), so unpin just drops the floating instance and its
+    // tile entry. If the origin node is gone, re-create it WITH ITS
+    // ORIGINAL ID so the identity survives — never mint a fresh node id.
     let node = activeCluster.nodes.find(n => n.id === originalNodeId);
-    let targetNodeId = originalNodeId;
 
     const updates: Partial<Cluster> = {
       pinnedPanelIds: activeCluster.pinnedPanelIds.filter(id => id !== instanceId)
     };
+    if (activeCluster.tileLayout?.[instanceId]) {
+      const nextTileLayout = { ...activeCluster.tileLayout };
+      delete nextTileLayout[instanceId];
+      updates.tileLayout = nextTileLayout;
+      if (Object.keys(nextTileLayout).length === 0) updates.tileMode = null;
+    }
 
     if (!node) {
-      // Create a new node for this panel in the cluster
+      // Create a new node for this panel in the cluster, reusing the
+      // original node id.
       const panelDef = PANEL_DEFINITIONS.find(p => p.id === panelId);
-      targetNodeId = `${activeClusterId}-node-${Date.now()}`;
-      const newNode: ClusterNode = {
-        id: targetNodeId,
+      node = {
+        id: originalNodeId,
         panelId: panelId,
         label: panelDef?.name || panelId
       };
-      updates.nodes = [...activeCluster.nodes, newNode];
+      updates.nodes = [...activeCluster.nodes, node];
     }
 
-    updates.openNodeIds = [...new Set([...activeCluster.openNodeIds, targetNodeId])];
-    
+    updates.openNodeIds = [...new Set([...activeCluster.openNodeIds, originalNodeId])];
+
     updateActiveCluster(updates);
     addEchoMessage(AgentName.SystemControl, `Panel ${panelId} unpinned to 3D cluster.`, 'text-cyan-400');
   }, [activeCluster, activeClusterId, updateActiveCluster, addEchoMessage]);
-
-  useEffect(() => {
-    if (systemBooted) {
-      setShowOrbTooltip(true);
-      const timeout = setTimeout(() => setShowOrbTooltip(false), 15000);
-      return () => clearTimeout(timeout);
-    }
-  }, [systemBooted]);
 
   // Global Browser Agent Interoperability Bridge (OpenClaw / Hermes / Playwright)
   useEffect(() => {
@@ -1011,9 +1173,9 @@ export const App: React.FC = () => {
       minimizeAll: handleMinimizeAll,
       restoreAll: handleRestoreAll,
       closeAll: handleCloseAll,
-      getActivePanels: () => activeCluster.pinnedPanelIds,
+      getActivePanels: () => activePanelIdList,
       getClusters: () => clusters,
-      setMode: (mode: '3d' | '2d') => setWorkspaceMode(mode),
+      setMode: (mode: WorkspaceMode) => setWorkspaceMode(mode),
       dispatchCommand: async (action: string, payload: any) => {
         // Defect 7: dispatch requires the bearer token (sessionStorage,
         // set by the Terminal panel unlock). Without it the server 401s.
@@ -1030,7 +1192,7 @@ export const App: React.FC = () => {
         return res.json();
       }
     };
-  }, [handleAppClick, updateActiveCluster, activeCluster.pinnedPanelIds, handleTilePanels, handleMinimizeAll, handleRestoreAll, handleCloseAll, clusters]);
+  }, [handleAppClick, updateActiveCluster, activePanelIdList, handleTilePanels, handleMinimizeAll, handleRestoreAll, handleCloseAll, clusters]);
 
   const handleSwapPinnedPanel = useCallback((instanceId: string, newPanelId: string) => {
     const [oldPanelId, originalId] = instanceId.split('::');
@@ -1057,17 +1219,13 @@ export const App: React.FC = () => {
   }, [clusters, activeClusterId, addEchoMessage]);
 
   const [isCoreControlsOpen, setIsCoreControlsOpen] = useState(false);
-  const [showTutorial, setShowTutorial] = useState(false);
-  const [showOrbTooltip, setShowOrbTooltip] = useState(false);
+  // P5: the Add Node picker selection (blocked panels are disabled).
+  const [coreControlsPanelPick, setCoreControlsPanelPick] = useState('ModelOrchestratorPanel');
 
+  // N7: orb click does exactly one thing — toggle voice listening.
   const handleCoreOrbClick = useCallback(() => {
-    if (isVoiceActive) {
-      (() => {})("*user poked the orb*");
-    } else {
-      setIsVoiceActive(true);
-    }
-    setShowOrbTooltip(false);
-  }, [isVoiceActive]);
+    setIsVoiceActive(prev => !prev);
+  }, []);
 
   const addHistoricalEvent = (type: HistoricalEventType, data: any, specificTimestamp?: number) => {
     const newEvent: HistoricalEvent = {
@@ -1355,6 +1513,18 @@ const mockShatterpointData = {
         return wrapInProviders(<AdvancedReasoningPanel  width={850} height={750} />);
       case 'ModelOrchestratorPanel':
         return wrapInProviders(<ModelOrchestratorPanel />);
+      case 'SettingsPanel':
+        return wrapInProviders(<SettingsPanel
+          deskConfig={deskConfig}
+          onDeskConfigChange={setDeskConfig}
+          workspaceMode={workspaceMode}
+          onWorkspaceModeChange={setWorkspaceMode}
+          onResetWorkspace={handleResetWorkspace}
+          onOpenModelPanel={() => handleAppClick('ModelOrchestratorPanel')}
+          modelLoaded={isModelLoaded}
+          modelId={selectedModel}
+          onOpenTutorial={() => setShowTutorial(true)}
+        />);
       case 'OperationsDashboardPanel':
         return wrapInProviders(<OperationsDashboardPanel />);
       case 'EthicalFrameworkPanel':
@@ -1386,7 +1556,7 @@ const mockShatterpointData = {
       case 'WorkflowWorkspace':
         return wrapInProviders(<WorkflowWorkspace workflow={activeNVKWorkflow || undefined} onUpdateWorkflow={setActiveNVKWorkflow} />);
       case 'SubAgentConstellation':
-        return wrapInProviders(<SubAgentConstellation />);
+        return wrapInProviders(<SubAgentConstellation subAgents={subAgents} />);
       case 'GlyphPanel':
         return wrapInProviders(<GlyphPanel glyphId={nodeId.split('-')[1] || 'GLYPH-001'} clusterId={activeClusterId} />);
       case 'ClusterConfigPanel':
@@ -1608,6 +1778,14 @@ const mockShatterpointData = {
         onMouseMove={handleContainerMouseMove}
         onClick={handleContainerClick}
       >
+        {/* S1: Ashfall is real state — the Header toggle mounts the real
+            overlay above the 3D scene (below panels), pointer-transparent. */}
+        {showAshfall && (
+          <div className="absolute inset-0 z-[90] pointer-events-none overflow-hidden" aria-hidden="true">
+            <AshfallEffect />
+          </div>
+        )}
+
         {/* Global NVK OS Top Header */}
         <Header 
           workspaceMode={workspaceMode}
@@ -1622,19 +1800,15 @@ const mockShatterpointData = {
           onAwakenLotusDream={() => {}}
           onPulseAstralJasmine={() => {}}
           onGraftThorns={() => {}}
-          onToggleAutoEcho={() => {}}
-          onAmplifyVoices={() => {}}
           onSeedDream={() => {}}
-          isAutoEchoPaused={false}
-          onInvokecloud_aiOracle={() => {}}
-          onContextualOracleQuery={() => {}}
-          onToggleAshfall={() => {}}
-          showAshfall={false}
-          masterEntropyOverride={0}
-          onSetMasterEntropyOverride={() => {}}
+          onContextualOracleQuery={handleContextualOracleQuery}
+          onToggleAshfall={() => setShowAshfall(prev => !prev)}
+          showAshfall={showAshfall}
+          masterEntropyOverride={masterEntropyOverride}
+          onSetMasterEntropyOverride={setMasterEntropyOverride}
           isMasterEntropyLocked={false}
-          masterNegentropyLevel={5}
-          onSetMasterNegentropyLevel={() => {}}
+          masterNegentropyLevel={masterNegentropyLevel}
+          onSetMasterNegentropyLevel={setMasterNegentropyLevel}
           isMasterNegentropyLocked={false}
           showLogicWebDebug={false}
           onToggleLogicWebDebug={() => {}}
@@ -1644,8 +1818,6 @@ const mockShatterpointData = {
           currentCodexModeId={currentCodexModeId}
           activateCodexMode={handleActivateCodexMode}
           onDumpThreadSummary={() => {}}
-          showSigilOverlay={false}
-          onToggleSigilOverlay={() => {}}
           onTraceThreadcoil={() => {}}
           onReEnterJunction={() => {}}
           onExtractSigil={() => {}}
@@ -1655,6 +1827,9 @@ const mockShatterpointData = {
           onSetNodeAnimationSpeed={(spd) => updateActiveCluster({ nodeAnimationSpeed: spd })}
           onInitiateShatterpointTrace={() => {}}
           interfaceActive={true}
+          onOpenCoreControls={() => setIsCoreControlsOpen(true)}
+          onOpenSettings={() => handleAppClick('SettingsPanel')}
+          onOpenTutorial={() => setShowTutorial(true)}
         />
 
         {/* Main 3D Spatial Layout Engine */}
@@ -1708,19 +1883,27 @@ const mockShatterpointData = {
                   <i className="ri-nodes-line"></i> Nodes:
                 </span>
                 {PANEL_DEFINITIONS.map(panel => {
-                  const isOpen = activeCluster.openNodeIds.some(id => id.startsWith(panel.id));
+                  // P3: the highlight reads from the one derived set.
+                  const isOpen = activePanelIdList.includes(panel.id);
+                  // P6: blocked panels are disabled with the reason visible.
+                  const blocked = panel.availability && panel.availability.status !== 'available';
                   return (
                     <button
                       key={panel.id}
                       onClick={() => handleAppClick(panel.id)}
-                      className={`px-3 py-1 rounded-lg border font-mono text-[9.5px] uppercase tracking-wider flex items-center gap-1.5 shrink-0 transition-all cursor-pointer ${
-                        isOpen 
-                          ? 'bg-cyan-500/25 border-cyan-400 text-cyan-200 font-bold shadow-[0_0_10px_rgba(6,182,212,0.3)]' 
-                          : 'bg-slate-950/60 border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700'
+                      disabled={!!blocked}
+                      title={blocked ? `${panel.name} — ${panel.availability!.reason}` : panel.name}
+                      className={`px-3 py-1 rounded-lg border font-mono text-[9.5px] uppercase tracking-wider flex items-center gap-1.5 shrink-0 transition-all ${
+                        blocked
+                          ? 'bg-slate-950/40 border-slate-800/60 text-slate-600 cursor-not-allowed'
+                          : isOpen
+                            ? 'bg-cyan-500/25 border-cyan-400 text-cyan-200 font-bold shadow-[0_0_10px_rgba(6,182,212,0.3)] cursor-pointer'
+                            : 'bg-slate-950/60 border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700 cursor-pointer'
                       }`}
                     >
-                      <i className={`${panel.icon} text-cyan-400`}></i>
+                      <i className={`${panel.icon} ${blocked ? 'text-slate-600' : 'text-cyan-400'}`}></i>
                       <span>{panel.name}</span>
+                      {blocked && <span className="text-[8px] font-bold text-amber-500/80 border border-amber-500/40 rounded px-1">BLOCKED</span>}
                     </button>
                   );
                 })}
@@ -1740,6 +1923,9 @@ const mockShatterpointData = {
                   PANEL_DEFINITIONS={PANEL_DEFINITIONS}
                   setWorkspaceMode={setWorkspaceMode}
                   workspaceMode={workspaceMode}
+                  deskConfig={deskConfig}
+                  onDeskConfigChange={setDeskConfig}
+                  onOpenSettings={() => handleAppClick('SettingsPanel')}
                 />
               </div>
             </div>
@@ -1757,8 +1943,11 @@ const mockShatterpointData = {
               PANEL_DEFINITIONS={PANEL_DEFINITIONS}
               setWorkspaceMode={setWorkspaceMode}
               workspaceMode={workspaceMode}
+              deskConfig={deskConfig}
+              onDeskConfigChange={setDeskConfig}
+              onOpenSettings={() => handleAppClick('SettingsPanel')}
             />
-          ) : (
+          ) : workspaceMode === 'immersive' ? (
             /* 3D IMMERSIVE UNIVERSE MODE (Full Canvas Spatial Experience) */
             <ThreeErrorBoundary
               fallback={
@@ -1783,17 +1972,10 @@ const mockShatterpointData = {
                 setWorkspaceMode('2d');
               }}
             >
+              {/* N1: one scene per mode — the immersive branch renders
+                  CodexOrbSystem only. JarvisDesktop3D lives in split mode
+                  as its only scene. */}
               <Suspense fallback={<Cyber3DLoader />}>
-                <JarvisDesktop3D 
-                  agentState={agentState}
-                  activeGlyphs={activeGlyphs}
-                  selectedGlyphId={selectedGlyphId}
-                  onGlyphClick={handleGlyphClick}
-                  onExtrudeGlyph={handleExtrudeGlyph}
-                  setBridge={setBridge}
-                  onOrbClick={handleCoreOrbClick}
-                />
-
                 <CodexOrbSystem
                   onNodeHover={handleNodeHover}
                   axiomsRevealed={true}
@@ -1818,16 +2000,32 @@ const mockShatterpointData = {
                   thoughts={thoughts}
                   photoSources={activeCluster.photoSources}
                   onSwapPanel={handleSwapPanel}
-                  navigationInput={navigationInput}
-                  flightInput={flightInput}
-                  recenterTrigger={recenterTrigger}
-                  autoRecenter={autoRecenter}
                   isLiveActive={isVoiceActive}
-                  liveVolume={0}
+                  entropyOverride={masterEntropyOverride}
+                  negentropyOverride={masterNegentropyLevel}
                   nvkOrbState={nvkOrbState}
+                  autoRecenter={autoRecenter}
+                  onToggleAutoRecenter={() => setAutoRecenter(v => !v)}
                 />
               </Suspense>
             </ThreeErrorBoundary>
+          ) : (
+            /* N9: unknown workspace mode — an explicit error, never a
+               silent 3D stage. */
+            <div className="flex-1 flex items-center justify-center bg-slate-950 p-6 text-center">
+              <div className="max-w-sm">
+                <h2 className="text-sm font-mono text-rose-400 uppercase tracking-widest">Unknown workspace mode</h2>
+                <p className="text-slate-400 font-mono text-[11px] mt-3 leading-relaxed">
+                  The saved workspace mode &ldquo;{workspaceMode}&rdquo; is not a known mode (immersive, split, grid, 2d). Nothing was rendered rather than guessing a stage.
+                </p>
+                <button
+                  onClick={() => setWorkspaceMode('immersive')}
+                  className="mt-5 px-5 py-2.5 bg-cyan-600 hover:bg-cyan-500 font-mono text-[10px] uppercase text-slate-950 font-bold rounded-lg tracking-widest cursor-pointer"
+                >
+                  Return to Immersive
+                </button>
+              </div>
+            </div>
           )}
         </div>
 
@@ -1852,16 +2050,27 @@ const mockShatterpointData = {
                 </div>
                 
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 overflow-y-auto pr-2 custom-scrollbar">
-                  {PANEL_DEFINITIONS.map(panel => (
-                    <button
-                      key={panel.id}
-                      onClick={() => handlePerformSwap(panel.id)}
-                      className="flex flex-col items-center gap-2 p-4 bg-slate-800/50 hover:bg-cyan-900/30 border border-slate-700 hover:border-cyan-500/50 rounded-lg transition-all group"
-                    >
-                      <i className={`${panel.icon} text-2xl text-slate-400 group-hover:text-cyan-400 transition-colors`}></i>
-                      <span className="text-[10px] font-mono text-slate-300 group-hover:text-white text-center">{panel.title}</span>
-                    </button>
-                  ))}
+                  {PANEL_DEFINITIONS.map(panel => {
+                    // P6: blocked panels are disabled with the reason visible.
+                    const blocked = panel.availability && panel.availability.status !== 'available';
+                    return (
+                      <button
+                        key={panel.id}
+                        onClick={() => handlePerformSwap(panel.id)}
+                        disabled={!!blocked}
+                        title={blocked ? `${panel.name} — ${panel.availability!.reason}` : panel.name}
+                        className={`flex flex-col items-center gap-2 p-4 rounded-lg transition-all group ${
+                          blocked
+                            ? 'bg-slate-800/30 border border-slate-800/60 text-slate-600 cursor-not-allowed'
+                            : 'bg-slate-800/50 hover:bg-cyan-900/30 border border-slate-700 hover:border-cyan-500/50'
+                        }`}
+                      >
+                        <i className={`${panel.icon} text-2xl ${blocked ? 'text-slate-600' : 'text-slate-400 group-hover:text-cyan-400'} transition-colors`}></i>
+                        <span className={`text-[10px] font-mono ${blocked ? 'text-slate-600' : 'text-slate-300 group-hover:text-white'} text-center`}>{panel.name}</span>
+                        {blocked && <span className="text-[8px] font-bold text-amber-500/80 border border-amber-500/40 rounded px-1.5 py-0.5">BLOCKED — {panel.availability!.reason}</span>}
+                      </button>
+                    );
+                  })}
                 </div>
                 
                 <div className="text-[10px] font-mono text-slate-500 italic text-center pt-2">
@@ -1887,6 +2096,7 @@ const mockShatterpointData = {
               index={idx}
               panelId={instanceId} 
               getPanelContent={getPanelContent}
+              tileTarget={activeCluster.tileLayout?.[instanceId]}
               panelOpacity={opacity}
               onOpacityChange={(val) => {
                 const newOpacities = {
@@ -1896,7 +2106,15 @@ const mockShatterpointData = {
                 updateActiveCluster({ panelOpacities: newOpacities });
               }}
               onClose={() => {
-                updateActiveCluster({ pinnedPanelIds: activeCluster.pinnedPanelIds.filter(id => id !== instanceId) });
+                // P7: closing a panel clears its tile entry too.
+                const updates: Partial<Cluster> = { pinnedPanelIds: activeCluster.pinnedPanelIds.filter(id => id !== instanceId) };
+                if (activeCluster.tileLayout?.[instanceId]) {
+                  const nextTileLayout = { ...activeCluster.tileLayout };
+                  delete nextTileLayout[instanceId];
+                  updates.tileLayout = nextTileLayout;
+                  if (Object.keys(nextTileLayout).length === 0) updates.tileMode = null;
+                }
+                updateActiveCluster(updates);
                 setMinimizedPanelIds(prev => prev.filter(id => id !== instanceId));
                 setMaximizedPanelIds(prev => prev.filter(id => id !== instanceId));
                 if (focusedPanelId === instanceId) setFocusedPanelId(null);
@@ -1921,6 +2139,12 @@ const mockShatterpointData = {
         {/* Dynamic Window & Panel Controller */}
         <PanelManager
           pinnedPanelIds={activeCluster.pinnedPanelIds}
+          activePanelIds={activePanelIdList}
+          openNodePanels={activeCluster.nodes
+            .filter(n => activeCluster.openNodeIds.includes(n.id))
+            .map(n => ({ nodeId: n.id, panelId: n.panelId }))}
+          onCloseNode={(nodeId) => updateActiveCluster({ openNodeIds: activeCluster.openNodeIds.filter(id => id !== nodeId) })}
+          onPinNode={handlePinPanel}
           minimizedPanelIds={minimizedPanelIds}
           maximizedPanelIds={maximizedPanelIds}
           focusedPanelId={focusedPanelId}
@@ -1966,22 +2190,33 @@ const mockShatterpointData = {
                   {/* Node Management */}
                   <div className="flex flex-col gap-3">
                     <div className="text-slate-400 font-mono text-[10px] uppercase tracking-wider">Node Management</div>
-                    <div className="grid grid-cols-2 gap-2">
-                      <button 
+                    {/* P5: pick the panel — the old button added a RANDOM
+                        panel. Blocked panels are disabled with the reason. */}
+                    <div className="flex gap-2">
+                      <select
+                        value={coreControlsPanelPick}
+                        onChange={(e) => setCoreControlsPanelPick(e.target.value)}
+                        className="flex-1 min-w-0 bg-slate-950/80 border border-slate-700 text-slate-200 font-mono text-[11px] rounded px-2 py-2 cursor-pointer"
+                        title="Choose a panel to add as a node"
+                      >
+                        {PANEL_DEFINITIONS.map(p => (
+                          <option key={p.id} value={p.id} disabled={!!(p.availability && p.availability.status !== 'available')}>
+                            {p.name}{p.availability && p.availability.status !== 'available' ? ` — BLOCKED (${p.availability.reason})` : ''}
+                          </option>
+                        ))}
+                      </select>
+                      <button
                         onClick={() => {
-                          const randomPanel = PANEL_DEFINITIONS[Math.floor(Math.random() * PANEL_DEFINITIONS.length)];
-                          const id = `node-${Date.now()}`;
-                          updateActiveCluster({ 
-                            nodes: [...activeCluster.nodes, { id, panelId: randomPanel.id, label: randomPanel.name }],
-                            openNodeIds: [...activeCluster.openNodeIds, id]
-                          });
+                          handleAppClick(coreControlsPanelPick);
                           setIsCoreControlsOpen(false);
                         }}
-                        className="bg-cyan-900/20 hover:bg-cyan-900/40 border border-cyan-500/30 text-cyan-300 font-mono text-[10px] py-2 rounded transition-all flex items-center justify-center gap-2"
+                        className="bg-cyan-900/20 hover:bg-cyan-900/40 border border-cyan-500/30 text-cyan-300 font-mono text-[10px] px-3 py-2 rounded transition-all flex items-center justify-center gap-2 shrink-0"
                       >
                         <i className="ri-add-line"></i> Add Node
                       </button>
-                      <button 
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
                         onClick={() => {
                           updateActiveCluster({ openNodeIds: [] });
                           setIsCoreControlsOpen(false);
@@ -1989,6 +2224,16 @@ const mockShatterpointData = {
                         className="bg-slate-800/40 hover:bg-slate-800/60 border border-slate-700 text-slate-300 font-mono text-[10px] py-2 rounded transition-all flex items-center justify-center gap-2"
                       >
                         <i className="ri-close-circle-line"></i> Close All
+                      </button>
+                      <button
+                        onClick={() => {
+                          handleResetWorkspace();
+                          setIsCoreControlsOpen(false);
+                        }}
+                        className="bg-amber-900/20 hover:bg-amber-900/40 border border-amber-500/30 text-amber-300 font-mono text-[10px] py-2 rounded transition-all flex items-center justify-center gap-2"
+                        title="Clear the saved layout and settings and restore the default cluster"
+                      >
+                        <i className="ri-refresh-line"></i> Reset Workspace
                       </button>
                     </div>
                   </div>
@@ -2049,7 +2294,7 @@ const mockShatterpointData = {
         {/* Clean Dock at the bottom */}
         <Dock 
           apps={PANEL_DEFINITIONS.filter(p => DOCK_APPS.includes(p.id))}
-          openAppIds={activeCluster.pinnedPanelIds}
+          openAppIds={activePanelIdList}
           onAppClick={handleAppClick}
           onOpenSearch={() => setIsSearchOpen(true)}
         />
@@ -2066,6 +2311,12 @@ const mockShatterpointData = {
           onCloseAllPanels={handleCloseAllPanels}
           onOpenAllPanels={handleOpenAllPanels}
         />
+
+        {/* F2: first-run tour — opened after the boot on first load, and
+            re-openable from the Header System menu (Help). */}
+        {showTutorial && (
+          <TutorialOverlay isVisible onComplete={() => setShowTutorial(false)} />
+        )}
       </div>
     </SystemStateProvider>
   );

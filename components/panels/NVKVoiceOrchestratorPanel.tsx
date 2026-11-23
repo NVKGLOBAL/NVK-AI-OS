@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Button } from '../ui/Button';
 import { AgentName } from '../../types';
 import { useEcho } from '../../context/EchoContext';
-import { useLocalLLM } from '../../context/LocalLLMContext';
+import { useLocalLLM, formatBytes } from '../../context/LocalLLMContext';
 
 export default function NVKVoiceOrchestratorPanel() {
   const { addEchoMessage } = useEcho();
@@ -16,8 +16,17 @@ export default function NVKVoiceOrchestratorPanel() {
     generateText,
     selectedModel,
     setSelectedModel,
-    clearCache
+    clearCache,
+    getModelCacheBytes
   } = useLocalLLM();
+
+  // F7: confirm with the real cached size before purging.
+  const handlePurgeCache = async () => {
+    const bytes = await getModelCacheBytes();
+    if (!window.confirm(`Purge the WebGPU model cache? This frees about ${formatBytes(bytes)} of cached model weights.`)) return;
+    const freed = await clearCache();
+    addEchoMessage(AgentName.SystemControl, `WebGPU cache purged — ${formatBytes(freed)} freed.`, 'text-amber-400');
+  };
 
   // Engine selection: 'webgpu' (Offline Local Brain) vs 'cloud_ai' (Cloud cloud_ai Live)
   const [engineMode, setEngineMode] = useState<'webgpu' | 'cloud_ai'>('webgpu');
@@ -600,8 +609,16 @@ export default function NVKVoiceOrchestratorPanel() {
             <span className="text-xs uppercase tracking-wider text-cyan-400 font-bold">NVK OS Real-Time Voice Synapse</span>
           </div>
           <h2 className="text-lg font-bold font-sans tracking-tight text-white mt-0.5">
-            {engineMode === 'webgpu' ? 'Offline WebGPU Voice-to-Voice' : 'Direct Neural Cloud Communion'}
+            {engineMode === 'webgpu' ? 'Offline WebGPU Voice-to-Voice' : 'Cloud Live Voice — not connected'}
           </h2>
+          {/* S4: the mode line states honestly what works. Local voice runs
+              on-device; cloud live voice has no server behind it (the
+              /api/voice/status gate always reports liveVoice: false). */}
+          <p className="text-[11px] text-slate-400 leading-relaxed mt-1">
+            {engineMode === 'webgpu'
+              ? 'Local voice runs on-device in your browser — recognition and synthesis happen here, nothing is streamed to a server.'
+              : 'Cloud live voice is not connected — no live-voice server exists for this build. The local WebGPU voice path is the working one.'}
+          </p>
         </div>
 
         {/* Engine Mode Switcher Tabs */}
@@ -626,7 +643,7 @@ export default function NVKVoiceOrchestratorPanel() {
             }`}
           >
             <i className="ri-cloud-line mr-1.5" />
-            cloud_ai Live Cloud
+            Cloud Live (not connected)
           </button>
         </div>
       </div>
@@ -671,7 +688,7 @@ export default function NVKVoiceOrchestratorPanel() {
               )}
 
               <Button
-                onClick={clearCache}
+                onClick={handlePurgeCache}
                 variant="outline"
                 className="text-[10px] text-amber-400 border-amber-800/50 hover:bg-amber-950/30 px-2 py-1 h-7"
                 title="Purge WebGPU Cache if download stalls"

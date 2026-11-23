@@ -324,6 +324,14 @@ export interface ClusterNode {
   label?: string;
 }
 
+/**
+ * Single workspace-mode vocabulary (nav/UX fix spec N9, 2026-11-22).
+ * One union shared by App, Header, Workspace2D and OmniSearchModal.
+ * '3d' is gone — the immersive 3D stage is 'immersive'. Any unknown mode
+ * renders an explicit error, never a silent 3D stage.
+ */
+export type WorkspaceMode = 'immersive' | 'split' | 'grid' | '2d';
+
 export interface Cluster {
   id: string;
   name: string;
@@ -340,6 +348,14 @@ export interface Cluster {
   nodeFlow: number;
   panelOpacity: number;
   panelOpacities?: Record<string, number>;
+  /**
+   * Tiling as state (nav/UX fix spec P7, 2026-11-22). PinnedPanel reads
+   * these as its layout target — no DOM writes. `left` is the tile CENTER
+   * (PinnedPanel centers with x: '-50%'). tileMode records which tiling
+   * produced the layout so a window resize can reflow it from state.
+   */
+  tileLayout?: Record<string, { left: number; top: number; width: number; height: number }>;
+  tileMode?: 'grid' | 'cols' | 'rows' | null;
   photoSources?: string[];
   position?: [number, number, number]; // 3D position in the main scene
   torusFactor?: number;
@@ -369,6 +385,12 @@ export type PanelDefinition = {
   icon: string;
   description: string;
   category?: string;
+  /**
+   * Availability (nav/UX fix spec P6, 2026-11-22). Panels whose backing
+   * capability is BLOCKED or MISSING must be badged as such in every panel
+   * list and must not open as if working. Absent = available.
+   */
+  availability?: { status: 'available' | 'blocked' | 'missing'; reason?: string };
 };
 
 export type NodeInfo = {
@@ -605,11 +627,7 @@ export type HeaderProps = {
   onAwakenLotusDream: () => void;
   onPulseAstralJasmine: () => void;
   onGraftThorns: () => void;
-  onToggleAutoEcho: () => void;
-  onAmplifyVoices: () => void;
   onSeedDream: () => void;
-  isAutoEchoPaused: boolean;
-  onInvokeGeminiOracle: () => void;
   onContextualOracleQuery: () => void;
   onToggleAshfall: () => void;
   showAshfall: boolean;
@@ -627,8 +645,6 @@ export type HeaderProps = {
   currentCodexModeId: CodexModeId;
   activateCodexMode: (modeId: CodexModeId) => void;
   onDumpThreadSummary: () => void;
-  showSigilOverlay: boolean;
-  onToggleSigilOverlay: () => void;
   onTraceThreadcoil: () => void;
   onReEnterJunction: () => void;
   onExtractSigil: () => void;
@@ -638,9 +654,12 @@ export type HeaderProps = {
   onSetNodeAnimationSpeed: (speed: number) => void;
   onInitiateShatterpointTrace: () => void;
   interfaceActive: boolean;
-  workspaceMode?: '3d' | '2d' | 'split' | 'immersive' | 'grid';
-  onWorkspaceModeChange?: (mode: '3d' | '2d' | 'split' | 'immersive' | 'grid') => void;
+  workspaceMode?: WorkspaceMode;
+  onWorkspaceModeChange?: (mode: WorkspaceMode) => void;
   onOpenSearch?: () => void;
+  onOpenCoreControls?: () => void;
+  onOpenSettings?: () => void;
+  onOpenTutorial?: () => void;
 };
 
 export type XYPosition = { x: number; y: number };
