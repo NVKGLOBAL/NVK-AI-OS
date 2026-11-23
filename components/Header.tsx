@@ -70,8 +70,13 @@ export const Header: React.FC<HeaderProps> = ({
   const displayEntropyValue = masterEntropyOverride < 0 ? Math.abs(masterEntropyOverride) : masterEntropyOverride;
 
   return (
-    <header className="bg-slate-950/85 backdrop-blur-md border-b border-slate-800/80 px-4 py-2.5 top-0 z-50 shrink-0 select-none">
-      <div className="max-w-7xl mx-auto flex items-center justify-between gap-3 flex-wrap md:flex-nowrap">
+    <header className="bg-slate-950/85 backdrop-blur-md border-b border-slate-800/80 px-4 py-2.5 top-0 z-50 shrink-0 select-none overflow-hidden">
+      {/* R10-2: the row is full-width, not capped at max-w-7xl. The 1280px
+          cap squeezed ~1400px of controls into 1280px at a 1920px viewport,
+          so the mode pill shrank, showed its own horizontal scrollbar and
+          truncated "3D Desk". The header itself is overflow-hidden so the
+          bar can never produce a page scrollbar. */}
+      <div className="w-full flex items-center justify-between gap-3 flex-wrap md:flex-nowrap">
         
         {/* Brand & Status */}
         <div className="flex items-center gap-3 shrink-0">
@@ -101,7 +106,7 @@ export const Header: React.FC<HeaderProps> = ({
         {/* Global OmniSearch Bar */}
         <button
           onClick={onOpenSearch}
-          className="flex-1 max-w-md bg-slate-900/90 hover:bg-slate-900 border border-slate-700/80 hover:border-cyan-500/50 rounded-xl px-3 py-1.5 text-xs text-slate-400 hover:text-slate-200 transition-all flex items-center justify-between shadow-inner group cursor-pointer"
+          className="flex-1 min-w-0 max-w-md bg-slate-900/90 hover:bg-slate-900 border border-slate-700/80 hover:border-cyan-500/50 rounded-xl px-3 py-1.5 text-xs text-slate-400 hover:text-slate-200 transition-all flex items-center justify-between shadow-inner group cursor-pointer"
         >
           <div className="flex items-center gap-2 truncate">
             <i className="ri-search-line text-cyan-400 group-hover:scale-110 transition-transform"></i>
@@ -114,7 +119,7 @@ export const Header: React.FC<HeaderProps> = ({
 
         {/* Workspace Mode Switcher Pill */}
         {onWorkspaceModeChange && (
-          <div className="flex items-center bg-slate-900/90 border border-slate-800/90 rounded-full p-0.5 shadow-lg overflow-x-auto max-w-full">
+          <div className="flex items-center shrink-0 bg-slate-900/90 border border-slate-800/90 rounded-full p-0.5 shadow-lg overflow-x-auto max-w-full">
             <button
               onClick={() => onWorkspaceModeChange('split')}
               className={`px-2.5 sm:px-3 py-1 rounded-full text-[9px] sm:text-[10px] font-mono uppercase tracking-wider transition-all flex items-center gap-1 cursor-pointer whitespace-nowrap ${

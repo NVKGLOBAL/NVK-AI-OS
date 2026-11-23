@@ -318,6 +318,9 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
   const isTransitioningRef = useRef<boolean>(false);
   const focusSpeedMultiplierRef = useRef<number>(1.0);
   const prevOpenNodeIdsRef = useRef<string[]>([]);
+  // R10-6: first panel sync after mount — the open nodes are restored
+  // persisted state, not new user opens (see the newlyOpened guard below).
+  const isFirstPanelSyncRef = useRef(true);
   const focusOnPanelNodeRef = useRef<(nodeId: string) => void>(() => {});
   const panelObjectsRef = useRef<Map<string, PanelObject>>(new Map());
   const modeObjectsRef = useRef<THREE.Group>(new THREE.Group());
@@ -1225,23 +1228,12 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
 
             onCoreOrbClickRef.current();
 
-            if (cameraRef.current && controlsRef.current) {
-                gsap.to(cameraRef.current.position, {
-                    x: 0,
-                    y: 0,
-                    z: 14,
-                    duration: 0.8,
-                    ease: "back.out(1.5)"
-                });
-                gsap.to(controlsRef.current.target, {
-                    x: 0,
-                    y: 0,
-                    z: 0,
-                    duration: 0.8,
-                    ease: "power2.out",
-                    onUpdate: () => controlsRef.current?.update()
-                });
-            }
+            // R10-1: a core-orb tap toggles voice ONLY — the camera stays
+            // put. The tween that used to fly the camera to (0, 0, 14)
+            // here zoomed the ring from ~320px to ~700px and pushed the
+            // nodes out of frame on every tap (retest #10), even though
+            // voice toggled and no panel opened. The explicit camera
+            // return lives on the "Focus NVK" HUD button, not on the tap.
         } else if (targetObj && targetObj.userData?.type === 'axiom') {
             // Axiom taps open their mapped real panel — the same path the
             // dock uses (handleAppClick), so the tap creates the node +
@@ -2858,7 +2850,15 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
     });
 
     // Auto-Guided Viewport Tracking: Detect newly opened panel nodes
-    const newlyOpened = openNodeIds.filter(id => !prevOpenNodeIdsRef.current.includes(id));
+    // R10-6: on the first sync after mount the open nodes are restored
+    // persisted state, not new opens — auto-focusing the last one flew
+    // the camera to a panel ("NVK Service Tiers") and hid the orb on
+    // every reload. Only user opens after mount get the fly-to.
+    const isFirstPanelSync = isFirstPanelSyncRef.current;
+    isFirstPanelSyncRef.current = false;
+    const newlyOpened = isFirstPanelSync
+      ? []
+      : openNodeIds.filter(id => !prevOpenNodeIdsRef.current.includes(id));
     prevOpenNodeIdsRef.current = openNodeIds;
 
     if (newlyOpened.length > 0) {

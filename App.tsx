@@ -423,10 +423,27 @@ export const App: React.FC = () => {
     return [...ids];
   }, [activeCluster]);
 
+  // R10-5: central duplicate guard. Every cluster write normalizes the
+  // three identity lists (nodes by id, pinned/open ids exact) so no
+  // caller — including a stale-closure double-fire of handleAppClick —
+  // can ever append a second copy of a panel. Duplicate pinned ids
+  // rendered duplicate PinnedPanels (dup 2/2, 3/3, 4/4 in retest #10).
   const updateActiveCluster = useCallback((updates: Partial<Cluster>) => {
-    setClusters(prev => prev.map(c => 
-      c.id === activeClusterId ? { ...c, ...updates } : c
-    ));
+    setClusters(prev => prev.map(c => {
+      if (c.id !== activeClusterId) return c;
+      const next = { ...c, ...updates };
+      if (updates.pinnedPanelIds) next.pinnedPanelIds = [...new Set(updates.pinnedPanelIds)];
+      if (updates.openNodeIds) next.openNodeIds = [...new Set(updates.openNodeIds)];
+      if (updates.nodes) {
+        const seen = new Set<string>();
+        next.nodes = updates.nodes.filter(n => {
+          if (seen.has(n.id)) return false;
+          seen.add(n.id);
+          return true;
+        });
+      }
+      return next;
+    }));
   }, [activeClusterId]);
 
   // P10: persist the cluster layout on every change (nodes, positions,
@@ -1031,6 +1048,41 @@ export const App: React.FC = () => {
     return () => clearInterval(interval);
   }, [systemBooted]);
 
+  // R10-5: one close path. The cluster-node X and the pinned-panel X
+  // used to remove only half the panel (node XOR pinned instance), so a
+  // closed panel lingered as the other copy and re-opening stacked
+  // another one — and closing one by one never fully removed it. Close
+  // removes the node AND every pinned instance for it (plus tile /
+  // minimize / maximize / focus state). Unpin (handleUnpinPanel) is the
+  // separate "keep it in 3D" action and is unchanged.
+  const closePanelEverywhere = useCallback((nodeOrInstanceId: string) => {
+    // Accepts a cluster node id ("<cluster>-<panel>") or a pinned
+    // instance id ("<panel>::<nodeId>[::url]").
+    const parts = nodeOrInstanceId.split('::');
+    const nodeId = parts.length > 1 ? parts[1] : nodeOrInstanceId;
+    const panelId = parts.length > 1
+      ? parts[0]
+      : activeCluster.nodes.find(n => n.id === nodeId)?.panelId;
+    const instancesForNode = activeCluster.pinnedPanelIds.filter(id => {
+      const [pid, nid] = id.split('::');
+      return nid === nodeId || (panelId !== undefined && pid === panelId && nid === undefined);
+    });
+    const updates: Partial<Cluster> = {
+      openNodeIds: activeCluster.openNodeIds.filter(id => id !== nodeId),
+      pinnedPanelIds: activeCluster.pinnedPanelIds.filter(id => !instancesForNode.includes(id)),
+    };
+    if (activeCluster.tileLayout && instancesForNode.some(id => activeCluster.tileLayout?.[id])) {
+      const nextTileLayout = { ...activeCluster.tileLayout };
+      instancesForNode.forEach(id => { delete nextTileLayout[id]; });
+      updates.tileLayout = nextTileLayout;
+      if (Object.keys(nextTileLayout).length === 0) updates.tileMode = null;
+    }
+    updateActiveCluster(updates);
+    setMinimizedPanelIds(prev => prev.filter(id => !instancesForNode.includes(id)));
+    setMaximizedPanelIds(prev => prev.filter(id => !instancesForNode.includes(id)));
+    if (focusedPanelId && instancesForNode.includes(focusedPanelId)) setFocusedPanelId(null);
+  }, [activeCluster, updateActiveCluster, focusedPanelId]);
+
   const handlePanelNodeClick = useCallback((nodeId: string) => {
     updateActiveCluster({
       openNodeIds: activeCluster.openNodeIds.includes(nodeId) 
@@ -1109,7 +1161,7 @@ export const App: React.FC = () => {
     updateActiveCluster({
       nodes,
       openNodeIds: [...new Set([...activeCluster.openNodeIds, node.id])],
-      pinnedPanelIds: [...activeCluster.pinnedPanelIds, instanceId]
+      pinnedPanelIds: [...new Set([...activeCluster.pinnedPanelIds, instanceId])]
     });
     setFocusedPanelId(instanceId);
     addEchoMessage(AgentName.SystemControl, `Deploying ${panelId} instance to operational interface.`, 'text-cyan-400');
@@ -1875,11 +1927,23 @@ const mockShatterpointData = {
                   <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping"></span>
                   <span className="hidden sm:inline font-bold">LIVE 3D SPATIAL STAGE</span>
                   <span className="sm:hidden font-bold">3D STAGE</span>
+                  {/* R10-7: this button used to read "Pulse Orb" while
+                      calling the voice toggle — tapping it for a visual
+                      pulse secretly turned the mic on (and re-enabled
+                      voice after it was stopped). It is now an explicitly
+                      labeled voice control with live state. The orb tap
+                      itself and the Dock voice toggle are the other
+                      explicit paths; voice never starts as a side effect
+                      of another action. (No auto-start path exists in
+                      code: setIsVoiceActive(true) only runs from the
+                      explicit toggles.) */}
                   <button 
                     onClick={handleCoreOrbClick}
+                    aria-pressed={isVoiceActive}
+                    title={isVoiceActive ? 'Voice listening — tap to stop' : 'Voice off — tap to listen'}
                     className="ml-1 px-2 py-0.5 bg-cyan-500/20 hover:bg-cyan-500/40 text-cyan-200 border border-cyan-400/50 rounded text-[8px] font-bold uppercase transition-all cursor-pointer"
                   >
-                    Pulse Orb
+                    Voice: {isVoiceActive ? 'On' : 'Off'}
                   </button>
                 </div>
               </div>
@@ -1996,7 +2060,7 @@ const mockShatterpointData = {
                   orbMode={activeCluster.orbMode}
                   particleMode={activeCluster.particleMode}
                   onPinPanel={handlePinPanel}
-                  onClosePanel={(id) => updateActiveCluster({ openNodeIds: activeCluster.openNodeIds.filter(pid => pid !== id) })}
+                  onClosePanel={closePanelEverywhere}
                   onTacticalBrief={handleTacticalBrief}
                   onAxiomOpenPanel={handleAppClick}
                   nodeAnimationSpeed={activeCluster.nodeAnimationSpeed}
@@ -2113,20 +2177,7 @@ const mockShatterpointData = {
                 };
                 updateActiveCluster({ panelOpacities: newOpacities });
               }}
-              onClose={() => {
-                // P7: closing a panel clears its tile entry too.
-                const updates: Partial<Cluster> = { pinnedPanelIds: activeCluster.pinnedPanelIds.filter(id => id !== instanceId) };
-                if (activeCluster.tileLayout?.[instanceId]) {
-                  const nextTileLayout = { ...activeCluster.tileLayout };
-                  delete nextTileLayout[instanceId];
-                  updates.tileLayout = nextTileLayout;
-                  if (Object.keys(nextTileLayout).length === 0) updates.tileMode = null;
-                }
-                updateActiveCluster(updates);
-                setMinimizedPanelIds(prev => prev.filter(id => id !== instanceId));
-                setMaximizedPanelIds(prev => prev.filter(id => id !== instanceId));
-                if (focusedPanelId === instanceId) setFocusedPanelId(null);
-              }}
+              onClose={() => closePanelEverywhere(instanceId)}
               onUnpin={() => handleUnpinPanel(instanceId)}
               onSwap={(newId) => handleSwapPinnedPanel(instanceId, newId)}
               panelDef={panelDef}
@@ -2151,18 +2202,13 @@ const mockShatterpointData = {
           openNodePanels={activeCluster.nodes
             .filter(n => activeCluster.openNodeIds.includes(n.id))
             .map(n => ({ nodeId: n.id, panelId: n.panelId }))}
-          onCloseNode={(nodeId) => updateActiveCluster({ openNodeIds: activeCluster.openNodeIds.filter(id => id !== nodeId) })}
+          onCloseNode={closePanelEverywhere}
           onPinNode={handlePinPanel}
           minimizedPanelIds={minimizedPanelIds}
           maximizedPanelIds={maximizedPanelIds}
           focusedPanelId={focusedPanelId}
           onToggleFocus={handleToggleFocus}
-          onClosePanel={(id) => {
-            updateActiveCluster({ pinnedPanelIds: activeCluster.pinnedPanelIds.filter(pid => pid !== id) });
-            setMinimizedPanelIds(prev => prev.filter(pid => pid !== id));
-            setMaximizedPanelIds(prev => prev.filter(pid => pid !== id));
-            if (focusedPanelId === id) setFocusedPanelId(null);
-          }}
+          onClosePanel={(id) => closePanelEverywhere(id)}
           onBringToFront={handleBringToFront}
           onToggleMinimize={handleToggleMinimize}
           onMinimizeAll={handleMinimizeAll}

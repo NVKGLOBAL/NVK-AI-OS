@@ -268,19 +268,19 @@ export const PinnedPanel: React.FC<PinnedPanelProps> = ({
                     borderColor: isFocused 
                         ? 'rgba(245, 158, 11, 0.6)' 
                         : `rgba(100, 116, 139, ${Math.min(0.7, 0.25 + (1 - panelOpacity) * 0.45)})`,
-                    top: tileTarget ? `${tileTarget.top}px` : (isMobile ? `${70 + offset}px` : `${80 + offset}px`), // P7: tile target wins; otherwise the default offset
+                    top: isFocused ? '70px' : (tileTarget ? `${tileTarget.top}px` : (isMobile ? `${70 + offset}px` : `${80 + offset}px`)), // P7: tile target wins; otherwise the default offset. R10-3: a focused panel sits at a fixed top so its bottom lands predictably above the dock strip.
                     left: tileTarget ? `${tileTarget.left}px` : (isMobile ? '50%' : `calc(50% + ${offset}px)`), // P7: left is the tile CENTER (x: '-50%' centers it)
                     x: '-50%',   // Center anchor
                     minWidth: isMobile ? '280px' : '300px',
                     minHeight: '200px',
                     width: tileTarget ? `${tileTarget.width}px` : (isMobile ? '95vw' : 'min(850px, 95vw)'), // P7: tile target wins
                     height: tileTarget ? `${tileTarget.height}px` : (isMobile ? 'min(440px, calc(100vh - 140px))' : '750px'), // P7: tile target wins
-                    zIndex: isFocused ? 1110 : zIndex,
+                    zIndex: isFocused ? 1090 : zIndex, // R10-3: a focused panel sits BELOW the dock (1100) — it must never cover the dock buttons. The dock stays clickable while a panel is in deep focus.
                     pointerEvents: somePanelFocused && !isFocused ? 'none' : 'auto',
                 }}
                 animate={{
                     width: isFocused ? '95vw' : (isMaximized ? '100vw' : (isMinimized ? (isMobile ? '240px' : '280px') : undefined)),
-                    height: isFocused ? 'calc(100vh - 140px)' : (isMaximized ? 'calc(100vh - 60px)' : (isMinimized ? 'auto' : undefined)),
+                    height: isFocused ? 'calc(100vh - 220px)' : (isMaximized ? 'calc(100vh - 60px)' : (isMinimized ? 'auto' : undefined)), // R10-3: focused height ends above the dock strip (top 70 + y 10 + height → bottom ≈ 100vh − 140; the dock top is ≈ 100vh − 126).
                     maxHeight: isFocused ? 'none' : (isMaximized ? 'none' : (isMinimized ? 'auto' : (isMobile ? 'calc(100vh - 140px)' : 'calc(100vh - 180px)'))), // Safe viewport limits on mobile
                     x: isFocused ? '-50%' : (isMaximized ? '-50%' : undefined), // Reset horizontal center on maximize/focus
                     y: isFocused ? 10 : (isMaximized ? -60 : undefined),      // Reset vertical position on maximize to cover header

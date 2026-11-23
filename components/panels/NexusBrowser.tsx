@@ -15,6 +15,18 @@ interface NexusBrowserProps {
 
 const DEFAULT_NEXUS_URL = 'https://www.nvk.global/';
 
+// R10-4: the Durable proxy (/api/proxy) exists only on the local NVK
+// server (server.ts). On the static GitHub Pages deploy the relative
+// proxy URL resolves to nvkglobal.github.io/api/proxy, which 404s with
+// the GitHub Pages "There isn't a GitHub Pages site here" page inside
+// the iframe — that was the retest #10 404. www.nvk.global itself
+// returns 200 and sends no X-Frame-Options / frame-ancestors header,
+// so the store frames directly. Durable mode therefore defaults OFF
+// (and stays off) on any non-localhost host.
+const isStaticHost = typeof window !== 'undefined'
+  && window.location.hostname !== 'localhost'
+  && window.location.hostname !== '127.0.0.1';
+
 const NexusBrowser: React.FC<NexusBrowserProps> = ({ onOpenNewWindow, initialUrl }) => {
   const [tabs, setTabs] = useState<Tab[]>([
     { 
@@ -29,7 +41,10 @@ const NexusBrowser: React.FC<NexusBrowserProps> = ({ onOpenNewWindow, initialUrl
   const [inputValue, setInputValue] = useState(initialUrl || DEFAULT_NEXUS_URL);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [isDurableMode, setIsDurableMode] = useState(true);
+  const [isDurableMode, setIsDurableMode] = useState(!isStaticHost);
+  // Effective mode: the proxy can never serve on a static host, so the
+  // toggle is inert there even if state somehow says ON.
+  const effectiveDurableMode = isDurableMode && !isStaticHost;
   const [sessionStats, setSessionStats] = useState({ uptime: 0, requests: 1, failures: 0 });
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
@@ -126,7 +141,7 @@ const NexusBrowser: React.FC<NexusBrowserProps> = ({ onOpenNewWindow, initialUrl
     setIsLoading(true);
     setError(null);
     const currentUrl = activeTab.url;
-    const reloadUrl = isDurableMode ? `/api/proxy?url=${encodeURIComponent(currentUrl)}` : currentUrl;
+    const reloadUrl = effectiveDurableMode ? `/api/proxy?url=${encodeURIComponent(currentUrl)}` : currentUrl;
     // Force iframe reload
     if (iframeRef.current) {
         iframeRef.current.src = 'about:blank';
@@ -270,13 +285,15 @@ const NexusBrowser: React.FC<NexusBrowserProps> = ({ onOpenNewWindow, initialUrl
           </button>
           <button 
             onClick={() => setIsDurableMode(!isDurableMode)}
+            disabled={isStaticHost}
+            title={isStaticHost ? 'Durable proxy needs the local NVK server — unavailable on this static host, so the store loads directly.' : 'Toggle the Durable proxy (local server only)'}
             className={`px-2 py-1 rounded text-[9px] font-bold uppercase tracking-wider transition-all border ${
-              isDurableMode 
+              effectiveDurableMode 
                 ? 'bg-cyan-500/20 border-cyan-500 text-cyan-400 shadow-[0_0_8px_rgba(0,255,179,0.3)]' 
                 : 'bg-slate-800 border-slate-700 text-slate-500'
-            }`}
+            } ${isStaticHost ? 'opacity-40 cursor-not-allowed' : ''}`}
           >
-            {isDurableMode ? 'Durable: ON' : 'Durable: OFF'}
+            {effectiveDurableMode ? 'Durable: ON' : 'Durable: OFF'}
           </button>
         </div>
       </div>
@@ -328,9 +345,9 @@ const NexusBrowser: React.FC<NexusBrowserProps> = ({ onOpenNewWindow, initialUrl
         )}
         
         <iframe
-          key={`${activeTabId}-${activeTab.url}-${isDurableMode}`}
+          key={`${activeTabId}-${activeTab.url}-${effectiveDurableMode}`}
           ref={iframeRef}
-          src={isDurableMode ? `/api/proxy?url=${encodeURIComponent(activeTab.url)}` : activeTab.url}
+          src={effectiveDurableMode ? `/api/proxy?url=${encodeURIComponent(activeTab.url)}` : activeTab.url}
           className="w-full h-full border-0"
           title="Nexus Browser"
           sandbox="allow-forms allow-modals allow-pointer-lock allow-popups allow-presentation allow-same-origin allow-scripts"
