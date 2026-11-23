@@ -1259,16 +1259,28 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
             CyberSynth.playClick();
             playHaptic(25);
             const nodeId = targetObj.userData.id;
-            onPanelNodeClickRef.current(nodeId);
+            // N12: a tap on an already-open node focuses it instead of
+            // toggle-closing it while the camera still flies to it. The
+            // toggle stays in handlePanelNodeClick for its other callers
+            // (panel list / close affordances); only the 3D tap path is
+            // focus-only for open nodes.
+            if (!openNodeIdsRef.current.includes(nodeId)) {
+                onPanelNodeClickRef.current(nodeId);
+            }
             focusOnPanelNodeRef.current(nodeId);
         }
     };
 
-    const handleClick = (event?: MouseEvent) => {
-        if (event) {
-            handleTapOrClick(event.clientX, event.clientY);
-        }
-    };
+    // N12: single tap entry point. handleTapOrClick used to have THREE
+    // callers — pointerup, touchend, and a window 'click' listener. On a
+    // touch-emulated tap the browser synthesises a mouse click ~300 ms
+    // after touchend, past the 250 ms debounce inside handleTapOrClick,
+    // so one physical tap classified TWICE (first run: core = voice ON,
+    // second run: panel = Nexus Browser opens). The window click listener
+    // is dropped: pointerup already fires for mouse, and pointerup +
+    // touchend (both inside the debounce window) cover touch. Do NOT
+    // re-add a window 'click' tap path without re-centralising the
+    // debounce around it.
     
     // Updated handleResize to check for dimensions and maintain high DPI resolution
     const handleResize = () => {
@@ -1295,7 +1307,6 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
     requestAnimationFrame(() => handleResize());
 
     window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('click', handleClick);
     // We can still listen to window resize for good measure, but ResizeObserver handles the container
     window.addEventListener('resize', handleResize); 
     window.addEventListener('touchmove', handleTouchMove, { passive: true });
@@ -1767,11 +1778,20 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
               node.rotation.set(0, 0, 0);
             }
           } else if (layout === PanelLayout.TAB_BROWSER) {
-            node.position.set(0, 0, 15 - i * 0.1);
-            node.rotation.set(0, 0, 0);
-            if (i > 0) {
+            // N12: node[0] must NOT sit on the camera→origin axis. At
+            // (0, 0, 15) it parked dead centre in front of the core orb,
+            // so a centre-orb tap raycast the panel node first and opened
+            // its panel instead of toggling voice. Park it above the orb
+            // at (0, 8, 12): off the centre ray, still clickable, visible
+            // on any aspect, and clear of the axiom orbits — an axiom node
+            // sweeps within ~1 unit of (8, 4, 12), so that spot is not used.
+            if (i === 0) {
+              node.position.set(0, 8, 12);
+            } else {
+              node.position.set(0, 0, 15 - i * 0.1);
               node.position.x = 1000; // Hide others
             }
+            node.rotation.set(0, 0, 0);
           }
         });
 
@@ -2383,7 +2403,6 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
     let localControls = controls;
     return () => {
       window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('click', handleClick);
       window.removeEventListener('pointermove', markStageInteraction);
       window.removeEventListener('pointerdown', markStageInteraction);
       window.removeEventListener('keydown', markStageInteraction);

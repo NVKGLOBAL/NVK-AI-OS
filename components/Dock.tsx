@@ -14,7 +14,12 @@ export const Dock: React.FC<DockProps> = ({
   onAppClick,
   onOpenSearch,
 }) => {
-  // Combine all items to compute precise circular curvature layout
+  // Combine all items into one flat row. (Was a circular "smartwatch
+  // arc" polar transform: it lifted the end buttons clean off the
+  // visible strip — the strip's overflow-x-auto clips anything above its
+  // top edge — making App Library, Codex Explorer, Nexus Terminal and
+  // Pricing pointer-unreachable. Flat row, same strip, same S5
+  // narrow-screen horizontal scroll.)
   const items = React.useMemo(() => {
     const list = [];
     if (onOpenSearch) {
@@ -26,25 +31,12 @@ export const Dock: React.FC<DockProps> = ({
     return list;
   }, [apps, onOpenSearch]);
 
-  const total = items.length;
-  const centerIndex = (total - 1) / 2;
-
   return (
     <footer className="dock-container fixed bottom-12 left-0 right-0 flex justify-center items-end z-[1100] pointer-events-none">
       {/* S5: the dock scrolls horizontally on narrow screens instead of
           overflowing off the right edge. */}
       <div className="flex items-end justify-center gap-2 px-6 py-3 pointer-events-auto max-w-[98vw] overflow-x-auto custom-scrollbar">
-        {items.map((item, index) => {
-          const dist = index - centerIndex;
-          
-          // Circular device bottom arc fitting (tangent-aligned polar transform, curved an additional 15% more)
-          const spacing = 48; // spacing between elements
-          const radius = 220; // curvature radius of circular smartwatch/device frame
-          const angleRad = (dist * spacing) / radius;
-          const angleDeg = 1.3225 * angleRad * (180 / Math.PI);
-          // Curve upwards at the side boundaries
-          const translateY = -1.3225 * (radius - radius * Math.cos(angleRad)); 
-
+        {items.map((item) => {
           // P1: App passes the one derived active-panel set (panel ids),
           // so this is an exact match — not a prefix match.
           const isOpen = item.type === 'app' && openAppIds.includes(item.id);
@@ -53,10 +45,6 @@ export const Dock: React.FC<DockProps> = ({
             <div 
               key={item.id} 
               className="relative flex flex-col items-center shrink-0 transition-all duration-300 ease-out hover:scale-110"
-              style={{
-                transform: `translateY(${translateY}px) rotate(${angleDeg}deg)`,
-                transformOrigin: 'bottom center',
-              }}
             >
               {item.type === 'launcher' ? (
                 <button
@@ -81,9 +69,6 @@ export const Dock: React.FC<DockProps> = ({
               {isOpen && (
                 <div 
                   className="absolute -bottom-1.5 w-1.5 h-1.5 bg-cyan-400 rounded-full shadow-[0_0_8px_rgba(6,182,212,0.9)] transition-all duration-300"
-                  style={{
-                    transform: `rotate(${-angleDeg}deg)`, // keep the indicator dot pointing straight down
-                  }}
                 />
               )}
             </div>
