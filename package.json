@@ -8,7 +8,7 @@
     "build": "node scripts/audit-dependencies.cjs && vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
     "preview": "vite preview",
     "lint": "tsc --noEmit",
-    "test": "npx tsx services/axiom_panel_mapping_test.ts && npx tsx services/capability_evidence_test.ts && npx tsx services/capability_gate_test.ts && npx tsx services/os_panel_bus_test.ts && npx tsx services/os_orb_state_test.ts && npx tsx services/os_search_math_test.ts && npx tsx services/os_ret12_fix_test.ts && npx tsx services/os_slice7_planner_test.ts && npx tsx services/os_slice11_vault_test.ts && npx tsx services/os_slice6_hierarchy_test.ts",
+    "test": "npx tsx services/axiom_panel_mapping_test.ts && npx tsx services/capability_evidence_test.ts && npx tsx services/capability_gate_test.ts && npx tsx services/os_panel_bus_test.ts && npx tsx services/os_orb_state_test.ts && npx tsx services/os_search_math_test.ts && npx tsx services/os_ret12_fix_test.ts && npx tsx services/os_slice7_planner_test.ts && npx tsx services/os_slice11_vault_test.ts && npx tsx services/os_slice6_hierarchy_test.ts && npx tsx services/os_ret14_orb_fix_test.ts",
     "audit": "node scripts/audit-dependencies.cjs",
     "start": "node dist/server.cjs"
   },

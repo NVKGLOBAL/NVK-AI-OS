@@ -3189,6 +3189,17 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
               group.add(riftPlane);
           }
           break;
+      case OrbMode.HolographicCore:
+          // Retest #14 diagnosis (2026-11-23): the default mode had NO
+          // case in this switch, so the mode group stayed empty and the
+          // centre was the shader torus's black hollow interior by
+          // design. The bright sphere (radius 1.5) sits inside the torus
+          // ring (radius 2.8) — a solid bright core with the ring around
+          // it — and it is the raycastable 'core_orb' the click handler
+          // looks for. Without this case the fix never ran in the mode
+          // the app opens in.
+          addInvisibleCore();
+          break;
     }
   }, [orbMode, systemState.entropy]);
 

@@ -389,7 +389,7 @@ export const JarvisDesktop3D: React.FC<JarvisDesktop3DProps> = ({
   return (
     <div 
       ref={containerRef}
-      className="fixed inset-0 z-0 bg-slate-950 select-none pointer-events-auto"
+      className="absolute inset-0 z-0 bg-slate-950 select-none pointer-events-auto"
       onDoubleClick={(e) => {
         const target = e.target as HTMLElement;
         if (target.tagName === 'CANVAS' || target.classList.contains('bg-slate-950')) {
