@@ -88,34 +88,28 @@ export class Planner {
         status: 'pending',
         input: { topic: parsed.objective || prompt }
       });
-    } else if (intent === 'workflow_execution') {
-      const n1 = `node-${Date.now()}-1`;
-      const n2 = `node-${Date.now()}-2`;
-      graph.addNode({
-        id: n1,
-        objective: 'Research commercial solar opportunities in Texas',
-        capability: 'web.search',
-        dependencies: [],
-        status: 'pending',
-        input: { query: parsed.objective || prompt }
-      });
-      graph.addNode({
-        id: n2,
-        objective: 'Create pitch deck artifact for NVK Global',
-        capability: 'documents.create',
-        dependencies: [n1],
-        status: 'pending',
-        input: { topic: 'NVK Global Texas Solar Pitch Deck' }
-      });
-    } else {
-      graph.addNode({
-        id: `node-${Date.now()}-1`,
-        objective: parsed.objective || prompt || 'Execute task',
-        capability: 'web.search',
-        dependencies: [],
-        status: 'pending',
-        input: { query: parsed.objective || prompt }
-      });
+    }
+    // Slice 7: the hardcoded Texas-solar plan is removed. The old
+    // workflow_execution branch built a fixed "Research commercial solar
+    // opportunities in Texas" + "Create pitch deck artifact for NVK
+    // Global" plan for ANY input routed there — a fabricated plan. There
+    // is no generic workflow engine, so workflow_execution builds no
+    // plan (it falls through to the empty-plan case below).
+    //
+    // Slice 7: the catch-all default web.search is removed. The old
+    // final `else` turned ANY unmatched intent (conversation, run_task,
+    // unknown — including a greeting like "hello") into a web.search
+    // plan — a fabricated plan for an input nobody understood. An intent
+    // with no plan now builds NO nodes (an empty plan). The runtime
+    // turns an empty plan into `ask` (it asks the user what they want)
+    // instead of executing a guessed search.
+    else if (
+      intent === 'conversation' ||
+      intent === 'run_task' ||
+      intent === 'unknown' ||
+      intent === 'workflow_execution'
+    ) {
+      // No plan. Intentionally empty — the runtime asks.
     }
 
     nvkEventBus.publish({ type: 'plan.created', taskId, steps: graph.nodes });

@@ -100,7 +100,7 @@ import { DocumentWorkspace } from './components/panels/DocumentWorkspace';
 import { WorkflowWorkspace } from './components/panels/WorkflowWorkspace';
 import { SubAgentConstellation } from './components/panels/SubAgentConstellation';
 import { NVKCommandLayer } from './components/spatial/NVKCommandLayer';
-import { useOsPanelBus, registerOsPanelBridge, setOsOpenPanelIds, isOsPanelDead, DEAD_PANEL_REASONS } from './lib/stores/osPanelBusStore';
+import { useOsPanelBus, registerOsPanelBridge, setOsOpenPanelIds, isOsPanelDead, DEAD_PANEL_REASONS, getFlowerAccentHue } from './lib/stores/osPanelBusStore';
 import { mapRuntimeStateToOrbState, mapServicesEventToOrbState } from './lib/orbStateMapping';
 import type { NVKOrbState, NVKWorkflow, NVKActivityStep, ProcessedNVKIntent, WorkspaceMode, SubAgent } from './types';
 import { eventBus } from './services/EventBus';
@@ -1636,8 +1636,11 @@ const mockShatterpointData = {
         // Slice 3: the bus's hue override (set by "turn the Flower of
         // Life green") drives the flower's primary line work; null means
         // the visualizer's own entropy/mode hue, unchanged.
-        const hue = busState.panelProperties['FlowerOfLifeEntropyExplorer']?.hue;
-        return wrapInProviders(<FlowerOfLifeEntropyExplorer currentEntropy={effectiveEntropy} width={850} height={750} currentDisplayMode={currentDisplayMode} onSetDisplayMode={setCurrentDisplayMode} accentHue={typeof hue === 'number' ? hue : null} />);
+        // Ret12 fix: the hue comes from the shared derivation
+        // (getFlowerAccentHue) so the value the panel receives is exactly
+        // the value the retest-12 test asserts.
+        const hue = getFlowerAccentHue(busState.panelProperties);
+        return wrapInProviders(<FlowerOfLifeEntropyExplorer currentEntropy={effectiveEntropy} width={850} height={750} currentDisplayMode={currentDisplayMode} onSetDisplayMode={setCurrentDisplayMode} accentHue={hue} />);
       }
       case 'GlyphAtlasGrid':
         return wrapInProviders(<GlyphAtlasGrid width={850} height={750}  />);

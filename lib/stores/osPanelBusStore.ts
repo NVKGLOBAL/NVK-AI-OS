@@ -304,6 +304,21 @@ export function setOsAura(mood: string, colorName: string, hue: number, hex: str
   });
 }
 
+/**
+ * Ret12 fix: the hue the Flower of Life panel receives — the single
+ * derivation App's getPanelContent uses for the accentHue prop, pulled
+ * out so the retest-12 test can assert the exact prop value the panel
+ * gets after a color command (120 green / 210 blue / 0 red) without
+ * mounting React. Null when no color has been set (the visualizer keeps
+ * its own hue); a non-numeric stored value is never passed through.
+ */
+export function getFlowerAccentHue(
+  panelProperties: Record<string, Record<string, unknown>>
+): number | null {
+  const hue = panelProperties['FlowerOfLifeEntropyExplorer']?.hue;
+  return typeof hue === 'number' ? hue : null;
+}
+
 export function getOsPanel(id: string): OsPanelInfo | null {
   const def = findOsPanelDefinition(id);
   if (!def) return null;

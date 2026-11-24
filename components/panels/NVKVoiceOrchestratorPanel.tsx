@@ -5,6 +5,7 @@ import { AgentName } from '../../types';
 import { useEcho } from '../../context/EchoContext';
 import { useLocalLLM, formatBytes } from '../../context/LocalLLMContext';
 import { dispatchPanelCommand } from '../../services/OsPanelCommandDispatcher';
+import { tryAnswerMath, isSearchQuestion, answerSearchQuestion } from '../../services/osNoModelAnswers';
 
 export default function NVKVoiceOrchestratorPanel() {
   const { addEchoMessage } = useEcho();
@@ -213,6 +214,27 @@ export default function NVKVoiceOrchestratorPanel() {
       // older setTranscript calls in this function already carry).
       setTranscript(prev => [...prev, { sender: 'nevik' as const, text: reply, timestamp: Date.now() }].slice(-20));
       speakLocalWithModulation(reply);
+      return;
+    }
+
+    // Ret12 fix: math and search need no model — answer them here instead
+    // of sending them to generateText, which returns null with no model
+    // loaded (and the runtime's web.search cannot run on the static
+    // deploy). A general question still falls through to generateText,
+    // whose null return already produces the honest "No local model
+    // loaded" reply below.
+    if (isSearchQuestion(userText)) {
+      const search = await answerSearchQuestion(userText);
+      setCurrentSpeechText(search.reply);
+      setTranscript(prev => [...prev, { sender: 'nevik' as const, text: search.reply, timestamp: Date.now() }].slice(-20));
+      speakLocalWithModulation(search.reply);
+      return;
+    }
+    const mathReply = tryAnswerMath(userText);
+    if (mathReply !== null) {
+      setCurrentSpeechText(mathReply);
+      setTranscript(prev => [...prev, { sender: 'nevik' as const, text: mathReply, timestamp: Date.now() }].slice(-20));
+      speakLocalWithModulation(mathReply);
       return;
     }
 

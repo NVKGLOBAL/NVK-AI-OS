@@ -28,11 +28,19 @@ interface PluginItem {
   color: string;
 }
 
+// Slice 11 (vault): NO fake credentials and NO secret in plaintext
+// session state. The old defaults shipped fake API keys (a dummy Slack
+// token, a dummy Jira token, a dummy GitHub token) and a fake
+// 'connected' status for three connectors — capability theater. A
+// connector is 'disconnected' until the user configures a real key. A
+// user-entered key lives in React state (memory) only — it is NEVER
+// written to localStorage (see saveConnectors, which strips it) and
+// never auto-generated.
 const DEFAULT_CONNECTORS: Connector[] = [
-  { id: 'slack', name: 'Slack', type: 'Communication', status: 'connected', icon: 'ri-slack-line', color: 'text-rose-400', apiKey: 'xoxb-dummy-slack-token-1128', endpoint: 'https://hooks.slack.com/services/T00/B00/X00' },
-  { id: 'jira', name: 'Jira', type: 'Project Management', status: 'connected', icon: 'ri-trello-line', color: 'text-blue-400', apiKey: 'jira-usr-token-axiom-771', endpoint: 'https://nexus-jira.atlassian.net' },
+  { id: 'slack', name: 'Slack', type: 'Communication', status: 'disconnected', icon: 'ri-slack-line', color: 'text-rose-400', apiKey: '', endpoint: '' },
+  { id: 'jira', name: 'Jira', type: 'Project Management', status: 'disconnected', icon: 'ri-trello-line', color: 'text-blue-400', apiKey: '', endpoint: '' },
   { id: 'salesforce', name: 'Salesforce', type: 'CRM', status: 'disconnected', icon: 'ri-cloud-line', color: 'text-sky-400', apiKey: '', endpoint: '' },
-  { id: 'github', name: 'GitHub', type: 'Development', status: 'connected', icon: 'ri-github-fill', color: 'text-slate-300', apiKey: 'ghp_autonomous_operator_secrethash', endpoint: 'https://api.github.com' },
+  { id: 'github', name: 'GitHub', type: 'Development', status: 'disconnected', icon: 'ri-github-fill', color: 'text-slate-300', apiKey: '', endpoint: '' },
   { id: 'stripe', name: 'Stripe', type: 'Finance', status: 'disconnected', icon: 'ri-bank-card-line', color: 'text-indigo-400', apiKey: '', endpoint: '' },
   { id: 'zendesk', name: 'Zendesk', type: 'Support', status: 'disconnected', icon: 'ri-customer-service-line', color: 'text-emerald-400', apiKey: '', endpoint: '' },
 ];
@@ -90,9 +98,15 @@ const IntegrationHubPanel: React.FC = () => {
     }
   }, []);
 
+  // Slice 11 (vault): the apiKey is NEVER written to localStorage.
+  // A secret in plaintext in session state is a vault violation. The
+  // key lives in React state (memory) only; the persisted copy strips
+  // it. A reload loses the key (the user re-enters it) — that is the
+  // honest trade-off, not a bug.
   const saveConnectors = (list: Connector[]) => {
     setConnectors(list);
-    localStorage.setItem('nvk_hub_connectors', JSON.stringify(list));
+    const persisted = list.map(({ apiKey: _key, ...rest }) => rest);
+    localStorage.setItem('nvk_hub_connectors', JSON.stringify(persisted));
   };
 
   const saveWebhooks = (list: Webhook[]) => {
@@ -106,16 +120,22 @@ const IntegrationHubPanel: React.FC = () => {
   };
 
   // Connect / Toggle status of standard connector
+  // Slice 11 (vault): no auto-generated fake key. The old toggle
+  // invented a fake token when a connector was switched on — a fake
+  // credential. A connector only becomes 'connected' when it has a
+  // real key; otherwise it stays 'disconnected' and the user is told
+  // to add a key.
   const handleToggleConnector = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
+    const target = connectors.find((c) => c.id === id);
+    if (target && target.status !== 'connected' && !target.apiKey) {
+      showToast(`${target.name} needs an API key — open its settings to add one.`);
+      return;
+    }
     const list = connectors.map(c => {
       if (c.id === id) {
         const nextStatus = c.status === 'connected' ? 'disconnected' : 'connected';
-        return { 
-          ...c, 
-          status: nextStatus as any,
-          apiKey: nextStatus === 'connected' ? c.apiKey || 'xoxhb-auto-gen-token-3000' : ''
-        };
+        return { ...c, status: nextStatus as any };
       }
       return c;
     });

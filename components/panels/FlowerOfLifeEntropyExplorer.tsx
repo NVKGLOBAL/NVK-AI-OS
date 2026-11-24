@@ -108,12 +108,18 @@ const FlowerOfLifeEntropyExplorer: React.FC<FlowerOfLifeEntropyExplorerProps> = 
             baseHue = lerp(220, 300, t); lightnessStart = lerp(10, 5, t); lightnessEnd = lerp(20, 10, t); break;
     }
 
+    // Ret12 fix: a bus hue override (e.g. "turn the Flower of Life
+    // green") recolors the background in EVERY mode. The default mode is
+    // Recursive, whose draw path never reads accentHue, so without this
+    // the color command changed nothing visible.
+    baseHue = resolveHue(accentHue, baseHue);
+
     const grad = ctx.createRadialGradient(width / 2, height / 2, 0, width / 2, height / 2, Math.max(width, height) / 1.5);
     grad.addColorStop(0, `hsla(${baseHue}, 50%, ${lightnessStart}%, 1)`);
     grad.addColorStop(1, `hsla(${(baseHue + 40) % 360}, 60%, ${lightnessEnd}%, 1)`);
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, width, height);
-  }, [width, height]);
+  }, [width, height, accentHue]);
   
   const updateAndDrawParticles = useCallback((ctx: CanvasRenderingContext2D, entropy: number, mode: PanelDisplayMode, frameCount: number) => {
     const t = clamp(entropy, 0, 1);
@@ -425,11 +431,15 @@ const FlowerOfLifeEntropyExplorer: React.FC<FlowerOfLifeEntropyExplorerProps> = 
     ctx.closePath();
 
     const baseHue = isBioFractal ? lerp(100, 70, t) : lerp(200 - depth * 20, 300 + depth * 10 - t * 60, t);
+    // Ret12 fix: same override as the background — the default Recursive
+    // mode draws only these polygons, so a color command was invisible
+    // until the stroke hue followed the bus.
+    const hue = resolveHue(accentHue, baseHue);
     const saturation = isBioFractal ? lerp(60, 40, t) : lerp(60 + depth * 5, 80 - t * 30, t);
     const lightness = isBioFractal ? lerp(40, 30, t) : lerp(50 - depth * 4, 30 + t * 20, t);
     const alpha = lerp(0.5 - depth * 0.1, 0.1 + t * 0.2, t) * (1 - depth / (maxDepth + 1));
 
-    ctx.strokeStyle = `hsla(${baseHue % 360}, ${saturation}%, ${lightness}%, ${clamp(alpha, 0.05, 0.8)})`;
+    ctx.strokeStyle = `hsla(${hue}, ${saturation}%, ${lightness}%, ${clamp(alpha, 0.05, 0.8)})`;
     ctx.lineWidth = Math.max(0.5, (isBioFractal ? 3 : 2) - depth * 0.3) * (1 - t * 0.5);
     if(isBioFractal && Math.random() < t*0.1) ctx.setLineDash([2,2]);
     ctx.stroke();
@@ -445,7 +455,7 @@ const FlowerOfLifeEntropyExplorer: React.FC<FlowerOfLifeEntropyExplorerProps> = 
     points.forEach((p, i) => {
       drawRecursivePolygons(ctx, p.x, p.y, newRadius, newSides, angleOffset + i * newAngleOffsetFactor + t * (Math.random()-0.5) * 0.2, depth + 1, maxDepth, entropy, isBioFractal);
     });
-  }, []);
+  }, [accentHue]);
 
   const drawConcentricRings = useCallback((ctx: CanvasRenderingContext2D, centerX: number, centerY: number, maxR: number, numRings: number, entropy: number, frameCount: number) => {
     const t = clamp(entropy,0,1);

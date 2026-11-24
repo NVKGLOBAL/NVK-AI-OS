@@ -86,7 +86,15 @@ const AdvancedReasoningPanel: React.FC<AdvancedReasoningPanelProps> = ({  width,
 
   if (!isModelLoaded && !isCloudMode && selectedProvider !== 'ollama') {
     return (
-      <div className="advanced-reasoning-panel bg-slate-950/90 backdrop-blur-md border border-cyan-600/50 rounded-xl shadow-2xl p-6 text-slate-100 flex flex-col items-center justify-center" style={{ width: width ? `${width}px` : '100%', height: height ? `${height}px` : '100%' }}>
+      <div className="advanced-reasoning-panel bg-slate-950/90 backdrop-blur-md border border-cyan-600/50 rounded-xl shadow-2xl p-6 text-slate-100 flex flex-col items-center overflow-y-auto custom-scrollbar" style={{ width: width ? `${width}px` : '100%', height: height ? `${height}px` : '100%' }}>
+        {/* Ret12 fix: the gate content is taller than a short panel (at a
+            750px viewport the 750px-tall panel showed only logo/title and
+            the capability list sat below the fold, unreachable — the outer
+            box had a fixed height and no overflow). The gate now scrolls,
+            and the m-auto wrapper keeps the content centered when it fits
+            while letting the scroll reach the top when it does not
+            (justify-center + overflow would clip the top unreachable). */}
+        <div className="m-auto flex w-full flex-col items-center">
         <i className="ri-brain-line text-5xl text-cyan-400 mb-4 animate-pulse"></i>
         <h3 className="text-2xl font-cinzel font-bold text-cyan-300 mb-2">NVK Logic Core</h3>
         
@@ -217,6 +225,7 @@ const AdvancedReasoningPanel: React.FC<AdvancedReasoningPanelProps> = ({  width,
             )}
           </div>
         )}
+        </div>
       </div>
     );
   }

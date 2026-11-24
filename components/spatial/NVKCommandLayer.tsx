@@ -24,6 +24,8 @@ import { ShardRenderer } from '../ui/ShardRenderer';
 import { useIsMobile } from '../../lib/useIsMobile';
 import { dispatchPanelCommand } from '../../services/OsPanelCommandDispatcher';
 import { resolveTerminalOrbState } from '../../lib/orbStateMapping';
+import { tryAnswerMath, isSearchQuestion, answerSearchQuestion, needsNoModelReply, NO_MODEL_REPLY } from '../../services/osNoModelAnswers';
+import { intentEngine } from '../../src/nvk/intent/IntentEngine';
 
 interface NVKCommandLayerProps {
   orbState: NVKOrbState;
@@ -189,6 +191,17 @@ export const NVKCommandLayer: React.FC<NVKCommandLayerProps> = ({
     }
   }, [history, activitySteps]);
 
+  // Ret12 fix: at narrow widths the console starts minimized, which hid
+  // every NVK reply — the retest saw "silence" for answers that existed
+  // in the hidden history. When a new NVK reply lands while minimized,
+  // expand so the answer is visible. Re-minimizing is respected until
+  // the next reply.
+  useEffect(() => {
+    if (isMinimized && history.length > 0 && history[history.length - 1].role === 'nvk') {
+      setIsMinimized(false);
+    }
+  }, [history, isMinimized]);
+
   // Handle Speech Recognition for voice commands
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -348,6 +361,33 @@ export const NVKCommandLayer: React.FC<NVKCommandLayerProps> = ({
       return;
     }
 
+    // Ret12 fix: deterministic answers that need no model — search first
+    // (real results or an honest unavailable message), then math (a real
+    // calculation, never a fabricated number). Both run before the runtime,
+    // which cannot answer either without a model on this deploy.
+    if (isSearchQuestion(prompt)) {
+      const search = await answerSearchQuestion(prompt);
+      setHistory(prev => [...prev, { role: 'nvk', text: search.reply }]);
+      onSetOrbState(search.results > 0 ? 'COMPLETE' : 'ERROR');
+      return;
+    }
+    const mathReply = tryAnswerMath(prompt);
+    if (mathReply !== null) {
+      setHistory(prev => [...prev, { role: 'nvk', text: mathReply }]);
+      onSetOrbState('COMPLETE');
+      return;
+    }
+
+    // Ret12 fix: with no model loaded, a general question has no honest
+    // runtime answer (the planner routes it to web.search, which cannot
+    // run on the static deploy). Say so plainly instead of sending it to
+    // the runtime for a confusing proxy/calculation error.
+    if (needsNoModelReply(intentEngine.classify(prompt).intent, isModelLoaded)) {
+      setHistory(prev => [...prev, { role: 'nvk', text: NO_MODEL_REPLY }]);
+      onSetOrbState('IDLE');
+      return;
+    }
+
     // Trigger thinking state on NVK Orb
     onSetOrbState('THINKING');
 
@@ -393,7 +433,7 @@ export const NVKCommandLayer: React.FC<NVKCommandLayerProps> = ({
         text: `Execution failed: ${err.message || err}`
       }]);
     }
-  }, [inputValue, onSetOrbState, executeAndRender, pendingConfirmation]);
+  }, [inputValue, onSetOrbState, executeAndRender, pendingConfirmation, isModelLoaded]);
 
   const handleConfirmAction = useCallback(async () => {
     if (!pendingConfirmation) return;
@@ -422,7 +462,14 @@ export const NVKCommandLayer: React.FC<NVKCommandLayerProps> = ({
     }
     setIsSynthesizingShard(true);
     try {
-      const shard = await synthesizeShard(intent, generateText, shardVariant);
+      // Slice 4 (memory): pass the bounded conversation history so the
+      // shard is synthesized with the conversation in view. The command
+      // layer's history uses role 'nvk' for the assistant; map it to
+      // 'assistant' for the model.
+      const shardHistory = history
+        .filter((m) => m.text && m.text.trim())
+        .map((m) => ({ role: (m.role === 'user' ? 'user' : 'assistant') as 'user' | 'assistant', content: m.text }));
+      const shard = await synthesizeShard(intent, generateText, shardVariant, shardHistory);
       if (shard) {
         setHistory(prev => [...prev, { role: 'nvk', text: `Shard synthesized: ${shard.title}`, shard }]);
       } else {

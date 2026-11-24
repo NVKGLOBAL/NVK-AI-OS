@@ -38,7 +38,16 @@ export class IntentEngine {
       intent = 'capability_discovery';
     } 
     // 3. Calculation (e.g. "5 + 5", "9 - 59", "what is 20 * 4")
-    else if (/^(what is |calculate |\d+[\s\+\-\*\/\d]+)/.test(p) || /\b\d+\s*[\+\-\*\/]\s*\d+\b/.test(p)) {
+    // Ret12 fix: the old rule fired on ANY "what is ..." question, so a
+    // general question ("what is the capital of France?") was routed to
+    // the calculator and failed with "no arithmetic expression found".
+    // A calculation now requires real arithmetic (number-operator-number)
+    // AND a math framing or a bare expression — a date ("2026-11-23"), a
+    // phone number ("555-1234") or a bare year is not a calculation.
+    else if (
+      (/^(what is|calculate|compute|how much is|solve)\b/.test(p) && /\d+\s*[\+\-\*\/]\s*\d+/.test(p)) ||
+      (/^[\d\s+\-*/().?]+$/.test(p) && /\d+\s*[\+\-\*\/]\s*\d+/.test(p))
+    ) {
       intent = 'calculation';
       objective = prompt;
     } 
@@ -71,10 +80,14 @@ export class IntentEngine {
       objective = prompt;
     } 
     // 9. Workflows & Research
-    else if (p.includes('research') && (p.includes('commercial solar') || p.includes('texas') || p.includes('pitch deck'))) {
-      intent = 'workflow_execution';
-      objective = prompt;
-    } else if (p.includes('research') || p.includes('find') || p.includes('search')) {
+    // Slice 7: the hardcoded Texas-solar rule is removed. The old rule
+    // routed ANY research mentioning "commercial solar" OR "texas" OR
+    // "pitch deck" to workflow_execution, which built a hardcoded Texas
+    // solar + pitch deck plan — a fabricated plan for a general question.
+    // Research goes to web_research; a pitch deck goes to
+    // document_generation. There is no generic workflow engine, so no
+    // input is routed to workflow_execution.
+    else if (p.includes('research') || p.includes('find') || p.includes('search')) {
       intent = 'web_research';
       objective = prompt;
     } else if (p.includes('pitch deck') || p.includes('presentation') || p.includes('document')) {
@@ -87,10 +100,13 @@ export class IntentEngine {
       intent = 'run_task';
       objective = prompt.replace(/^(start|run) task\s*/i, '').trim();
     } else {
-      if (p.length > 0) {
-        intent = 'run_task';
-        objective = prompt;
-      }
+      // Slice 7: an unknown input produces `unknown`, not a fabricated
+      // plan. The old catch-all turned ANY non-empty input into
+      // run_task, and the Planner turned run_task into a web.search
+      // plan — so a greeting or a question nobody understood got a
+      // fabricated web search. Unknown means ask, never a guessed plan.
+      intent = 'unknown';
+      objective = prompt;
     }
     
     nvkEventBus.publish({ type: 'intent.detected', intent, prompt });

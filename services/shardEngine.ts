@@ -26,7 +26,11 @@ export type GenerateTextFn = (
   prompt: string,
   systemPrompt?: string,
   temperature?: number,
-  maxTokens?: number
+  maxTokens?: number,
+  // Slice 4 (memory): bounded prior turns (oldest first). The callee
+  // bounds them under a token cap; an empty/omitted history leaves the
+  // prompt unchanged.
+  history?: Array<{ role: 'user' | 'assistant'; content: string }>
 ) => Promise<string | null>;
 
 const isNonEmptyString = (v: unknown, max: number): v is string =>
@@ -120,7 +124,11 @@ const VARIANT_DATA_SHAPE: Record<ShardVariant, string> = {
 export async function synthesizeShard(
   intent: string,
   generateText: GenerateTextFn,
-  variant: ShardVariant = 'text-block'
+  variant: ShardVariant = 'text-block',
+  // Slice 4 (memory): bounded prior turns (oldest first), passed through
+  // to generateText so the shard is synthesized with the conversation in
+  // view instead of the intent alone.
+  history?: Array<{ role: 'user' | 'assistant'; content: string }>
 ): Promise<ShardSpec | null> {
   if (!intent.trim()) return null;
   const systemPrompt =
@@ -130,7 +138,7 @@ export async function synthesizeShard(
     `data must match this shape for the variant: ${VARIANT_DATA_SHAPE[variant]}.`;
   let text: string | null;
   try {
-    text = await generateText(`Synthesize a shard about: ${intent.trim()}. Variant: ${variant}.`, systemPrompt, 0.3, 1024);
+    text = await generateText(`Synthesize a shard about: ${intent.trim()}. Variant: ${variant}.`, systemPrompt, 0.3, 1024, history);
   } catch {
     return null;
   }

@@ -66,6 +66,17 @@ export class NVKRuntime {
     }
 
     const graph = planner.createPlan(`preview-${Date.now()}`, parsed, input);
+    // Slice 7: an empty plan means the input has no known tool — ask,
+    // never a fabricated plan. The old Planner built a web.search node
+    // for any unmatched intent (including greetings); now it builds no
+    // nodes, and the preview turns that into a question for the user.
+    if (graph.nodes.length === 0) {
+      return {
+        intent: parsed.intent,
+        needsInput: 'I don\'t have a tool for that yet — can you say what you want me to do? (For example: search the web, do a calculation, or open an application.)',
+        steps: [],
+      };
+    }
     const steps: NVKPlanStep[] = graph.nodes.map((node) => {
       const cap = capabilityRegistry.getCapability(node.capability);
       return {
@@ -147,6 +158,23 @@ export class NVKRuntime {
     nvkEventBus.publish({ type: 'ui.state_changed', state: 'PLANNING' });
     // 2. Create Plan
     const graph = planner.createPlan(taskId, parsed, req.input);
+
+    // Slice 7: an empty plan means the input has no known tool — ask,
+    // never execute a fabricated plan and claim success. The old Planner
+    // built a web.search node for any unmatched intent; now it builds no
+    // nodes, and execute returns needs_input here.
+    if (graph.nodes.length === 0) {
+      nvkEventBus.publish({ type: 'ui.state_changed', state: 'IDLE' });
+      return {
+        taskId,
+        intent: parsed.intent,
+        status: 'needs_input',
+        message: 'I don\'t have a tool for that yet — can you say what you want me to do? (For example: search the web, do a calculation, or open an application.)',
+        artifacts: [],
+        evidence: [],
+        ledgerEntries: []
+      };
+    }
     
     // 3. Execute with Verification Engine. The confirmedByUser flag is
     // threaded from the caller's context (A1): it is true ONLY when the
