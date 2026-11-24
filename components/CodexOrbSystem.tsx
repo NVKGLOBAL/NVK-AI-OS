@@ -1002,6 +1002,37 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
         mouseActive = false;
     };
 
+    // Retest #18 (2026-11-24): the ret17 canvas-only gate
+    // (`event.target === renderer.domElement`) is TOO strict, and it
+    // broke orb taps. The orb sits at the centre of the viewport —
+    // exactly where DOM overlays live: an open panel's CSS3D div
+    // (850x750px, pointerEvents auto — and CSS3D has no depth
+    // occlusion against the WebGL canvas, so a panel behind the orb
+    // still covers it on screen), a closed panel's orphaned div, the
+    // chat console's drag region. A tap on the orb whose topmost
+    // element was one of those was silently dropped, so orb taps
+    // stopped toggling voice while node taps (away from the overlays)
+    // kept working. The pre-ret17 behaviour raycast every window
+    // pointerup and never had this failure.
+    //
+    // A stage tap is therefore decided by target SEMANTICS, not target
+    // identity. A press is a UI press when it lands on (or inside) an
+    // interactive control, or outside the stage container (the HUD
+    // column, Following pill, chat console, PinnedPanels, header and
+    // dock are all siblings of the mount, not children). Anything else
+    // inside the stage container — the canvas itself, the CSS3D
+    // overlay, a panel div's non-interactive area, a stale overlay
+    // element — is a 3D tap, and the raycast decides orb vs node vs
+    // nothing. HUD-button clicks (the ret17 bug) are still excluded:
+    // buttons are controls.
+    const isStageTap = (event: { target: EventTarget | null }): boolean => {
+        const target = event.target;
+        if (!(target instanceof Element)) return false;
+        if (target === renderer.domElement) return true;
+        if (target.closest('button, input, textarea, select, a[href], [role="button"], [contenteditable="true"]')) return false;
+        return !!currentMount && currentMount.contains(target);
+    };
+
     const handlePointerDown = (event: PointerEvent) => {
         // Retest #17 (2026-11-24): a click on a HUD button (Focus NVK,
         // zoom, Reset) ALSO fired this window-level handler, because
@@ -1013,9 +1044,13 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
         // then ran without killing it, and the tap tween ran unopposed
         // for its last 0.2s, dragging the camera back to the panel node
         // — the orb ended far right of centre. A press that starts on a
-        // DOM control is a UI press, not a 3D tap: only the WebGL canvas
-        // itself may start a tap / click wave.
-        if (event.target !== renderer.domElement) return;
+        // DOM control is a UI press, not a 3D tap: only a press inside
+        // the stage container, and never on a control, may start a tap
+        // / click wave (isStageTap above).
+        // Retest #18: the gate is the stage-tap predicate above, not a
+        // bare canvas-identity check — a tap on the orb that lands on
+        // an overlaying panel div must still raycast.
+        if (!isStageTap(event)) return;
         touchStartX = event.clientX;
         touchStartY = event.clientY;
         touchStartTime = Date.now();
@@ -1024,9 +1059,11 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
     };
 
     const handlePointerUp = (event: PointerEvent) => {
-        // Retest #17: same canvas-only gate as handlePointerDown — a
+        // Retest #17: same stage-tap gate as handlePointerDown — a
         // pointerup on a HUD button must not raycast a 3D tap.
-        if (event.target !== renderer.domElement) return;
+        // Retest #18: the gate is the isStageTap predicate, not a bare
+        // canvas-identity check (see above).
+        if (!isStageTap(event)) return;
         const dx = Math.abs(event.clientX - touchStartX);
         const dy = Math.abs(event.clientY - touchStartY);
         const dt = Date.now() - touchStartTime;
@@ -1036,9 +1073,10 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
     };
 
     const handleTouchStart = (event: TouchEvent) => {
-        // Retest #17: canvas-only gate, same as the pointer handlers —
+        // Retest #17: stage-tap gate, same as the pointer handlers —
         // a touch that starts on a DOM control is a UI touch, not a 3D tap.
-        if (event.target !== renderer.domElement) return;
+        // Retest #18: isStageTap predicate, not a bare canvas check.
+        if (!isStageTap(event)) return;
         if (event.touches.length > 0) {
             const touch = event.touches[0];
             touchStartX = touch.clientX;
@@ -1057,9 +1095,10 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
 
     const handleTouchEnd = (event: TouchEvent) => {
         mouseActive = false;
-        // Retest #17: canvas-only gate, same as the pointer handlers —
+        // Retest #17: stage-tap gate, same as the pointer handlers —
         // a touch that ends on a DOM control must not raycast a 3D tap.
-        if (event.target !== renderer.domElement) return;
+        // Retest #18: isStageTap predicate, not a bare canvas check.
+        if (!isStageTap(event)) return;
         if (event.changedTouches.length > 0) {
             const touch = event.changedTouches[0];
             const dx = Math.abs(touch.clientX - touchStartX);
@@ -2889,6 +2928,16 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
         if (panelObj.cssObject.parent) {
           panelObj.cssObject.parent.remove(panelObj.cssObject);
         }
+        // Retest #18 (2026-11-24): three's CSS3DRenderer never removes
+        // the element of an object that leaves the scene — renderObject
+        // only ever appends elements, and display is set to 'none' only
+        // when object.visible === false, never on scene-removal. Without
+        // this, a closed panel's 850x750 pointerEvents:auto div stays in
+        // the CSS3D overlay at its last transform (for a focused panel:
+        // frozen over the centre of the screen) — invisible content,
+        // still hit-testable — and swallows taps meant for the orb
+        // behind it. Remove the element outright on close.
+        panelObj.domElement.remove();
         currentPanelObjects.delete(nodeId);
         setPanelContainers(prev => {
           const next = { ...prev };

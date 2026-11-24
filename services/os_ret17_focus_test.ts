@@ -55,6 +55,14 @@
  * ends at the origin). The live end-to-end — orb centred after
  * clicking Focus NVK — is verified by a live browser retest, not here.
  *
+ * Retest #18 extension (2026-11-24): orb taps stopped toggling voice
+ * while the Voice button worked. Pins the two fixes — the isStageTap
+ * predicate (a tap on an overlaying panel div still raycasts) and the
+ * removal of a closed panel's CSS3D DOM element (three never removes
+ * it on scene-removal, so it sat over the centre swallowing taps) —
+ * plus the voice-toggle wiring and the raycast geometry that makes
+ * the classifier see the orb.
+ *
  * Run: npx tsx services/os_ret17_focus_test.ts
  * (also wired into `npm test`.)
  */
@@ -84,17 +92,37 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 async function main(): Promise<void> {
   const orb = read('components/CodexOrbSystem.tsx');
 
-  console.log('Ret17 fix (a) — the tap path is canvas-only:');
+  console.log('Ret17 fix (a) — the tap path excludes UI presses:');
+  // Retest #18 (2026-11-24) replaced the bare canvas-identity gate
+  // (`event.target === renderer.domElement`) with the isStageTap
+  // predicate: the bare gate swallowed orb taps whose topmost element
+  // was an overlaying panel div. The ret17 requirement is unchanged —
+  // a press on a HUD button must not raycast — and is now pinned on
+  // the predicate: controls are excluded, the press must be inside the
+  // stage container.
+  check(
+    'an isStageTap predicate exists and rejects presses on interactive controls',
+    /const isStageTap = \(event: \{ target: EventTarget \| null \}\): boolean => \{[\s\S]{0,600}target\.closest\('button, input, textarea, select, a\[href\], \[role="button"\], \[contenteditable="true"\]'\)/.test(orb),
+  );
+  check(
+    'isStageTap requires the press to be inside the stage container',
+    /return !!currentMount && currentMount\.contains\(target\);/.test(orb),
+  );
+  check(
+    'isStageTap still fast-paths a press directly on the WebGL canvas',
+    /if \(target === renderer\.domElement\) return true;/.test(orb),
+  );
   for (const handler of ['handlePointerDown', 'handlePointerUp', 'handleTouchStart', 'handleTouchEnd']) {
     const start = orb.indexOf(`const ${handler} = `);
     const block = orb.slice(start, orb.indexOf('\n    };', start));
     check(
-      `${handler} returns early unless the event target is the WebGL canvas`,
-      /if \(event\.target !== renderer\.domElement\) return;/.test(block),
+      `${handler} gates on isStageTap (not a bare canvas-identity check)`,
+      /if \(!isStageTap\(event\)\) return;/.test(block) &&
+        !/event\.target !== renderer\.domElement/.test(block),
     );
   }
   check(
-    'no tap handler raycasts without the canvas gate (handleTapOrClick is only called from the two gated handlers)',
+    'no tap handler raycasts without the stage-tap gate (handleTapOrClick is only called from the two gated handlers)',
     (orb.match(/handleTapOrClick\(/g) || []).length === 2, // pointerup + touchend
   );
 
@@ -176,7 +204,86 @@ async function main(): Promise<void> {
     `got camera (${fixPos.toArray().map((v) => v.toFixed(2)).join(', ')}) target (${fixTarget.toArray().map((v) => v.toFixed(2)).join(', ')})`,
   );
 
-  console.log(failures === 0 ? 'All ret17 Focus NVK checks passed.' : `${failures} check(s) failed.`);
+  console.log('Ret18 orb-tap voice — the orb tap reaches the voice toggle:');
+  // Retest #18 (2026-11-24, build index-BrDA2TZm.js): orb taps stopped
+  // toggling voice while the Voice Command button worked. Two defects,
+  // both in components/CodexOrbSystem.tsx:
+  // 1. The ret17 canvas-only gate dropped orb taps whose topmost element
+  //    was an overlaying panel div (CSS3D panel, 850x750px,
+  //    pointerEvents auto; CSS3D has no depth occlusion, so a panel
+  //    behind the orb still covers it on screen). Fixed by the
+  //    isStageTap predicate (pinned above): a press is a 3D tap when it
+  //    lands inside the stage container and not on a control.
+  // 2. three's CSS3DRenderer never removes the DOM element of an object
+  //    that leaves the scene, so a closed panel's 850x750
+  //    pointerEvents:auto div stayed in the overlay at its last
+  //    transform (for a focused panel: frozen over the screen centre),
+  //    invisible but still hit-testable, swallowing taps meant for the
+  //    orb behind it. Fixed by removing the element outright on close.
+  // The voice toggle itself was never broken: App's handleCoreOrbClick
+  // toggles the same isVoiceActive state the Voice button uses.
+  const coreBranch = orb.slice(orb.indexOf('if (isCoreOrb) {'));
+  check(
+    'a core-orb tap calls the voice toggle (onCoreOrbClick)',
+    /onCoreOrbClickRef\.current\(\);/.test(coreBranch.slice(0, 1200)),
+  );
+  const panelCleanup = orb.slice(orb.indexOf('currentPanelObjects.forEach((panelObj, nodeId)'));
+  check(
+    'closing a panel removes its CSS3D DOM element (no orphaned overlay swallowing orb taps)',
+    /if \(!openNodeIds\.includes\(nodeId\)\) \{[\s\S]{0,1200}panelObj\.domElement\.remove\(\);/.test(panelCleanup),
+  );
+  check(
+    'the cleanup only touches panels that are no longer open',
+    /currentPanelObjects\.forEach\(\(panelObj, nodeId\) => \{[\s\S]{0,120}if \(!openNodeIds\.includes\(nodeId\)\) \{/.test(orb),
+  );
+  check(
+    '3D panel divs keep pointerEvents auto (panels stay interactive; the fix removes the element, not the events)',
+    /panelElement\.style\.pointerEvents = 'auto';/.test(orb),
+  );
+  const app = read('App.tsx');
+  check(
+    'App wires the orb tap to the voice toggle (same state the Voice button uses)',
+    /const handleCoreOrbClick = useCallback\(\(\) => \{\s*setIsVoiceActive\(prev => !prev\);/.test(app) &&
+      /onCoreOrbClick=\{handleCoreOrbClick\}/.test(app),
+  );
+
+  console.log('Ret18 geometry — the tap classifier sees the orb (repo three):');
+  // The classifier's proximity fallback treats a ray passing within 6.5
+  // units of the origin as a core-orb tap. The core orb is a radius-5
+  // sphere at the origin, so every ray through its visible disc passes
+  // within 5 of the origin — inside the fallback — while a ray aimed
+  // well outside the disc does not.
+  const camPos = new THREE.Vector3(0, 0, 14);
+  const rayTo = (p: THREE.Vector3) => {
+    const dir = p.clone().sub(camPos).normalize();
+    return new THREE.Ray(camPos.clone(), dir);
+  };
+  const origin = new THREE.Vector3(0, 0, 0);
+  const fallback = 6.5;
+  check(
+    'the proximity fallback threshold in source is 6.5 units',
+    /closestPointOnRay\.distanceTo\(new THREE\.Vector3\(0, 0, 0\)\) < 6\.5/.test(orb),
+  );
+  check(
+    'a centre tap passes through the origin (inside the fallback)',
+    rayTo(origin).distanceToPoint(origin) < fallback,
+  );
+  // Silhouette point of a radius-5 sphere as seen from (0,0,14):
+  // |p| = 5 and (p - cam) . p = 0 -> p.z = 25/14, p.x = sqrt(25 - p.z^2).
+  const silZ = 25 / 14;
+  const sil = new THREE.Vector3(Math.sqrt(25 - silZ * silZ), 0, silZ);
+  const silDist = rayTo(sil).distanceToPoint(origin);
+  check(
+    'a tap on the orb rim still passes within the fallback (tangent distance 5 < 6.5)',
+    Math.abs(silDist - 5) < 0.01 && silDist < fallback,
+    `got ${silDist.toFixed(3)}`,
+  );
+  check(
+    'a tap aimed well outside the orb does NOT fall back to the core',
+    rayTo(new THREE.Vector3(12, 8, 0)).distanceToPoint(origin) > fallback,
+  );
+
+  console.log(failures === 0 ? 'All ret17 Focus NVK + ret18 orb-tap voice checks passed.' : `${failures} check(s) failed.`);
   if (failures > 0) process.exit(1);
 }
 
