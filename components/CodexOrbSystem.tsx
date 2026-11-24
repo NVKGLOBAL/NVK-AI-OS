@@ -3320,8 +3320,17 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
               // back to the panel and the orb stayed out of frame.
               // Clear the follow (like Reset Viewport does) so Focus
               // NVK actually returns the camera to the orb.
+              // Retest #16 (2026-11-23): the follow lock DID clear (the
+              // pill disappeared) but the camera still did not return to
+              // the orb — the focused panel is a DOM overlay (PinnedPanel,
+              // z-1090) that covers the centre of the screen, so no camera
+              // move can reveal the orb while it is open. Focus NVK must
+              // also close the focused panel, so the orb is actually
+              // visible. The panel re-opens by clicking its node again.
+              const focusedId = focusedNodeIdRef.current;
               focusedNodeIdRef.current = null;
               setFollowedNodeId(null);
+              if (focusedId) onClosePanel(focusedId);
               gsap.to(cameraRef.current.position, { x: 0, y: 0, z: 14, duration: 1, ease: 'power2.inOut' });
               gsap.to(controlsRef.current.target, { x: 0, y: 0, z: 0, duration: 1, ease: 'power2.inOut', onUpdate: () => controlsRef.current?.update() });
               // N7: camera only — Focus must never start the microphone.

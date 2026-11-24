@@ -90,3 +90,39 @@ must show the orb, not a black disc. Open the Environment popover →
 the Master Chaos slider thumb must be fully visible and grabbable.
 Focus NVK after a panel follow → the camera must return to the orb
 and the "Following:" pill must clear.
+
+## Retest #16 — DONE 2026-11-23 23:11–23:19 PT: 3 of 4 PASS
+1. FLAMECORE — PASS. Spheres stay visible after 5s (still visible after
+   ~2 minutes), no vanishing, no black centre, no "Following:" pill.
+   (Caveat: switching brought the Logic Web panel to the front/centre,
+   so the panel layout changed even though the spheres stayed in frame.)
+2. OriginState — PASS (qualified). Centre is not a solid black disc;
+   Flower of Life panel in the centre, a bright teal wireframe sphere
+   peeking at the panel's left edge, background not blacked out. (The
+   orb itself is not visible in the exact centre because the Flower
+   panel covers it — also true at initial load.)
+3. Environment menu — PASS. Popover fully visible on top of the Flower
+   panel; Master Chaos slider thumb fully visible and not covered.
+   The header z-[1200] fix works.
+4. Focus NVK — FAIL (partial). The follow-lock clearing WORKS (the pill
+   disappeared immediately and stayed gone). But the camera did NOT
+   return to the orb: the Resonance Dashboard panel remained centred and
+   filling the centre, the background stayed black, no orb visible in
+   the centre (a bright green sphere only at the far right edge).
+
+## Focus NVK follow-up fix (this round, after retest #16)
+Root cause: the focused panel is a DOM overlay (PinnedPanel, z-1090)
+that covers the centre of the screen. No camera move can reveal the orb
+while it is open — the camera tween to (0,0,14) is irrelevant because
+the panel is a DOM element on top of the canvas, not a 3D object. The
+follow-lock is a one-shot tween (no per-frame follow), so clearing it
+was never going to move the panel.
+Fix: Focus NVK now also closes the focused panel (via `onClosePanel`,
+which is App's `closePanelEverywhere` — it removes the node from
+`openNodeIds` and its pinned instances, unmounting the overlay) so the
+orb is actually visible. The panel re-opens by clicking its node again.
+File: `components/CodexOrbSystem.tsx` (the Focus NVK onClick captures
+`focusedNodeIdRef.current` before clearing it, then calls
+`onClosePanel(focusedId)`).
+Verification: tsc clean; build passes (new bundle `index-sgYcF8O9.js`).
+Push + live retest #17 owed.
