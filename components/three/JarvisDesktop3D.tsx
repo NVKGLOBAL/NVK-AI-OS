@@ -493,7 +493,14 @@ export const JarvisDesktop3D: React.FC<JarvisDesktop3DProps> = ({
           <directionalLight intensity={2.5} position={[15, 25, 15]} color="#ffffff" />
           <pointLight position={[0, 0, 0]} intensity={6.0} color="#00ffb3" distance={15} />
           
-          <AgentCore state={agentState} onOrbClick={onOrbClick} />
+          {/* The orb is the product's face — it must be unmissable in the
+              default Split view. Retest #13 (2026-11-23): the stage is
+              only 32vh tall and the camera sits at distance 20, so the
+              default size-1.0 orb was a ~35px dot the tester could not
+              see or click. Size 2.5 makes it ~90px in the stage — clearly
+              visible and clickable — while staying well inside the glyph
+              orbit (radius 8). */}
+          <AgentCore state={agentState} size={2.5} onOrbClick={onOrbClick} />
 
           {activeGlyphs.map((glyph, index) => (
             <OrbitingGlyph 

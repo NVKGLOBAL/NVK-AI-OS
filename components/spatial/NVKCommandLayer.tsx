@@ -553,7 +553,12 @@ export const NVKCommandLayer: React.FC<NVKCommandLayerProps> = ({
       // footer sits at bottom-12, so 128px clears it) — instead of floating
       // top-left over the orb. Desktop keeps the draggable persisted
       // top-left position exactly as before.
-      className={`fixed z-[1000] font-mono pointer-events-none transition-shadow ${isMobile ? 'left-2 right-2' : 'w-[92vw] sm:w-[480px] max-w-[94vw]'}`}
+      // Retest #13 (2026-11-23): a panel in Deep Focus (z-1090) covered
+      // the chat SEND button, so a command could not be sent until the
+      // panel was closed. The console is now z-1095 — above a focused
+      // panel (1090) so chat stays clickable, still below the dock
+      // (1100) so the dock buttons keep priority.
+      className={`fixed z-[1095] font-mono pointer-events-none transition-shadow ${isMobile ? 'left-2 right-2' : 'w-[92vw] sm:w-[480px] max-w-[94vw]'}`}
       style={isMobile ? { bottom: '128px' } : {
         left: `${position.x}px`,
         top: `${position.y}px`

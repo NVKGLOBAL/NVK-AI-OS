@@ -2909,10 +2909,18 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
     
     defaultOrbObjectsRef.current.visible = orbMode === OrbMode.HolographicCore;
     
-    // Add a consistent, named, but invisible core orb for modes that don't have a clear one.
+    // A visible central core for modes that don't have a clear one.
+    // Retest #13 (2026-11-23): these modes used an INVISIBLE core
+    // (a sphere with material.visible = false) as a click target only,
+    // so the centre of the stage was empty — no orb visible, nothing
+    // to click. The click target is still here (the mesh is named
+    // 'core_orb', so the raycaster and the proximity fallback find
+    // it), but it is now a small bright sphere the user can SEE and
+    // click, like the AgentCore nucleus in Split mode. Radius 1.5
+    // keeps it modest inside the particle field.
     const addInvisibleCore = () => {
-        const coreGeo = new THREE.SphereGeometry(4, 16, 16);
-        const coreMat = new THREE.MeshBasicMaterial({ visible: false });
+        const coreGeo = new THREE.SphereGeometry(1.5, 32, 32);
+        const coreMat = new THREE.MeshBasicMaterial({ color: 0x00ffb3 });
         const core = new THREE.Mesh(coreGeo, coreMat);
         core.name = 'core_orb';
         group.add(core);
