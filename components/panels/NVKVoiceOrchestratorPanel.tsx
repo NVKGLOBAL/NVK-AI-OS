@@ -4,6 +4,7 @@ import { Button } from '../ui/Button';
 import { AgentName } from '../../types';
 import { useEcho } from '../../context/EchoContext';
 import { useLocalLLM, formatBytes } from '../../context/LocalLLMContext';
+import { dispatchPanelCommand } from '../../services/OsPanelCommandDispatcher';
 
 export default function NVKVoiceOrchestratorPanel() {
   const { addEchoMessage } = useEcho();
@@ -197,6 +198,23 @@ export default function NVKVoiceOrchestratorPanel() {
     setUserSpeechText(userText);
     setTranscript(prev => [...prev, { sender: 'user', text: userText, timestamp: Date.now() }].slice(-20));
     addEchoMessage(AgentName.SystemControl, `Local Voice Input: "${userText}"`, 'text-cyan-300');
+
+    // Slice 3: panel commands run through the bus FIRST — a spoken panel
+    // command executes and its confirmation is spoken back, without a
+    // model call. Anything else falls through to generateText as before.
+    const panelResult = dispatchPanelCommand(userText);
+    if (panelResult.handled) {
+      const reply = panelResult.ok
+        ? (panelResult.confirmation ?? 'Done.')
+        : (panelResult.reason ?? 'That panel command could not run.');
+      setCurrentSpeechText(reply);
+      // `as const`: without it the sender widens to string and the
+      // transcript setter errors (the same pre-existing TS2345 the two
+      // older setTranscript calls in this function already carry).
+      setTranscript(prev => [...prev, { sender: 'nevik' as const, text: reply, timestamp: Date.now() }].slice(-20));
+      speakLocalWithModulation(reply);
+      return;
+    }
 
     setCurrentSpeechText('Thinking on WebGPU hardware...');
     const startTime = performance.now();

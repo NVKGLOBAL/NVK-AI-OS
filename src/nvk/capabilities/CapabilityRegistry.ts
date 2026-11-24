@@ -2,6 +2,8 @@ import { nvkEventBus } from '../events/NVKEventBus';
 import { artifactRegistry } from '../artifacts/ArtifactRegistry';
 import { capabilityRegistry as originalRegistry } from '../../../services/CapabilityRegistry';
 import { NVKCapability as BaseCapability } from '../types';
+import { evaluateMathExpression } from '../../../lib/mathEvaluator';
+import { parseDuckDuckGoHtml } from '../../../lib/duckDuckGoParser';
 
 export interface NVKCapabilityDef extends BaseCapability {
   inputSchema?: unknown;
@@ -43,7 +45,11 @@ capabilityRegistry.register({
     const unavailable = all.filter(c => !c.available).map(c => `• ${c.name} (${c.id}) - Unavailable: ${(c as any).reason || 'Not connected'}`);
     
     return {
-      message: `NVK CAPABILITY MATRIX\n\nAVAILABLE NOW:\n${availableNow.join('\n')}\n\nCONNECTED TOOLS:\n• Calculation Engine\n• Web Fetch\n• File System & Artifacts\n\nUNAVAILABLE:\n${unavailable.length > 0 ? unavailable.join('\n') : 'None'}`,
+      // Slice 3 (2026-11-23): the old "CONNECTED TOOLS" block hardcoded
+      // "Calculation Engine / Web Fetch / File System & Artifacts" as
+      // static text regardless of what is actually available. The matrix
+      // now lists only the live registry state — available and unavailable.
+      message: `NVK CAPABILITY MATRIX\n\nAVAILABLE NOW:\n${availableNow.join('\n')}\n\nUNAVAILABLE:\n${unavailable.length > 0 ? unavailable.join('\n') : 'None'}`,
       verified: true
     };
   },
@@ -63,22 +69,25 @@ capabilityRegistry.register({
   verificationMethod: 'deterministic_check',
   execute: async (input) => {
     const query = input?.query || input?.objective || '5+5';
-    // Clean query to extract math expression
-    const sanitized = query.replace(/[^0-9\+\-\*\/\.\(\)\s]/g, '');
-    let result = '';
-    try {
-      // Safe evaluation of simple math
-      result = String(Function(`'use strict'; return (${sanitized})`)());
-    } catch (e) {
-      result = '10'; // Fallback for "What is 5+5?" if eval fails
+    // Slice 3 (2026-11-23): the old catch returned the hardcoded string
+    // '10' and labelled it "Computed locally", verified: true — any
+    // unparseable question "computed" to 10. A real evaluation is the
+    // only success path; anything else throws the honest reason, so the
+    // engine records a failed node instead of a fabricated number.
+    const evaluated = evaluateMathExpression(query);
+    // NOTE: `evaluated.ok === false`, not `!evaluated.ok` — this project
+    // runs tsc without strictNullChecks, and only the === form narrows
+    // the MathEvaluation union (verified 2026-11-23: `!ok` errors TS2339).
+    if (evaluated.ok === false) {
+      throw new Error(`Calculation unavailable: ${evaluated.reason}`);
     }
     return {
-      result: `Result: ${result}`,
-      message: `Computed locally: ${result}`,
+      result: `Result: ${evaluated.value}`,
+      message: `Computed locally: ${evaluated.value}`,
       verified: true
     };
   },
-  verify: async (input, result) => !!result && !!result.result
+  verify: async (input, result) => !!result && typeof result.result === 'string' && result.result.startsWith('Result: ')
 });
 
 // 3. Local Image Generation (NOT AVAILABLE — corrected 2026-11-22)
@@ -219,36 +228,44 @@ capabilityRegistry.register({
     const fetchCap = originalRegistry.get('web.fetch');
     const query = input?.query || input?.objective || 'NVK Global';
     if (!fetchCap) throw new Error('CAPABILITY UNAVAILABLE: web.fetch not connected.');
-    
+
     const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
     const res = await fetchCap.execute({ url }, {} as any);
     if (!res.success) throw new Error(`Web search failed: ${res.error}`);
-    
-    const results: SearchResult[] = [
-      {
-        title: `${query} - Primary Intelligence Source`,
-        url: `https://html.duckduckgo.com/?q=${encodeURIComponent(query)}`,
-        snippet: `Verified research findings, dossiers, and analytics regarding ${query}. Core telemetry and intelligence records indicate structural alignment.`,
-        source: 'NVK Research Network'
-      },
-      {
-        title: `${query} - Global Sector Overview`,
-        url: `https://html.duckduckgo.com/?q=${encodeURIComponent(query)}`,
-        snippet: `Comprehensive market breakdown and structural parameters for ${query}. Verified metrics and entity context.`,
-        source: 'NVK Knowledge Repository'
-      }
-    ];
+
+    // Slice 3 (2026-11-23): the old code fetched this page, DISCARDED
+    // the body, and returned two hardcoded "verified" results with
+    // invented titles/snippets from "NVK Research Network" / "NVK
+    // Knowledge Repository". The body web.fetch returns (res.output) is
+    // now actually parsed. When it holds no parseable results — blocked
+    // page, changed markup, empty result set — the capability reports
+    // that honestly with an empty list instead of inventing sources.
+    const html = typeof res.output === 'string' ? res.output : '';
+    const results = parseDuckDuckGoHtml(html);
+    if (results.length === 0) {
+      return {
+        results: [],
+        evidence: [
+          { type: 'web_response', timestamp: Date.now(), reference: url, metadata: { query, count: 0, parsed: false } }
+        ],
+        result: `Web search for "${query}" returned no parseable results — the search page could not be read (it may be blocking automated access). No results are shown rather than invented ones.`,
+        verified: false
+      };
+    }
 
     return {
       results,
       evidence: [
         { type: 'web_response', timestamp: Date.now(), reference: url, metadata: { query, count: results.length } }
       ],
-      result: `Web research completed for query: "${query}". Found ${results.length} verified normalized sources.`,
+      result: `Web research completed for query: "${query}". Found ${results.length} real sources.`,
       verified: true
     };
   },
-  verify: async (input, result) => !!result && !!result.results
+  // An honest empty result still verifies: the capability searched and
+  // reported the outcome truthfully. Only a missing/malformed results
+  // array fails verification.
+  verify: async (input, result) => !!result && Array.isArray(result.results)
 });
 
 // 9. Create Document / Artifact

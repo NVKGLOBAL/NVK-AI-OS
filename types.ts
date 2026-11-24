@@ -1646,7 +1646,11 @@ export interface AuditLog {
 // NVK 3D OS — LIVING INTELLIGENCE INTERFACE TYPES
 // ----------------------------------------------------
 
-export type NVKOrbState = 'IDLE' | 'LISTENING' | 'THINKING' | 'ACTING' | 'DISCOVERY' | 'ERROR' | 'CALM';
+export type NVKOrbState = 'IDLE' | 'LISTENING' | 'THINKING' | 'ACTING' | 'DISCOVERY' | 'ERROR' | 'CALM' | 'WAITING' | 'COMPLETE';
+// Slice 3 (2026-11-23): WAITING = blocked on the user (confirmation
+// pending); COMPLETE = a run finished successfully (transient — App
+// settles it to IDLE after ~2s). CALM remains a valid value but no
+// pipeline event or command-path transition sets it anymore.
 
 /**
  * The result of running a user command through the runtime.

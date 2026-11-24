@@ -3,6 +3,7 @@ import React, { useRef, useEffect, useMemo, useCallback } from 'react';
 import type { PanelDisplayMode, Particle } from '../../types';
 import { GeoMode, VisualizationMatrixMode } from '../../types';
 import ModeSelectorAny from '../core/ModeSelectorAny';
+import { resolveHue } from '../../lib/osPanelColors';
 
 interface FlowerOfLifeEntropyExplorerProps {
   currentEntropy: number;
@@ -10,6 +11,10 @@ interface FlowerOfLifeEntropyExplorerProps {
   height: number;
   currentDisplayMode: PanelDisplayMode;
   onSetDisplayMode: (mode: PanelDisplayMode) => void;
+  /** Slice 3: bus hue override — the flower's primary line work draws
+   * in this hue when set; null/undefined keeps the visualizer's own
+   * entropy/mode hue. Particles keep their own hues. */
+  accentHue?: number | null;
 }
 
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
@@ -59,6 +64,7 @@ const FlowerOfLifeEntropyExplorer: React.FC<FlowerOfLifeEntropyExplorerProps> = 
   height,
   currentDisplayMode,
   onSetDisplayMode,
+  accentHue,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animationFrameIdRef = useRef<number | null>(null);
@@ -260,7 +266,10 @@ const FlowerOfLifeEntropyExplorer: React.FC<FlowerOfLifeEntropyExplorerProps> = 
       ctx.beginPath(); 
       ctx.arc(x, y, Math.max(0, circleRadius), 0, Math.PI * 2);
       const hueRand = isQuantum ? Math.random()*360 : (Math.random() * 60);
-      const hue = lerp(180, 30 + hueRand, t);
+      // Slice 3: a bus hue override (e.g. "turn the Flower of Life
+      // green") replaces the entropy-derived hue for the primary line
+      // work; null keeps the visualizer's own hue.
+      const hue = resolveHue(accentHue, lerp(180, 30 + hueRand, t));
       const saturation = isQuantum ? 90 : lerp(70, 90, t);
       const lightness = isQuantum ? 70 : lerp(60, 50 + Math.random() * 10, t);
 
@@ -273,7 +282,7 @@ const FlowerOfLifeEntropyExplorer: React.FC<FlowerOfLifeEntropyExplorerProps> = 
       ctx.stroke();
       ctx.setLineDash([]);
     });
-  }, []);
+  }, [accentHue]);
 
   const drawMetatronLines = useCallback((
     points: { x: number; y: number }[],
@@ -364,7 +373,7 @@ const FlowerOfLifeEntropyExplorer: React.FC<FlowerOfLifeEntropyExplorerProps> = 
         } else {
           ctx.lineTo(x2, y2);
         }
-        const hue = lerp(60, (isShattered ? 0 : 30) + Math.random() * 40, t);
+        const hue = resolveHue(accentHue, lerp(60, (isShattered ? 0 : 30) + Math.random() * 40, t));
         const saturation = 100;
         const lightness = lerp(70, 55 + Math.random() * 10, t);
         const alpha = baseAlpha * (0.5 + Math.random()*0.5);
@@ -373,7 +382,7 @@ const FlowerOfLifeEntropyExplorer: React.FC<FlowerOfLifeEntropyExplorerProps> = 
         ctx.stroke();
     });
 
-  }, [baseRadiusForCircles]);
+  }, [baseRadiusForCircles, accentHue]);
 
   const drawRecursivePolygons = useCallback((
     ctx: CanvasRenderingContext2D,

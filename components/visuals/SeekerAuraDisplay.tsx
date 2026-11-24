@@ -11,6 +11,10 @@ interface SeekerAuraDisplayProps {
   lastRitualOutcome: RitualOutcome | null;
   width: number;
   height: number;
+  /** Slice 3: bus hue override — the orb + glow draw in this hue when
+   * set (e.g. "I'm feeling blue today"); null/undefined keeps the
+   * entropy-derived color. Flares/particles keep agent-style colors. */
+  auraHueOverride?: number | null;
 }
 
 const MAX_FLARES = 20;
@@ -38,6 +42,7 @@ const SeekerAuraDisplay: React.FC<SeekerAuraDisplayProps> = ({
   lastRitualOutcome,
   width,
   height,
+  auraHueOverride,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const flaresRef = useRef<AuraFlare[]>([]);
@@ -154,14 +159,21 @@ const SeekerAuraDisplay: React.FC<SeekerAuraDisplayProps> = ({
       const orbBaseRadius = Math.min(width, height) * 0.1;
       const orbPulse = Math.sin(frameCount * 0.02 * (1 + currentEntropy * 2)) * orbBaseRadius * 0.15 * (1 + currentEntropy);
       const orbRadius = orbBaseRadius + orbPulse;
-      const orbColor = getEntropyColorHSLA(currentEntropy);
+      // Slice 3: a bus hue override (mood → aura) replaces the
+      // entropy-derived hue for the orb + glow; null keeps the
+      // visualizer's own color.
+      const auraColor = (s: number, l: number, a: number): string =>
+        auraHueOverride != null && Number.isFinite(auraHueOverride)
+          ? `hsla(${auraHueOverride}, ${s}%, ${l}%, ${a})`
+          : getEntropyColorHSLA(currentEntropy, s, l, a);
+      const orbColor = auraColor(70, 55, 1);
       
       // Outer glow
       const glowRadius = orbRadius + 15 + currentEntropy * 20;
       const gradient = ctx.createRadialGradient(centerX, centerY, orbRadius * 0.5, centerX, centerY, glowRadius);
-      gradient.addColorStop(0, getEntropyColorHSLA(currentEntropy, 70, 60, 0.5 * (0.5 + currentEntropy * 0.5)));
-      gradient.addColorStop(0.7, getEntropyColorHSLA(currentEntropy, 70, 60, 0.2 * (0.5 + currentEntropy * 0.5)));
-      gradient.addColorStop(1, getEntropyColorHSLA(currentEntropy, 70, 60, 0));
+      gradient.addColorStop(0, auraColor(70, 60, 0.5 * (0.5 + currentEntropy * 0.5)));
+      gradient.addColorStop(0.7, auraColor(70, 60, 0.2 * (0.5 + currentEntropy * 0.5)));
+      gradient.addColorStop(1, auraColor(70, 60, 0));
       
       ctx.beginPath();
       ctx.arc(centerX, centerY, Math.max(0, glowRadius), 0, Math.PI * 2);
@@ -243,7 +255,7 @@ const SeekerAuraDisplay: React.FC<SeekerAuraDisplayProps> = ({
         cancelAnimationFrame(animationFrameIdRef.current);
       }
     };
-  }, [width, height, currentEntropy, agentStyle, seekerTraits, lastRitualOutcome]); // Re-run if these change
+  }, [width, height, currentEntropy, agentStyle, seekerTraits, lastRitualOutcome, auraHueOverride]); // Re-run if these change
 
   return (
     <div className="seeker-aura-display-container bg-slate-950/70 border border-slate-700/50 rounded-lg shadow-xl overflow-hidden mx-auto" style={{ width: '100%', maxWidth: `${Math.max(300,width)}px`, height: `${height}px` }}>

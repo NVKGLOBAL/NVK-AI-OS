@@ -146,6 +146,32 @@ const AdvancedReasoningPanel: React.FC<AdvancedReasoningPanelProps> = ({  width,
             <p className="text-slate-400 mb-8 text-center max-w-md font-cormorant text-lg leading-relaxed">
               Initializing the NVK strategic lattice. Local execution enabled: Private, limitless, NVK Logic Core. Powered by Gemma 3.
             </p>
+
+            {/* R11-b: the deep-focus body was mostly empty dark space —
+                the gate is honest (no model → no reasoning) but it filled
+                nothing. The capability list below is real: Tree-of-Thought,
+                Self-Reflection and Continual Learning are the classes this
+                panel drives once a model is loaded. */}
+            <div className="w-full max-w-md mb-6 grid grid-cols-1 sm:grid-cols-3 gap-3 text-left">
+              <div className="bg-slate-900/70 border border-slate-800 rounded-lg p-3">
+                <i className="ri-node-tree text-cyan-400 text-lg"></i>
+                <div className="text-[11px] font-mono font-bold text-slate-200 mt-1 uppercase tracking-wider">Tree of Thought</div>
+                <div className="text-[11px] text-slate-400 mt-1 leading-relaxed">Decomposes a problem into branches and scores each path before synthesizing an answer.</div>
+              </div>
+              <div className="bg-slate-900/70 border border-slate-800 rounded-lg p-3">
+                <i className="ri-reflect-fill text-purple-400 text-lg"></i>
+                <div className="text-[11px] font-mono font-bold text-slate-200 mt-1 uppercase tracking-wider">Self-Reflection</div>
+                <div className="text-[11px] text-slate-400 mt-1 leading-relaxed">Critiques its own draft, lists strengths and limits, then refines the response.</div>
+              </div>
+              <div className="bg-slate-900/70 border border-slate-800 rounded-lg p-3">
+                <i className="ri-flask-line text-emerald-400 text-lg"></i>
+                <div className="text-[11px] font-mono font-bold text-slate-200 mt-1 uppercase tracking-wider">Continual Learning</div>
+                <div className="text-[11px] text-slate-400 mt-1 leading-relaxed">Records verified outcomes from each run so later reasoning improves.</div>
+              </div>
+            </div>
+            <p className="text-[11px] font-mono text-slate-500 mb-8 text-center">
+              Status: {loadStatus === 'Idle' ? 'no model loaded — hydrate the matrix to begin' : loadStatus === 'Error' ? 'last load failed — see the error below, or reset the core' : `${loadStatus} — ${Math.round(loadProgress)}%`}
+            </p>
             
             {loadStatus !== "Idle" && loadStatus !== "Ready" && loadStatus !== "Error" && (
                  <div className="w-full max-w-md mb-6">

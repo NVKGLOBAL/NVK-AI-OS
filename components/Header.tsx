@@ -70,19 +70,34 @@ export const Header: React.FC<HeaderProps> = ({
   const displayEntropyValue = masterEntropyOverride < 0 ? Math.abs(masterEntropyOverride) : masterEntropyOverride;
 
   return (
-    <header className="bg-slate-950/85 backdrop-blur-md border-b border-slate-800/80 px-4 py-2.5 top-0 z-50 shrink-0 select-none overflow-hidden">
-      {/* R10-2: the row is full-width, not capped at max-w-7xl. The 1280px
-          cap squeezed ~1400px of controls into 1280px at a 1920px viewport,
-          so the mode pill shrank, showed its own horizontal scrollbar and
-          truncated "3D Desk". The header itself is overflow-hidden so the
-          bar can never produce a page scrollbar. */}
+    <header className="relative bg-slate-950/85 backdrop-blur-md border-b border-slate-800/80 px-4 py-2.5 top-0 z-50 shrink-0 select-none">
+      {/* R11-1: the round-2 `overflow-hidden` backstop is REMOVED. It
+          clipped the header's own absolutely-positioned dropdown menus
+          (Environment / Codex Mode / Oracle AI / System extend below the
+          header box — with overflow-hidden they were invisible), and any
+          content extending above the header box would be cut the same way.
+          The horizontal-scrollbar protection now comes from the row
+          fixes alone (full-width row, min-w-0 search, shrink-0 pill) —
+          retest #11 confirmed no horizontal scrollbar with them. The
+          header is `relative` so its z-50 actually takes effect (z-index
+          without position was a no-op). */}
       <div className="w-full flex items-center justify-between gap-3 flex-wrap md:flex-nowrap">
         
         {/* Brand & Status */}
         <div className="flex items-center gap-3 shrink-0">
           <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-lg bg-cyan-500/15 border border-cyan-500/50 flex items-center justify-center text-cyan-400 font-bold text-sm shadow-[0_0_10px_rgba(6,182,212,0.3)]">
-              Δ
+            {/* R11-1: the logo mark is an inline SVG triangle, not the
+                text glyph "Δ". The body font is Orbitron (not loaded —
+                falls back to system sans), so the Δ glyph's metrics came
+                from whatever fallback font rendered it; a glyph's visual
+                apex can exceed its line box and read as "cut" at the top.
+                An SVG has deterministic geometry: the apex can never be
+                clipped by font metrics. shrink-0 keeps flex from
+                squeezing the 28px box. */}
+            <div className="w-7 h-7 shrink-0 rounded-lg bg-cyan-500/15 border border-cyan-500/50 flex items-center justify-center shadow-[0_0_10px_rgba(6,182,212,0.3)]" aria-hidden="true">
+              <svg width="13" height="12" viewBox="0 0 13 12" fill="none">
+                <path d="M6.5 1.5 L12 11 H1 Z" stroke="#22d3ee" strokeWidth="1.5" strokeLinejoin="round" />
+              </svg>
             </div>
             <div>
               <h1 className="text-sm font-bold tracking-wider text-slate-100 font-mono flex items-center gap-1.5">

@@ -1,6 +1,7 @@
 
 import React, { useState, useMemo } from 'react';
 import type { PanelDefinition } from '../../types';
+import { isOsPanelDead, DEAD_PANEL_REASONS } from '../../lib/stores/osPanelBusStore';
 
 interface PanelLauncherProps {
   panels: PanelDefinition[];
@@ -69,20 +70,34 @@ const PanelLauncher: React.FC<PanelLauncherProps> = ({ panels, onPanelSelect }) 
               {category}
             </h4>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
-              {filteredAndGroupedPanels[category].sort((a, b) => a.name.localeCompare(b.name)).map(panel => (
+              {filteredAndGroupedPanels[category].sort((a, b) => a.name.localeCompare(b.name)).map(panel => {
+                // Slice 3: dead panels (throw on render / no backing
+                // capability) are badged DEAD and unselectable — clicking
+                // one used to mount it and throw. The reason is the title.
+                const dead = isOsPanelDead(panel.id);
+                const deadReason = dead ? (DEAD_PANEL_REASONS[panel.id] ?? 'This panel cannot open.') : null;
+                return (
                 <button
                   key={panel.id}
-                  onClick={() => onPanelSelect(panel.id)}
-                  className="panel-entry flex items-center p-2 rounded-md bg-slate-800/50 hover:bg-sky-800/40 border border-transparent hover:border-sky-600 transition-all duration-200 text-left w-full"
-                  title={panel.description}
+                  onClick={() => { if (!dead) onPanelSelect(panel.id); }}
+                  className={`panel-entry flex items-center p-2 rounded-md border transition-all duration-200 text-left w-full ${dead ? 'bg-slate-900/50 border-rose-900/50 cursor-not-allowed' : 'bg-slate-800/50 hover:bg-sky-800/40 border-transparent hover:border-sky-600'}`}
+                  title={dead ? `${panel.name} — ${deadReason}` : panel.description}
                 >
-                  <i className={`${panel.icon} text-2xl text-sky-400 mr-3 flex-shrink-0`}></i>
+                  <i className={`${panel.icon} text-2xl ${dead ? 'text-slate-600' : 'text-sky-400'} mr-3 flex-shrink-0`}></i>
                   <div className="flex-1 min-w-0">
-                    <div className="text-sm font-semibold text-slate-100 truncate">{panel.name}</div>
-                    <div className="text-xs text-slate-400 truncate">{panel.description}</div>
+                    <div className="flex items-center gap-1.5">
+                      <div className={`text-sm font-semibold truncate ${dead ? 'text-slate-500' : 'text-slate-100'}`}>{panel.name}</div>
+                      {dead && (
+                        <span className="text-[9px] font-mono font-bold text-rose-500/90 bg-rose-950/40 border border-rose-500/40 px-1.5 py-0.5 rounded shrink-0">
+                          DEAD
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-xs text-slate-400 truncate">{dead ? deadReason : panel.description}</div>
                   </div>
                 </button>
-              ))}
+                );
+              })}
             </div>
           </div>
         ))}

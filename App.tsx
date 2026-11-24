@@ -100,6 +100,8 @@ import { DocumentWorkspace } from './components/panels/DocumentWorkspace';
 import { WorkflowWorkspace } from './components/panels/WorkflowWorkspace';
 import { SubAgentConstellation } from './components/panels/SubAgentConstellation';
 import { NVKCommandLayer } from './components/spatial/NVKCommandLayer';
+import { useOsPanelBus, registerOsPanelBridge, setOsOpenPanelIds, isOsPanelDead, DEAD_PANEL_REASONS } from './lib/stores/osPanelBusStore';
+import { mapRuntimeStateToOrbState, mapServicesEventToOrbState } from './lib/orbStateMapping';
 import type { NVKOrbState, NVKWorkflow, NVKActivityStep, ProcessedNVKIntent, WorkspaceMode, SubAgent } from './types';
 import { eventBus } from './services/EventBus';
 import { nvkEventBus } from './src/nvk/events/NVKEventBus';
@@ -211,6 +213,23 @@ function loadPersistedClusters(fallback: Cluster[]): Cluster[] {
   return fallback;
 }
 
+// R11-3: does the persisted default cluster have open or pinned panels?
+// Read straight from localStorage (the workspaceMode initializer runs
+// before the clusters state is declared, so it cannot read it). The
+// active cluster id always starts as 'default-cluster' on a fresh load.
+function persistedClusterHasOpenPanels(): boolean {
+  try {
+    const saved = localStorage.getItem(CLUSTER_STORAGE_KEY);
+    if (!saved) return false;
+    const parsed = JSON.parse(saved);
+    if (!Array.isArray(parsed) || parsed.length === 0) return false;
+    const active = parsed.find((c: any) => c && c.id === 'default-cluster') || parsed[0];
+    if (!active) return false;
+    return (Array.isArray(active.openNodeIds) && active.openNodeIds.length > 0)
+      || (Array.isArray(active.pinnedPanelIds) && active.pinnedPanelIds.length > 0);
+  } catch { return false; }
+}
+
 export const App: React.FC = () => {
   // N3 follow-up (2026-11-22): auto-recenter defaults OFF — the camera
   // never drifts away from a panel the user is reading unless they turn
@@ -239,11 +258,22 @@ export const App: React.FC = () => {
   });
   // N9: one WorkspaceMode union. '3d' is gone — a legacy saved value
   // migrates to 'immersive'; anything unknown falls back to 'immersive'.
+  // R11-3: a reload must open on the orb, not on the panels. A saved
+  // grid/2d mode with persisted open panels restores the panels front
+  // and centre with no orb in view (retest #11: 3D DESK + the duplicated
+  // Nexus panel + chat console, orb nowhere). So when the persisted
+  // cluster has open/pinned panels and the saved mode is grid or 2d
+  // (the modes with no orb stage), start in immersive instead. The
+  // open/pinned panels themselves are untouched — only the first thing
+  // seen changes. Split keeps its 3D stage on top, so it is not forced.
   const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>(() => {
     try {
       const saved = localStorage.getItem('nvk_workspace_mode');
-      if (saved === '3d') return 'immersive';
-      if (saved === 'immersive' || saved === 'split' || saved === 'grid' || saved === '2d') return saved;
+      let mode: WorkspaceMode | null = null;
+      if (saved === '3d') mode = 'immersive';
+      else if (saved === 'immersive' || saved === 'split' || saved === 'grid' || saved === '2d') mode = saved;
+      if ((mode === 'grid' || mode === '2d') && persistedClusterHasOpenPanels()) return 'immersive';
+      return mode ?? 'immersive';
     } catch {}
     return 'immersive';
   });
@@ -504,6 +534,18 @@ export const App: React.FC = () => {
   const [minimizedPanelIds, setMinimizedPanelIds] = useState<string[]>([]);
   const [maximizedPanelIds, setMaximizedPanelIds] = useState<string[]>([]);
   const [focusedPanelId, setFocusedPanelId] = useState<string | null>(null);
+  // R11-a: first paint — the pinned panels are translucent + blurred, so
+  // painting them before the 3D stage's first frame leaves a wide smeared
+  // band over the black stage for a few seconds (retest #11). Hold the
+  // pinned-panel overlay for 1.2s after mount so the stage paints first.
+  // Mitigation, not a cure: there is no scene-ready signal in
+  // CodexOrbSystem to gate on precisely. Panels still enter with their
+  // spring animation once the gate opens.
+  const [panelsReady, setPanelsReady] = useState(false);
+  useEffect(() => {
+    const id = window.setTimeout(() => setPanelsReady(true), 1200);
+    return () => window.clearTimeout(id);
+  }, []);
   const [panelZIndices, setPanelZIndices] = useState<Record<string, number>>({});
   const [maxZIndex, setMaxZIndex] = useState(1050);
 
@@ -832,61 +874,32 @@ export const App: React.FC = () => {
   const [nvkOrbState, setNvkOrbState] = useState<NVKOrbState>('IDLE');
   const [activeNVKWorkflow, setActiveNVKWorkflow] = useState<NVKWorkflow | null>(null);
 
+  // Slice 3: the panel bus is the agent-readable/writable panel state
+  // (open panels, per-panel color/hue, seeker aura). App subscribes so
+  // the wired panels re-render when the bus changes, and pushes the
+  // open-panel set into the bus below.
+  const busState = useOsPanelBus();
+
   const [nvkActivitySteps, setNvkActivitySteps] = useState<NVKActivityStep[]>([]);
 
   // Orb state is driven ONLY by real bus events (defect 1 fix, 2026-11-22).
   // Two buses feed the orb: the services bus (CapabilityRegistry / TaskEngine
   // events) and the src/nvk runtime bus (NVKRuntime / ExecutionEngine
   // ui.state_changed). The CommandLayer's four direct transitions (voice start
-  // → LISTENING, send → THINKING, done/error → CALM, confirm → ACTING) are
-  // user-interaction moments, not runtime work; precedence is last-write-wins
-  // through the single setNvkOrbState. No timers, no scripted sequences.
+  // → LISTENING, send → THINKING, done/error → COMPLETE/ERROR, confirm →
+  // ACTING, confirmation pending → WAITING) are user-interaction moments,
+  // not runtime work; precedence is last-write-wins through the single
+  // setNvkOrbState. No timers, no scripted sequences — except the
+  // COMPLETE → IDLE settle below, which is the spec's own mapping
+  // (success → complete, then idle after ~2s).
+  // Slice 3: the mappings live in lib/orbStateMapping.ts (shared with the
+  // tests) so App and the tests can never drift apart. COMPLETED now maps
+  // to COMPLETE, never CALM — the A3 fix.
   useEffect(() => {
-    const mapServicesEvent = (event: NVKEvent): NVKOrbState | null => {
-      switch (event.type) {
-        case 'MODEL_LOADING':
-        case 'TASK_STARTED':
-        case 'WEB_REQUEST_STARTED':
-          return 'THINKING';
-        case 'ACTION_STARTED':
-          return 'ACTING';
-        case 'APP_SPAWNED':
-        case 'FILE_CREATED':
-          return 'DISCOVERY';
-        case 'TASK_VERIFIED':
-        case 'ACTION_COMPLETED':
-        case 'TASK_COMPLETED':
-          return 'CALM';
-        case 'ACTION_FAILED':
-        case 'TASK_FAILED':
-          return 'ERROR';
-        default:
-          return null;
-      }
-    };
-    const mapRuntimeState = (state: string): NVKOrbState | null => {
-      switch (state) {
-        case 'THINKING':
-        case 'PLANNING':
-        case 'SEARCHING':
-        case 'RESEARCHING':
-        case 'VERIFYING':
-          return 'THINKING';
-        case 'PROCESSING':
-        case 'CREATING':
-        case 'EXECUTING':
-          return 'ACTING';
-        case 'COMPLETED':
-          return 'CALM';
-        case 'FAILED':
-          return 'ERROR';
-        case 'WAITING':
-        case 'IDLE':
-          return 'IDLE';
-        default:
-          return null;
-      }
-    };
+    const mapServicesEvent = (event: NVKEvent): NVKOrbState | null =>
+      mapServicesEventToOrbState(event.type);
+    const mapRuntimeState = (state: string): NVKOrbState | null =>
+      mapRuntimeStateToOrbState(state);
     // Mark the earliest still-open activity step from a real task event.
     // Steps with no corresponding real task stay pending — that is honest.
     const advanceEarliestOpenStep = (status: 'completed' | 'failed') => {
@@ -910,6 +923,16 @@ export const App: React.FC = () => {
     });
     return () => { unsubServices(); unsubRuntime(); };
   }, []);
+
+  // Slice 3 (A3 fix): a completed run shows COMPLETE, then settles back
+  // to IDLE after ~2s so the orb reads as "done, ready" rather than
+  // sitting on a stale completion. ERROR never settles on its own — a
+  // failure stays visible until the next command.
+  useEffect(() => {
+    if (nvkOrbState !== 'COMPLETE') return;
+    const timer = setTimeout(() => setNvkOrbState('IDLE'), 2000);
+    return () => clearTimeout(timer);
+  }, [nvkOrbState]);
 
   const [nvkCustomDocData, setNvkCustomDocData] = useState<any>(null);
 
@@ -1084,12 +1107,20 @@ export const App: React.FC = () => {
   }, [activeCluster, updateActiveCluster, focusedPanelId]);
 
   const handlePanelNodeClick = useCallback((nodeId: string) => {
+    // Slice 3: the availability guard used to live only in handleAppClick,
+    // so a dead panel could still be opened by clicking its cluster node.
+    // The dead-panel guard is now a system invariant on both open paths.
+    const node = activeCluster.nodes.find(n => n.id === nodeId);
+    if (node && isOsPanelDead(node.panelId)) {
+      addEchoMessage(AgentName.SystemControl, `${node.label} is dead: ${DEAD_PANEL_REASONS[node.panelId] ?? 'it cannot open.'}`, 'text-amber-400');
+      return;
+    }
     updateActiveCluster({
       openNodeIds: activeCluster.openNodeIds.includes(nodeId) 
         ? activeCluster.openNodeIds.filter(id => id !== nodeId)
         : [...activeCluster.openNodeIds, nodeId]
     });
-  }, [activeCluster, updateActiveCluster]);
+  }, [activeCluster, updateActiveCluster, addEchoMessage]);
   
   // S1: the Header's "Contextual Query" is real — one concise operational
   // insight generated from the actual workspace state via the local model
@@ -1133,6 +1164,15 @@ export const App: React.FC = () => {
   }, [generateText, addEchoMessage, activeCluster.name]);
 
   const handleAppClick = useCallback((panelId: string, initialUrl?: string) => {
+    // Slice 3: dead panels never open as if working — not from the dock,
+    // not from search, not from an axiom tap, not from a panel command.
+    // (The 4 render-throw panels would crash the workspace if mounted;
+    // the 3 availability-blocked ones have no backing capability.)
+    if (isOsPanelDead(panelId)) {
+      const def = PANEL_DEFINITIONS.find(p => p.id === panelId);
+      addEchoMessage(AgentName.SystemControl, `${def?.name ?? panelId} is dead: ${DEAD_PANEL_REASONS[panelId] ?? 'it cannot open.'}`, 'text-amber-400');
+      return;
+    }
     // P6: one open path, with the availability guard as backstop. Blocked
     // panels are badged in every list and never open as if working.
     const def = PANEL_DEFINITIONS.find(p => p.id === panelId);
@@ -1140,10 +1180,31 @@ export const App: React.FC = () => {
       addEchoMessage(AgentName.SystemControl, `${def.name} is not available: ${def.availability.reason || 'backing capability missing'}.`, 'text-amber-400');
       return;
     }
+    // R11-2: resolve against the pinned instances FIRST (no-URL case).
+    // Several cluster nodes can share one panelId — the Nexus cluster has
+    // four NexusBrowser nodes (node-1..4) — while pin/axiom paths use the
+    // SPECIFIC node id. The old code took the FIRST node with this
+    // panelId, so when the pinned instance belonged to node-2 the P3
+    // guard below missed and a second identical panel was appended
+    // (retest #11: one dock click → dup 1/2 and 2/2, both counting UPTIME
+    // independently, duplicate surviving reload). URL windows are
+    // distinct by URL and keep the exact-match dedupe below.
+    if (!initialUrl) {
+      const existing = activeCluster.pinnedPanelIds.find(
+        id => id.startsWith(`${panelId}::`) && id.split('::').length === 2
+      );
+      if (existing) {
+        setFocusedPanelId(existing);
+        return;
+      }
+    }
     // Reuse the cluster node for this panel (or create one) so the pinned
     // instance and the node share one identity: instanceId = panelId::nodeId
     // (plus ::encodedUrl for a browser window opened with a URL).
-    let node = activeCluster.nodes.find(n => n.panelId === panelId);
+    // Prefer a node that is already open for this panel (the one the user
+    // is looking at) over the first node with the panelId.
+    let node = activeCluster.nodes.find(n => n.panelId === panelId && activeCluster.openNodeIds.includes(n.id))
+      ?? activeCluster.nodes.find(n => n.panelId === panelId);
     let nodes = activeCluster.nodes;
     if (!node) {
       const nodeId = `${activeClusterId}-${panelId.toLowerCase()}`;
@@ -1166,6 +1227,65 @@ export const App: React.FC = () => {
     setFocusedPanelId(instanceId);
     addEchoMessage(AgentName.SystemControl, `Deploying ${panelId} instance to operational interface.`, 'text-cyan-400');
   }, [activeCluster, activeClusterId, updateActiveCluster, addEchoMessage]);
+
+  // Slice 3: the panel bus bridge. The bus validates every panel command
+  // (dead/unknown/blocked) and delegates the actual windowing to the real
+  // App handlers. The handlers and the cluster are read through refs so
+  // the bridge never goes stale between renders; the refs are refreshed
+  // after every render by the effects below, and the bridge is registered
+  // once (it reads the refs at call time, not at registration time).
+  const handleAppClickRef = useRef(handleAppClick);
+  const closePanelEverywhereRef = useRef(closePanelEverywhere);
+  const activeClusterRef = useRef(activeCluster);
+  useEffect(() => { handleAppClickRef.current = handleAppClick; });
+  useEffect(() => { closePanelEverywhereRef.current = closePanelEverywhere; });
+  useEffect(() => { activeClusterRef.current = activeCluster; });
+  useEffect(() => {
+    registerOsPanelBridge({
+      openPanel: (id) => {
+        handleAppClickRef.current(id);
+        return true;
+      },
+      closePanel: (id) => {
+        const cluster = activeClusterRef.current;
+        const instances = cluster.pinnedPanelIds.filter((pid) => pid.split('::')[0] === id);
+        if (instances.length > 0) {
+          instances.forEach((i) => closePanelEverywhereRef.current(i));
+          return true;
+        }
+        const node = cluster.nodes.find((n) => n.panelId === id && cluster.openNodeIds.includes(n.id));
+        if (node) {
+          closePanelEverywhereRef.current(node.id);
+          return true;
+        }
+        return false;
+      },
+      focusPanel: (id) => {
+        const cluster = activeClusterRef.current;
+        const instance = cluster.pinnedPanelIds.find(
+          (pid) => pid.startsWith(`${id}::`) && pid.split('::').length === 2
+        );
+        if (instance) {
+          setFocusedPanelId(instance);
+          return true;
+        }
+        handleAppClickRef.current(id);
+        return true;
+      },
+    });
+  }, []);
+
+  // Slice 3: keep the bus's open-panel set in sync with the workspace so
+  // listPanels/getPanel report real open state (pinned instances + open
+  // cluster nodes). setOsOpenPanelIds no-ops when nothing changed.
+  useEffect(() => {
+    const ids = new Set<string>();
+    activeCluster.pinnedPanelIds.forEach((pid) => ids.add(pid.split('::')[0]));
+    activeCluster.nodes.forEach((n) => {
+      if (activeCluster.openNodeIds.includes(n.id)) ids.add(n.panelId);
+    });
+    setOsOpenPanelIds([...ids]);
+  }, [activeCluster]);
 
   const handlePinPanel = useCallback((nodeId: string) => {
     const node = activeCluster.nodes.find(n => n.id === nodeId);
@@ -1512,8 +1632,13 @@ const mockShatterpointData = {
         return wrapInProviders(<EntropyDimensionDiagramPanel currentEntropy={effectiveEntropy} width={850} height={750} isFractalModeEnabled={true} />);
       case 'ExoticMechanismsPanel':
         return wrapInProviders(<ExoticMechanismsPanel currentEntropy={effectiveEntropy} width={850} height={750}  />);
-      case 'FlowerOfLifeEntropyExplorer':
-        return wrapInProviders(<FlowerOfLifeEntropyExplorer currentEntropy={effectiveEntropy} width={850} height={750} currentDisplayMode={currentDisplayMode} onSetDisplayMode={setCurrentDisplayMode} />);
+      case 'FlowerOfLifeEntropyExplorer': {
+        // Slice 3: the bus's hue override (set by "turn the Flower of
+        // Life green") drives the flower's primary line work; null means
+        // the visualizer's own entropy/mode hue, unchanged.
+        const hue = busState.panelProperties['FlowerOfLifeEntropyExplorer']?.hue;
+        return wrapInProviders(<FlowerOfLifeEntropyExplorer currentEntropy={effectiveEntropy} width={850} height={750} currentDisplayMode={currentDisplayMode} onSetDisplayMode={setCurrentDisplayMode} accentHue={typeof hue === 'number' ? hue : null} />);
+      }
       case 'GlyphAtlasGrid':
         return wrapInProviders(<GlyphAtlasGrid width={850} height={750}  />);
       case 'GlyphComposerPanel':
@@ -1540,8 +1665,13 @@ const mockShatterpointData = {
         return wrapInProviders(<PeptideSimulationPanel  width={850} height={750} />);
       case 'ResonanceEnginePanel':
         return wrapInProviders(<ResonanceEnginePanel width={850} height={250}  />);
-      case 'SeekerAuraDisplay':
-        return wrapInProviders(<SeekerAuraDisplay seekerTraits={seekerTraits} currentEntropy={effectiveEntropy} dominantAgentTone={null} lastRitualOutcome={null} width={850} height={750} />);
+      case 'SeekerAuraDisplay': {
+        // Slice 3: the bus's aura hue (set by "I'm feeling blue today")
+        // drives the aura orb + glow; null means the entropy-derived
+        // color, unchanged. Flares/particles keep agent-style colors.
+        const auraHue = busState.aura.hue;
+        return wrapInProviders(<SeekerAuraDisplay seekerTraits={seekerTraits} currentEntropy={effectiveEntropy} dominantAgentTone={null} lastRitualOutcome={null} width={850} height={750} auraHueOverride={typeof auraHue === 'number' ? auraHue : null} />);
+      }
       case 'ShatterpointTracePanel':
         return wrapInProviders(<ShatterpointTracePanel {...mockShatterpointData} />);
       case 'SigilBloomVariantPanel':
@@ -1655,7 +1785,8 @@ const mockShatterpointData = {
     seekerTraits, latestWitnessMessage, masterNegentropyLevel, harmonicCoreState, 
     mutationLoomState, handleWeaveGlyphs, currentGeoMode, currentDisplayMode, 
     sigilVariants, selectedSigilVariantId, spiralThreads, threadCoilSegments, traitGates, 
-    resonanceEffects, isBugaModeActive, activeCluster, activeClusterId
+    resonanceEffects, isBugaModeActive, activeCluster, activeClusterId,
+    busState
   ]);
 
   const handleSpawnOrbSystem = useCallback((type: ClusterType = ClusterType.Standard) => {
@@ -2153,7 +2284,7 @@ const mockShatterpointData = {
           )}
         </AnimatePresence>
 
-        {activeCluster.pinnedPanelIds.map((instanceId, idx) => {
+        {panelsReady && activeCluster.pinnedPanelIds.map((instanceId, idx) => {
           const [panelId] = instanceId.split('::');
           const panelDef = PANEL_DEFINITIONS.find(p => p.id === panelId);
           const opacity = activeCluster.panelOpacities?.[instanceId] ?? activeCluster.panelOpacity;

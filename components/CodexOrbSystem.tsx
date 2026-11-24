@@ -1440,6 +1440,14 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
               } else if (currentNvkState === 'ERROR') {
                 targetColor = new THREE.Vector3(1.0, 0.2, 0.25);
                 stateEntropyBoost = 0.6;
+              } else if (currentNvkState === 'WAITING') {
+                // Slice 3: blocked on the user (confirmation pending) —
+                // amber, distinct from THINKING purple and ERROR red.
+                targetColor = new THREE.Vector3(1.0, 0.62, 0.1);
+              } else if (currentNvkState === 'COMPLETE') {
+                // Slice 3: a run finished successfully — green, transient
+                // (App settles COMPLETE → IDLE after ~2s).
+                targetColor = new THREE.Vector3(0.1, 1.0, 0.4);
               }
 
               if (orb.material.uniforms.uColor) {

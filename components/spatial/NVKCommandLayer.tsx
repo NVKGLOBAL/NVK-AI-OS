@@ -22,6 +22,8 @@ import { synthesizeShard, SHARD_VARIANTS } from '../../services/shardEngine';
 import type { ShardSpec, ShardVariant } from '../../services/shardEngine';
 import { ShardRenderer } from '../ui/ShardRenderer';
 import { useIsMobile } from '../../lib/useIsMobile';
+import { dispatchPanelCommand } from '../../services/OsPanelCommandDispatcher';
+import { resolveTerminalOrbState } from '../../lib/orbStateMapping';
 
 interface NVKCommandLayerProps {
   orbState: NVKOrbState;
@@ -290,11 +292,19 @@ export const NVKCommandLayer: React.FC<NVKCommandLayerProps> = ({
         actionSummary: processed.interpretedAction.label
       }]);
 
-      onSetOrbState('CALM');
+      // Slice 3 (A3 fix): the orb shows the REAL terminal state of the
+      // run — COMPLETE on success, ERROR on failure. The old code set
+      // CALM here unconditionally, which overwrote the runtime's ERROR
+      // (last-write-wins) so a failed command showed the same calm orb
+      // as a successful one. The runtime also publishes COMPLETED/FAILED
+      // and App maps them the same way; both writers now agree.
+      onSetOrbState(resolveTerminalOrbState(processed.interpretedAction.status === 'failed' ? 'failed' : 'complete'));
       onExecuteAction(processed);
 
     } catch (err: any) {
-      onSetOrbState('CALM');
+      // Slice 3 (A3 fix): an exception in the run itself is a failure,
+      // not a calm — the orb shows ERROR until the next command.
+      onSetOrbState('ERROR');
       setHistory(prev => [...prev, { 
         role: 'nvk', 
         text: `Execution failed: ${err.message || err}` 
@@ -312,9 +322,31 @@ export const NVKCommandLayer: React.FC<NVKCommandLayerProps> = ({
     // nor denied; they moved on).
     if (pendingConfirmation) setPendingConfirmation(null);
 
-    // Add user message to history
+    // The user's utterance goes into history and the input clears for
+    // every send — panel commands included — so the chat shows what was
+    // asked and what NVK did about it.
     setHistory(prev => [...prev, { role: 'user', text: prompt }]);
     setInputValue('');
+
+    // Slice 3: panel commands run through the bus FIRST, before the
+    // runtime preview — the same function serves typed chat and voice
+    // transcripts (the mic writes its transcript into this input). A
+    // handled command's confirmation is the reply; the runtime is never
+    // consulted for it. An unrecognized utterance falls through to the
+    // runtime as before.
+    const panelResult = dispatchPanelCommand(prompt);
+    if (panelResult.handled) {
+      setHistory(prev => [...prev, {
+        role: 'nvk',
+        text: panelResult.ok
+          ? (panelResult.confirmation ?? 'Done.')
+          : (panelResult.reason ?? 'That panel command could not run.')
+      }]);
+      // A panel command is a real action with a real outcome: success
+      // shows COMPLETE, a refused command shows ERROR (never CALM).
+      onSetOrbState(panelResult.ok ? 'COMPLETE' : 'ERROR');
+      return;
+    }
 
     // Trigger thinking state on NVK Orb
     onSetOrbState('THINKING');
@@ -327,7 +359,10 @@ export const NVKCommandLayer: React.FC<NVKCommandLayerProps> = ({
       // not gated here — the engine reports them unavailable instead.
       const preview = nvkRuntime.preview(prompt);
       if (preview.needsInput) {
-        onSetOrbState('CALM');
+        // Slice 3: needs-input means waiting on the user, not calm —
+        // and the runtime publishes IDLE for the same case, so both
+        // writers agree.
+        onSetOrbState('IDLE');
         setHistory(prev => [...prev, { role: 'nvk', text: preview.needsInput! }]);
         return;
       }
@@ -345,11 +380,14 @@ export const NVKCommandLayer: React.FC<NVKCommandLayerProps> = ({
             description: `${details}\n\nThis action requires your explicit approval. Confirming runs it now; denying leaves nothing changed.`
           }
         });
+        // Slice 3: a pending confirmation blocks on the user — the orb
+        // shows WAITING until they confirm (ACTING) or cancel (IDLE).
+        onSetOrbState('WAITING');
         return;
       }
       await executeAndRender(prompt, { confirmedByUser: false });
     } catch (err: any) {
-      onSetOrbState('CALM');
+      onSetOrbState('ERROR');
       setHistory(prev => [...prev, {
         role: 'nvk',
         text: `Execution failed: ${err.message || err}`
@@ -433,7 +471,9 @@ export const NVKCommandLayer: React.FC<NVKCommandLayerProps> = ({
         text: `Operation aborted. No changes made. Warning: the denial could not be recorded in the ledger (${err.message || err}).`
       }]);
     }
-    onSetOrbState('CALM');
+    // Slice 3: a cancelled confirmation returns to idle — the user
+    // aborted, nothing failed, and the orb is not calm, it is idle.
+    onSetOrbState('IDLE');
   }, [pendingConfirmation, onSetOrbState]);
 
   const getOrbStateBadge = () => {
@@ -448,6 +488,10 @@ export const NVKCommandLayer: React.FC<NVKCommandLayerProps> = ({
         return { label: 'Synthesizing Result', color: 'bg-amber-500/20 text-amber-300 border-amber-400', ping: false };
       case 'ERROR':
         return { label: 'Action Required', color: 'bg-rose-500/20 text-rose-300 border-rose-400', ping: false };
+      case 'WAITING':
+        return { label: 'Waiting for you…', color: 'bg-amber-500/20 text-amber-300 border-amber-400', ping: true };
+      case 'COMPLETE':
+        return { label: 'Done', color: 'bg-emerald-500/20 text-emerald-300 border-emerald-400', ping: false };
       default:
         return { label: 'NVK Online', color: 'bg-cyan-950/40 text-cyan-400 border-cyan-500/30', ping: false };
     }

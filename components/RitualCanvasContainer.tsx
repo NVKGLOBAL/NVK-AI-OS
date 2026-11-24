@@ -65,6 +65,11 @@ export const RitualCanvasContainer: React.FC<RitualCanvasContainerProps> = ({
   const [draggingGlyphId, setDraggingGlyphId] = useState<string | null>(null);
   const [connectingFromGlyphId, setConnectingFromGlyphId] = useState<string | null>(null);
   const [tempLineEnd, setTempLineEnd] = useState<XYPosition | null>(null);
+  // R11-4: brief highlight on the tile whose glyph was just placed by
+  // click, so a click has visible feedback on the tile itself.
+  const [justPlacedId, setJustPlacedId] = useState<string | null>(null);
+  const justPlacedTimer = useRef<number | null>(null);
+  useEffect(() => () => { if (justPlacedTimer.current) window.clearTimeout(justPlacedTimer.current); }, []);
   
   const svgRef = useRef<SVGSVGElement>(null);
 
@@ -97,6 +102,47 @@ export const RitualCanvasContainer: React.FC<RitualCanvasContainerProps> = ({
     event.dataTransfer.dropEffect = 'copy';
   };
 
+  // R11-4: ONE placement path for drag-drop AND click. The tiles were
+  // drag-only (draggable + onDragStart, no onClick), so clicking "Axiom I"
+  // did nothing at all — no highlight, no detail, no glyph on the loom.
+  // A click now places the glyph on the canvas, with the same echo and
+  // whisper as a drop, and briefly highlights the clicked tile.
+  const placeGlyph = (item: RitualElementItem, coords: XYPosition) => {
+    const newGlyph: PlacedGlyph = {
+      id: `glyph-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+      x: coords.x,
+      y: coords.y,
+      type: item.type,
+      label: item.name,
+      color: GLYPH_COLORS[item.type] || '#94a3b8',
+      icon: item.icon,
+      axiomLayer: item.axiomLayer,
+    };
+    setPlacedGlyphs(prev => [...prev, newGlyph]);
+    addEchoMessage('RitualLoom', `${item.name} placed on the loom.`, 'text-cyan-300');
+    triggerWhisper('GLYPH_PLACED_ON_LOOM');
+    setJustPlacedId(item.id);
+    if (justPlacedTimer.current) window.clearTimeout(justPlacedTimer.current);
+    justPlacedTimer.current = window.setTimeout(() => setJustPlacedId(null), 900);
+    return newGlyph;
+  };
+
+  const handleTileClick = (item: RitualElementItem) => {
+    // Canvas centre, fanned out by a golden-angle spiral so repeated
+    // clicks do not stack on one spot.
+    const n = placedGlyphs.length;
+    const angle = n * 2.39996;
+    const radius = 46 + (n % 6) * 26;
+    const dx = Math.cos(angle) * radius;
+    const dy = Math.sin(angle) * radius;
+    let coords: XYPosition = { x: 400 + dx, y: 300 + dy };
+    if (svgRef.current) {
+      const rect = svgRef.current.getBoundingClientRect();
+      coords = getSVGCoordinates({ clientX: rect.left + rect.width / 2 + dx, clientY: rect.top + rect.height / 2 + dy } as unknown as React.MouseEvent);
+    }
+    placeGlyph(item, coords);
+  };
+
   const handleDrop = (event: React.DragEvent<HTMLDivElement>) => {
     event.preventDefault();
     const itemString = event.dataTransfer.getData('application/json');
@@ -111,20 +157,7 @@ export const RitualCanvasContainer: React.FC<RitualCanvasContainerProps> = ({
     }
     
     const coords = getSVGCoordinates(event as unknown as React.MouseEvent);
-
-    const newGlyph: PlacedGlyph = {
-      id: `glyph-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-      x: coords.x,
-      y: coords.y,
-      type: item.type,
-      label: item.name,
-      color: GLYPH_COLORS[item.type] || '#94a3b8', 
-      icon: item.icon,
-      axiomLayer: item.axiomLayer, 
-    };
-    setPlacedGlyphs(prev => [...prev, newGlyph]);
-    addEchoMessage('RitualLoom', `${item.name} placed on the loom.`, 'text-cyan-300');
-    triggerWhisper('GLYPH_PLACED_ON_LOOM');
+    placeGlyph(item, coords);
   };
 
   const handleGlyphMouseDown = (event: React.MouseEvent<SVGGElement>, glyphId: string) => {
@@ -404,10 +437,11 @@ export const RitualCanvasContainer: React.FC<RitualCanvasContainerProps> = ({
             {RITUAL_ELEMENTS.map((item) => (
               <div
                 key={item.id}
-                className="glyph-item p-3 bg-slate-700 rounded cursor-move hover:bg-slate-600 transition"
+                className={`glyph-item p-3 bg-slate-700 rounded cursor-pointer hover:bg-slate-600 transition ${justPlacedId === item.id ? 'ring-2 ring-cyan-400 bg-slate-600' : ''}`}
                 draggable="true"
                 onDragStart={(e) => handleDragStart(e, item)}
-                title={`Type: ${item.type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}\n${AXIOM_DATA[item.id.replace('el-axiom-AXIOM_','') as keyof typeof AXIOM_DATA]?.description || ''}`}
+                onClick={() => handleTileClick(item)}
+                title={`Type: ${item.type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}\n${AXIOM_DATA[item.id.replace('el-axiom-AXIOM_','') as keyof typeof AXIOM_DATA]?.description || ''}\nClick to place on the loom, or drag.`}
               >
                 <div className="flex items-center">
                   <div className={`w-8 h-8 rounded-full ${item.bgColorClass} flex items-center justify-center`}>
@@ -524,10 +558,11 @@ export const RitualCanvasContainer: React.FC<RitualCanvasContainerProps> = ({
             {availableAxiomElements.map((item) => (
               <div
                 key={item.id}
-                className="glyph-item p-3 bg-slate-700 rounded cursor-move hover:bg-slate-600 transition"
+                className={`glyph-item p-3 bg-slate-700 rounded cursor-pointer hover:bg-slate-600 transition ${justPlacedId === item.id ? 'ring-2 ring-cyan-400 bg-slate-600' : ''}`}
                 draggable="true"
                 onDragStart={(e) => handleDragStart(e, item)}
-                title={`Axiom Fragment: ${item.name}\nLayer: ${item.axiomLayer}\n${AXIOM_DATA[item.id.replace('el-axiom-LAYER_','') as keyof typeof AXIOM_DATA]?.description || ''}`}
+                onClick={() => handleTileClick(item)}
+                title={`Axiom Fragment: ${item.name}\nLayer: ${item.axiomLayer}\n${AXIOM_DATA[item.id.replace('el-axiom-LAYER_','') as keyof typeof AXIOM_DATA]?.description || ''}\nClick to place on the loom, or drag.`}
               >
                 <div className="flex items-center">
                   <div className={`w-8 h-8 rounded-full ${item.bgColorClass} flex items-center justify-center`}>
