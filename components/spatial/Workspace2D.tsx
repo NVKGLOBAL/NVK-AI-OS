@@ -40,6 +40,12 @@ export interface WorkspaceConfig {
   panelOpacity: number;
   bgWallpaper: 'grid' | 'dots' | 'carbon' | 'matrix' | 'eco';
   columnCount: number;
+  // Sprint 8 relay (phone control): persisted with the rest of the desk
+  // settings in nvk_settings_v1. relayEnabled defaults false; relayUrl
+  // defaults '' (empty = not configured — no production URL is ever
+  // hardcoded; the owner pastes the relay Worker URL once deployed).
+  relayEnabled: boolean;
+  relayUrl: string;
 }
 
 export const Workspace2D: React.FC<Workspace2DProps> = ({

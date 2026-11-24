@@ -105,6 +105,9 @@ import { mapRuntimeStateToOrbState, mapServicesEventToOrbState } from './lib/orb
 import type { NVKOrbState, NVKWorkflow, NVKActivityStep, ProcessedNVKIntent, WorkspaceMode, SubAgent } from './types';
 import { eventBus } from './services/EventBus';
 import { nvkEventBus } from './src/nvk/events/NVKEventBus';
+import { OsRelayClient } from './services/relayAdapter';
+import { nvkRuntime } from './src/nvk/runtime/NVKRuntime';
+import { loadRelayToken, saveRelayToken, clearRelayToken, buildRelayStatus, RELAY_DESKTOP_ID } from './services/relaySettings';
 
 import { SystemStateProvider, type SystemStateContextType } from './context/SystemContext';
 import { useEcho } from './context/EchoContext';
@@ -495,7 +498,9 @@ export const App: React.FC = () => {
       customTitle: 'NVK 3D OS Workspace',
       panelOpacity: 0.90,
       bgWallpaper: 'grid',
-      columnCount: 2
+      columnCount: 2,
+      relayEnabled: false,
+      relayUrl: ''
     };
     try {
       const saved = localStorage.getItem('nvk_settings_v1') || localStorage.getItem('nvk_2d_workspace_config');
@@ -1716,6 +1721,15 @@ const mockShatterpointData = {
           modelLoaded={isModelLoaded}
           modelId={selectedModel}
           onOpenTutorial={() => setShowTutorial(true)}
+          relayRunning={relayRunning}
+          relayError={relayError}
+          relayLastContact={relayLastContact}
+          relayTokenSet={relayToken.length > 0}
+          onRelayTokenSave={handleRelayTokenSave}
+          onRelayTokenClear={handleRelayTokenClear}
+          onRelayRegisterPairing={handleRelayRegisterPairing}
+          onRelayDisconnectAll={handleRelayDisconnectAll}
+          onRelayToggleRunning={handleRelayToggleRunning}
         />);
       case 'OperationsDashboardPanel':
         return wrapInProviders(<OperationsDashboardPanel />);
@@ -1953,6 +1967,114 @@ const mockShatterpointData = {
        (() => {})(`*user clicked a UI element in the workspace at x: ${e.clientX}, y: ${e.clientY}*`);
     }
   }, [isVoiceActive]);
+
+  // --- Sprint 8 relay (phone control) -------------------------------------
+  // ONE OsRelayClient, owned here. It exists only while the relay is
+  // enabled AND a relay URL + desktop token are present; start() polls
+  // the relay, stop() ends polling. The client is transport + wiring
+  // only: chat calls nvkRuntime.execute (via the arrow closure below)
+  // run the panel-command dispatch in NVKCommandLayer.handleSendCommand,
+  // and approve / reject / task commands honestly report "not available"
+  // (see services/relayAdapter.ts). Nothing here touches the runtime,
+  // the command layer, or the permission gate beyond reading state and
+  // calling the existing execute.
+  const [relayToken, setRelayTokenState] = useState<string>(() => loadRelayToken());
+  const [relayPaused, setRelayPaused] = useState(false);
+  const [relayRunning, setRelayRunning] = useState(false);
+  const [relayError, setRelayError] = useState<string | null>(null);
+  const [relayLastContact, setRelayLastContact] = useState<number | null>(null);
+  const relayClientRef = useRef<OsRelayClient | null>(null);
+
+  const relayConfigured = deskConfig.relayEnabled
+    && deskConfig.relayUrl.trim().length > 0
+    && relayToken.length > 0;
+
+  // The status snapshot, read through a ref so the getStatus callback
+  // handed to the client stays stable — otherwise every orb/model change
+  // would recreate the client and restart polling.
+  const relayStatusSnapshotRef = useRef<Record<string, unknown> | null>(null);
+  relayStatusSnapshotRef.current = buildRelayStatus({
+    orbState: nvkOrbState,
+    modelLoaded: isModelLoaded,
+    modelId: selectedModel,
+    workspaceMode,
+    openPanelCount: activePanelIdList.length,
+    subAgentCount: subAgents.length,
+    workflowActive: activeNVKWorkflow !== null,
+    pendingActivitySteps: nvkActivitySteps.filter(s => s.status === 'pending' || s.status === 'running').length,
+    completedActivitySteps: nvkActivitySteps.filter(s => s.status === 'completed').length,
+    version: PACKAGE_VERSION,
+  });
+  const getRelayStatus = useCallback((): Record<string, unknown> | null => {
+    // Called by the client after each successful poll round — so a call
+    // here IS a successful relay contact.
+    setRelayLastContact(Date.now());
+    return relayStatusSnapshotRef.current;
+  }, []);
+
+  useEffect(() => {
+    if (!relayConfigured || relayPaused) {
+      relayClientRef.current?.stop();
+      relayClientRef.current = null;
+      setRelayRunning(false);
+      return;
+    }
+    const client = new OsRelayClient({
+      relayUrl: deskConfig.relayUrl.trim(),
+      desktopId: RELAY_DESKTOP_ID,
+      desktopToken: relayToken,
+      execute: (req) => nvkRuntime.execute(req),
+      getStatus: getRelayStatus,
+    });
+    relayClientRef.current = client;
+    client.start();
+    setRelayRunning(true);
+    setRelayError(null);
+    return () => {
+      client.stop();
+      if (relayClientRef.current === client) relayClientRef.current = null;
+      setRelayRunning(false);
+    };
+  }, [relayConfigured, relayPaused, deskConfig.relayUrl, relayToken, getRelayStatus]);
+
+  // Mirror the client's lastError into state so the Settings panel can
+  // show it — a failing relay is never a silent dead toggle.
+  useEffect(() => {
+    if (!relayRunning) return;
+    const id = window.setInterval(() => {
+      setRelayError(relayClientRef.current?.lastError ?? null);
+    }, 2000);
+    return () => window.clearInterval(id);
+  }, [relayRunning]);
+
+  const handleRelayTokenSave = useCallback((token: string, remember: boolean) => {
+    saveRelayToken(token, remember);
+    setRelayTokenState(token.trim());
+    setRelayPaused(false);
+  }, []);
+  const handleRelayTokenClear = useCallback(() => {
+    clearRelayToken();
+    setRelayTokenState('');
+  }, []);
+  const handleRelayRegisterPairing = useCallback(async (code: string): Promise<Record<string, unknown>> => {
+    const client = relayClientRef.current;
+    if (!client) return { ok: false, error: 'The relay is not running — enable it, set the relay URL and desktop token, then start it.' };
+    try {
+      return await client.registerPairing(code);
+    } catch (err) {
+      return { ok: false, error: String((err as Error)?.message ?? err) };
+    }
+  }, []);
+  const handleRelayDisconnectAll = useCallback(async (): Promise<Record<string, unknown>> => {
+    const client = relayClientRef.current;
+    if (!client) return { ok: false, error: 'The relay is not running — enable it, set the relay URL and desktop token, then start it.' };
+    try {
+      return await client.disconnectAll();
+    } catch (err) {
+      return { ok: false, error: String((err as Error)?.message ?? err) };
+    }
+  }, []);
+  const handleRelayToggleRunning = useCallback(() => setRelayPaused(prev => !prev), []);
 
   if (isAuthGatewayRoute) {
     return <AuthGateway />;
