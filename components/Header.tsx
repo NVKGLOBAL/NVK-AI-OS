@@ -70,16 +70,27 @@ export const Header: React.FC<HeaderProps> = ({
   const displayEntropyValue = masterEntropyOverride < 0 ? Math.abs(masterEntropyOverride) : masterEntropyOverride;
 
   return (
-    <header className="relative bg-slate-950/85 backdrop-blur-md border-b border-slate-800/80 px-4 py-2.5 top-0 z-50 shrink-0 select-none">
+    <header className="relative bg-slate-950/85 backdrop-blur-md border-b border-slate-800/80 px-4 py-2.5 top-0 z-[1200] shrink-0 select-none">
       {/* R11-1: the round-2 `overflow-hidden` backstop is REMOVED. It
           clipped the header's own absolutely-positioned dropdown menus
+          (Environment / Codex Modes / Oracle AI / System) — see the
+          z-index note below.
+          Menu test (2026-11-23): the Environment popover opened but its
+          left ~40% was hidden behind the Flower of Life floating panel,
+          so the Master Chaos slider thumb could not be grabbed. The
+          header was z-50, below the floating panels (z-1090) and the
+          chat console (z-[1095]). The header is now z-[1200] — above
+          every panel and the chat console — so its dropdowns and
+          popovers always render on top. The header sits at the top of
+          the screen and never overlaps the chat console, so raising it
+          covers nothing it should not.
           (Environment / Codex Mode / Oracle AI / System extend below the
           header box — with overflow-hidden they were invisible), and any
           content extending above the header box would be cut the same way.
           The horizontal-scrollbar protection now comes from the row
           fixes alone (full-width row, min-w-0 search, shrink-0 pill) —
           retest #11 confirmed no horizontal scrollbar with them. The
-          header is `relative` so its z-50 actually takes effect (z-index
+          header is `relative` so its z-[1200] actually takes effect (z-index
           without position was a no-op). */}
       <div className="w-full flex items-center justify-between gap-3 flex-wrap md:flex-nowrap">
         

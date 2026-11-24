@@ -321,6 +321,15 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
   // R10-6: first panel sync after mount — the open nodes are restored
   // persisted state, not new user opens (see the newlyOpened guard below).
   const isFirstPanelSyncRef = useRef(true);
+  // Retest #15 / discriminating test (2026-11-23): selecting a Codex Mode
+  // opens its preset panels, and the auto-focus flew the camera to the
+  // last one and locked it in follow mode ("Following: System Health"),
+  // taking the orb out of frame — the centre went black and Focus NVK
+  // could not bring it back. Mode-driven panel opens are NOT user panel
+  // clicks, so they must not trigger the fly-to. Track the previous
+  // orbMode; when it changes, the newly opened panels are mode presets
+  // and the camera stays on the orb.
+  const prevOrbModeRef = useRef<OrbMode>(orbMode);
   const focusOnPanelNodeRef = useRef<(nodeId: string) => void>(() => {});
   const panelObjectsRef = useRef<Map<string, PanelObject>>(new Map());
   const modeObjectsRef = useRef<THREE.Group>(new THREE.Group());
@@ -2862,9 +2871,17 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
     // persisted state, not new opens — auto-focusing the last one flew
     // the camera to a panel ("NVK Service Tiers") and hid the orb on
     // every reload. Only user opens after mount get the fly-to.
+    // Retest #15 (2026-11-23): a Codex Mode switch opens its preset
+    // panels, and the fly-to locked the camera in follow mode on the
+    // last one ("Following: System Health"), taking the orb out of
+    // frame. Mode-driven opens are not user panel clicks — when
+    // orbMode changed since the last sync, skip the fly-to so the
+    // camera stays on the orb.
     const isFirstPanelSync = isFirstPanelSyncRef.current;
     isFirstPanelSyncRef.current = false;
-    const newlyOpened = isFirstPanelSync
+    const modeChanged = prevOrbModeRef.current !== orbMode;
+    prevOrbModeRef.current = orbMode;
+    const newlyOpened = (isFirstPanelSync || modeChanged)
       ? []
       : openNodeIds.filter(id => !prevOpenNodeIdsRef.current.includes(id));
     prevOpenNodeIdsRef.current = openNodeIds;
@@ -2876,7 +2893,7 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
       }, 100);
     }
 
-  }, [openNodeIds, getPanelContent, systemState, onPinPanel, onClosePanel, onTacticalBrief]);
+  }, [openNodeIds, orbMode, getPanelContent, systemState, onPinPanel, onClosePanel, onTacticalBrief]);
   
   useEffect(() => {
     const group = modeObjectsRef.current;
@@ -3297,6 +3314,14 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
           onClick={(e) => {
             e.stopPropagation();
             if (cameraRef.current && controlsRef.current) {
+              // Retest #15 (2026-11-23): Focus NVK tweened the camera
+              // to the orb but did NOT clear the follow lock, so the
+              // "Following: <panel>" follow pulled the camera straight
+              // back to the panel and the orb stayed out of frame.
+              // Clear the follow (like Reset Viewport does) so Focus
+              // NVK actually returns the camera to the orb.
+              focusedNodeIdRef.current = null;
+              setFollowedNodeId(null);
               gsap.to(cameraRef.current.position, { x: 0, y: 0, z: 14, duration: 1, ease: 'power2.inOut' });
               gsap.to(controlsRef.current.target, { x: 0, y: 0, z: 0, duration: 1, ease: 'power2.inOut', onUpdate: () => controlsRef.current?.update() });
               // N7: camera only — Focus must never start the microphone.
