@@ -482,6 +482,16 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
       setFollowedNodeId(nodeId);
       isTransitioningRef.current = true;
 
+      // Retest #17 (2026-11-24): a camera tween must own the camera.
+      // GSAP's default overwrite:false lets two tweens on
+      // camera.position / controls.target both write every tick, and
+      // the LONGER one wins the final value once the shorter ends —
+      // that is how a stray tap tween dragged the camera back to a
+      // panel node after Focus NVK's shorter tween finished. Kill any
+      // in-flight camera tween before starting a new one.
+      gsap.killTweensOf(currentCamera.position);
+      gsap.killTweensOf(currentControls.target);
+
       const targetPos = new THREE.Vector3();
       panelNode.getWorldPosition(targetPos);
 
@@ -993,6 +1003,19 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
     };
 
     const handlePointerDown = (event: PointerEvent) => {
+        // Retest #17 (2026-11-24): a click on a HUD button (Focus NVK,
+        // zoom, Reset) ALSO fired this window-level handler, because
+        // React's stopPropagation on the button's `click` does not stop
+        // the native pointerdown/pointerup, and pointerup fires BEFORE
+        // click. The tap raycast from the button's screen position
+        // (bottom-right corner) hit a panel node and started
+        // focusOnPanelNode's 1.2s camera tween; Focus NVK's 1.0s tween
+        // then ran without killing it, and the tap tween ran unopposed
+        // for its last 0.2s, dragging the camera back to the panel node
+        // — the orb ended far right of centre. A press that starts on a
+        // DOM control is a UI press, not a 3D tap: only the WebGL canvas
+        // itself may start a tap / click wave.
+        if (event.target !== renderer.domElement) return;
         touchStartX = event.clientX;
         touchStartY = event.clientY;
         touchStartTime = Date.now();
@@ -1001,6 +1024,9 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
     };
 
     const handlePointerUp = (event: PointerEvent) => {
+        // Retest #17: same canvas-only gate as handlePointerDown — a
+        // pointerup on a HUD button must not raycast a 3D tap.
+        if (event.target !== renderer.domElement) return;
         const dx = Math.abs(event.clientX - touchStartX);
         const dy = Math.abs(event.clientY - touchStartY);
         const dt = Date.now() - touchStartTime;
@@ -1010,6 +1036,9 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
     };
 
     const handleTouchStart = (event: TouchEvent) => {
+        // Retest #17: canvas-only gate, same as the pointer handlers —
+        // a touch that starts on a DOM control is a UI touch, not a 3D tap.
+        if (event.target !== renderer.domElement) return;
         if (event.touches.length > 0) {
             const touch = event.touches[0];
             touchStartX = touch.clientX;
@@ -1028,6 +1057,9 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
 
     const handleTouchEnd = (event: TouchEvent) => {
         mouseActive = false;
+        // Retest #17: canvas-only gate, same as the pointer handlers —
+        // a touch that ends on a DOM control must not raycast a 3D tap.
+        if (event.target !== renderer.domElement) return;
         if (event.changedTouches.length > 0) {
             const touch = event.changedTouches[0];
             const dx = Math.abs(touch.clientX - touchStartX);
@@ -3224,6 +3256,11 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
     if (recenterTrigger > 0 && controlsRef.current && cameraRef.current) {
         focusedNodeIdRef.current = null;
         setFollowedNodeId(null);
+        // Retest #17 (2026-11-24): same ownership rule as Focus NVK —
+        // kill any in-flight camera tween first.
+        gsap.killTweensOf(cameraRef.current.position);
+        gsap.killTweensOf(controlsRef.current.target);
+        isTransitioningRef.current = true;
         gsap.to(cameraRef.current.position, {
             x: 0,
             y: 0,
@@ -3237,7 +3274,8 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
             z: 0,
             duration: 1.5,
             ease: "expo.inOut",
-            onUpdate: () => controlsRef.current?.update()
+            onUpdate: () => controlsRef.current?.update(),
+            onComplete: () => { isTransitioningRef.current = false; }
         });
     }
   }, [recenterTrigger]);
@@ -3331,8 +3369,19 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
               focusedNodeIdRef.current = null;
               setFollowedNodeId(null);
               if (focusedId) onClosePanel(focusedId);
+              // Retest #17 (2026-11-24): kill any in-flight camera tween
+              // before starting this one. A stray tap tween (see the
+              // canvas-only gate on the window tap handlers) used to
+              // outlive this 1.0s tween and drag the camera back to a
+              // panel node, leaving the orb far right of centre. Focus
+              // NVK now owns the camera for the full tween, like
+              // focusOnPanelNode does (isTransitioningRef, cleared on
+              // completion, so a user drag still takes over mid-tween).
+              gsap.killTweensOf(cameraRef.current.position);
+              gsap.killTweensOf(controlsRef.current.target);
+              isTransitioningRef.current = true;
               gsap.to(cameraRef.current.position, { x: 0, y: 0, z: 14, duration: 1, ease: 'power2.inOut' });
-              gsap.to(controlsRef.current.target, { x: 0, y: 0, z: 0, duration: 1, ease: 'power2.inOut', onUpdate: () => controlsRef.current?.update() });
+              gsap.to(controlsRef.current.target, { x: 0, y: 0, z: 0, duration: 1, ease: 'power2.inOut', onUpdate: () => controlsRef.current?.update(), onComplete: () => { isTransitioningRef.current = false; } });
               // N7: camera only — Focus must never start the microphone.
             }
           }}
@@ -3348,8 +3397,15 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
             if (cameraRef.current && controlsRef.current) {
               focusedNodeIdRef.current = null;
               setFollowedNodeId(null);
+              // Retest #17 (2026-11-24): same ownership rule as Focus
+              // NVK — kill any in-flight camera tween first, so a stray
+              // or superseded tween cannot outlive this one and drag the
+              // camera back to a panel node.
+              gsap.killTweensOf(cameraRef.current.position);
+              gsap.killTweensOf(controlsRef.current.target);
+              isTransitioningRef.current = true;
               gsap.to(cameraRef.current.position, { x: 0, y: 0, z: 25, duration: 1, ease: 'power2.inOut' });
-              gsap.to(controlsRef.current.target, { x: 0, y: 0, z: 0, duration: 1, ease: 'power2.inOut', onUpdate: () => controlsRef.current?.update() });
+              gsap.to(controlsRef.current.target, { x: 0, y: 0, z: 0, duration: 1, ease: 'power2.inOut', onUpdate: () => controlsRef.current?.update(), onComplete: () => { isTransitioningRef.current = false; } });
             }
           }}
           className="w-10 h-10 rounded-xl bg-slate-950/85 border border-cyan-500/30 hover:border-cyan-400 text-cyan-400 flex items-center justify-center backdrop-blur-md transition-all shadow-[0_0_15px_rgba(0,255,255,0.2)] active:scale-95"
