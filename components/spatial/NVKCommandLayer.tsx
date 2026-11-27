@@ -24,6 +24,9 @@ import { ShardRenderer } from '../ui/ShardRenderer';
 import { useIsMobile } from '../../lib/useIsMobile';
 import { dispatchPanelCommand } from '../../services/OsPanelCommandDispatcher';
 import { resolveTerminalOrbState } from '../../lib/orbStateMapping';
+import { answerCatalogQuestion } from '../../lib/catalogLookup';
+import { NVK_PRODUCT_FACTS } from '../../lib/nvkProductFacts';
+import { liveEventText, runtimeEventText } from '../../services/liveFeedFormat';
 import { tryAnswerMath, isSearchQuestion, answerSearchQuestion, needsNoModelReply, NO_MODEL_REPLY, GATEWAY_OFFLINE_REPLY } from '../../services/osNoModelAnswers';
 import { intentEngine } from '../../src/nvk/intent/IntentEngine';
 
@@ -118,23 +121,36 @@ export const NVKCommandLayer: React.FC<NVKCommandLayerProps> = ({
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   
   useEffect(() => {
+    // Fix round (2026-11-27): the feed subscribes to BOTH buses. The
+    // services/EventBus subscription was already here — but nothing ever
+    // published to that bus, so the feed was dead. The chat paths now
+    // publish to it (see handleSendCommand / askBrain / executeAndRender).
+    // The runtime's nvkEventBus is the bus IntentEngine, Planner, and
+    // CapabilityRegistry already publish to (intent.detected,
+    // plan.created, artifact.created) — the feed never listened to it
+    // until now. Both subscriptions use the same imported singletons the
+    // publishers use, so an event published anywhere in this app reaches
+    // the feed.
     const formatEvent = (e: NVKEvent) => {
       const time = new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute:'2-digit', second:'2-digit' });
-      switch(e.type) {
-        case 'ACTION_STARTED': return { time, text: `Processing: ${e.description}` };
-        case 'APP_SPAWNED': return { time, text: `Launched ${e.appId}` };
-        case 'TASK_STARTED': return { time, text: `Task initiated: ${e.taskId}` };
-        case 'TASK_COMPLETED': return { time, text: `Verification complete: ${e.taskId}` };
-        case 'TASK_FAILED': return { time, text: `Task failed: ${e.error}` };
-        default: return { time, text: e.type };
-      }
+      return { time, text: liveEventText(e) };
+    };
+    const pushRuntime = (text: string) => {
+      const time = new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute:'2-digit', second:'2-digit' });
+      // Cap the feed: the console shows the last few, storage never grows
+      // unbounded on a long session.
+      setLiveEvents(prev => [...prev.slice(-49), { time, text }]);
     };
     const unsub = eventBus.subscribe((e) => {
       // Cap the feed: the console shows the last few, storage never grows
       // unbounded on a long session.
       setLiveEvents(prev => [...prev.slice(-49), formatEvent(e)]);
     });
-    return () => unsub();
+    const unsubRuntime = nvkEventBus.subscribe((e) => {
+      const text = runtimeEventText(e);
+      if (text !== null) pushRuntime(text);
+    });
+    return () => { unsub(); unsubRuntime(); };
   }, []);
   const speechRecognitionRef = useRef<any>(null);
 
@@ -307,6 +323,11 @@ export const NVKCommandLayer: React.FC<NVKCommandLayerProps> = ({
         actionSummary: processed.interpretedAction.label
       }]);
 
+      // Fix round (2026-11-27): a completed run is a real feed event.
+      eventBus.publish(processed.interpretedAction.status === 'failed'
+        ? { type: 'ACTION_FAILED', actionId: processed.interpretedAction.label.slice(0, 80), error: responseText.slice(0, 120) }
+        : { type: 'ACTION_COMPLETED', actionId: processed.interpretedAction.label.slice(0, 80) });
+
       // Slice 3 (A3 fix): the orb shows the REAL terminal state of the
       // run — COMPLETE on success, ERROR on failure. The old code set
       // CALM here unconditionally, which overwrote the runtime's ERROR
@@ -319,6 +340,7 @@ export const NVKCommandLayer: React.FC<NVKCommandLayerProps> = ({
     } catch (err: any) {
       // Slice 3 (A3 fix): an exception in the run itself is a failure,
       // not a calm — the orb shows ERROR until the next command.
+      eventBus.publish({ type: 'ACTION_FAILED', actionId: 'Command execution', error: err.message || String(err) });
       onSetOrbState('ERROR');
       setHistory(prev => [...prev, { 
         role: 'nvk', 
@@ -338,13 +360,28 @@ export const NVKCommandLayer: React.FC<NVKCommandLayerProps> = ({
     const gatewayHistory = history
       .filter((m) => m.text && m.text.trim())
       .map((m) => ({ role: (m.role === 'user' ? 'user' : 'assistant') as 'user' | 'assistant', content: m.text }));
-    return generateText(
+    // Fix round (2026-11-27): product facts reach EVERY engine — the
+    // gateway call carried none, so product questions got "I don't have
+    // verified details". The deterministic lookup (handleSendCommand)
+    // answers catalog questions with no model call at all; the facts
+    // block covers everything the lookup does not.
+    // The brain's work is also a real feed event: question asked →
+    // answer delivered, with timestamps (Defect 2).
+    const short = prompt.length > 60 ? `${prompt.slice(0, 57)}…` : prompt;
+    eventBus.publish({ type: 'ACTION_STARTED', actionId: 'chat', description: `Answering: "${short}"` });
+    const text = await generateText(
       prompt,
-      'You are NVK, the central intelligence of the NVK OS. Answer helpfully and concisely.',
+      `You are NVK, the central intelligence of the NVK OS. Answer helpfully and concisely.\n\n${NVK_PRODUCT_FACTS}`,
       0.7,
       500,
       gatewayHistory,
     );
+    if (text) {
+      eventBus.publish({ type: 'ACTION_COMPLETED', actionId: 'Answered question' });
+    } else {
+      eventBus.publish({ type: 'ACTION_FAILED', actionId: 'Answering question', error: 'no answer — gateway offline or no model loaded' });
+    }
+    return text;
   }, [generateText, history]);
 
   const handleSendCommand = useCallback(async (textToSend?: string) => {
@@ -379,7 +416,24 @@ export const NVKCommandLayer: React.FC<NVKCommandLayerProps> = ({
       }]);
       // A panel command is a real action with a real outcome: success
       // shows COMPLETE, a refused command shows ERROR (never CALM).
+      // It is also a real feed event (Defect 2).
+      eventBus.publish(panelResult.ok
+        ? { type: 'ACTION_COMPLETED', actionId: 'Panel command done' }
+        : { type: 'ACTION_FAILED', actionId: 'Panel command', error: panelResult.reason ?? 'That panel command could not run.' });
       onSetOrbState(panelResult.ok ? 'COMPLETE' : 'ERROR');
+      return;
+    }
+
+    // Fix round (2026-11-27): deterministic catalog lookup — ported
+    // from CODEXA (option D). A product price/identity question is
+    // answered from the catalog with NO model call, so it cannot
+    // hallucinate a price. Runs right after panel commands, before
+    // search/math/brain — same precedence as CODEXA.
+    const catalog = answerCatalogQuestion(prompt);
+    if (catalog.handled) {
+      setHistory(prev => [...prev, { role: 'nvk', text: catalog.reply ?? 'Done.' }]);
+      eventBus.publish({ type: 'ACTION_COMPLETED', actionId: 'Answered product question' });
+      onSetOrbState('COMPLETE');
       return;
     }
 
@@ -390,12 +444,16 @@ export const NVKCommandLayer: React.FC<NVKCommandLayerProps> = ({
     if (isSearchQuestion(prompt)) {
       const search = await answerSearchQuestion(prompt);
       setHistory(prev => [...prev, { role: 'nvk', text: search.reply }]);
+      eventBus.publish(search.results > 0
+        ? { type: 'ACTION_COMPLETED', actionId: 'Answered web search' }
+        : { type: 'ACTION_FAILED', actionId: 'Web search', error: 'no results' });
       onSetOrbState(search.results > 0 ? 'COMPLETE' : 'ERROR');
       return;
     }
     const mathReply = tryAnswerMath(prompt);
     if (mathReply !== null) {
       setHistory(prev => [...prev, { role: 'nvk', text: mathReply }]);
+      eventBus.publish({ type: 'ACTION_COMPLETED', actionId: 'Calculated answer' });
       onSetOrbState('COMPLETE');
       return;
     }
@@ -581,6 +639,8 @@ export const NVKCommandLayer: React.FC<NVKCommandLayerProps> = ({
     }
     // Slice 3: a cancelled confirmation returns to idle — the user
     // aborted, nothing failed, and the orb is not calm, it is idle.
+    // The abort itself is a real feed event (Defect 2).
+    eventBus.publish({ type: 'ACTION_COMPLETED', actionId: 'Operation aborted by user' });
     onSetOrbState('IDLE');
   }, [pendingConfirmation, onSetOrbState]);
 
@@ -796,26 +856,30 @@ export const NVKCommandLayer: React.FC<NVKCommandLayerProps> = ({
                   </div>
                 )}
 
-                {/* Live event feed — the orb's work, visible. liveEvents
-                    was collected from the event bus but never rendered, so
-                    the console showed nothing between commands. The last
-                    four real bus events (actions, spawns, task starts and
-                    finishes) render here with timestamps; nothing is
-                    invented, and the feed is empty — not placeholder —
-                    when nothing has run yet. */}
-                {liveEvents.length > 0 && (
-                  <div className="p-2 bg-slate-950/60 border border-slate-800 rounded-xl space-y-1 my-1">
-                    <div className="text-[9px] uppercase tracking-widest text-slate-500 font-bold mb-1 flex items-center gap-1.5">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> Live — what NVK just did
-                    </div>
-                    {liveEvents.slice(-4).map((ev, i) => (
+                {/* Live event feed — the orb's work, visible. Fix round
+                    (2026-11-27): the feed is ALWAYS visible on the
+                    default view. Before, it rendered only inside
+                    `{liveEvents.length > 0 && (...)}` — when empty it
+                    rendered NOTHING, no container, no empty state, so
+                    the live check found no feed at all. The empty state
+                    is honest ("Nothing yet — ask NVK something"), never
+                    a fake event. Real events arrive from both buses
+                    (see the subscription above). */}
+                <div className="p-2 bg-slate-950/60 border border-slate-800 rounded-xl space-y-1 my-1">
+                  <div className="text-[9px] uppercase tracking-widest text-slate-500 font-bold mb-1 flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> Live — what NVK just did
+                  </div>
+                  {liveEvents.length === 0 ? (
+                    <div className="text-[10px] text-slate-500">Nothing yet — ask NVK something.</div>
+                  ) : (
+                    liveEvents.slice(-4).map((ev, i) => (
                       <div key={`${ev.time}-${i}`} className="flex items-baseline gap-2 text-[10px] text-slate-400">
                         <span className="text-slate-600 font-mono shrink-0">{ev.time}</span>
                         <span className="truncate">{ev.text}</span>
                       </div>
-                    ))}
-                  </div>
-                )}
+                    ))
+                  )}
+                </div>
               </div>
 
               {/* Consequential Action / Permission Modal Card */}

@@ -138,12 +138,12 @@ export const BootSequence: React.FC<BootSequenceProps> = ({ onComplete }) => {
         <div className="mb-6 text-center">
           <p className="text-sm md:text-base text-cyan-200 leading-relaxed">
             This is <span className="font-bold text-cyan-300">NVK</span> — your agent, inside the orb.
-            It runs locally, shows its work in 3D, and records what it does.
+            It runs in your browser, shows its work in 3D, and records what it does.
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-4 text-left">
             <div className="border border-cyan-500/30 rounded-lg p-3">
-              <div className="text-[11px] font-bold text-cyan-300 uppercase tracking-wider">Local inference</div>
-              <div className="text-[11px] text-slate-400 mt-1 leading-relaxed">A real model runs in your browser. No account, no per-call meter.</div>
+              <div className="text-[11px] font-bold text-cyan-300 uppercase tracking-wider">Instant answers</div>
+              <div className="text-[11px] text-slate-400 mt-1 leading-relaxed">The Free Cloud Gateway answers instantly — no download, no account. A local model is optional.</div>
             </div>
             <div className="border border-cyan-500/30 rounded-lg p-3">
               <div className="text-[11px] font-bold text-cyan-300 uppercase tracking-wider">Evidence ledger</div>

@@ -30,7 +30,7 @@ const TUTORIAL_STEPS: TutorialStep[] = [
   },
   {
     title: "3. Ask NVK anything — right now",
-    content: "No download needed to start: the Free Cloud Gateway answers instantly. Tap the composer and ask. Load a local model later from the Model Orchestrator in the Dock if you want on-device thinking.",
+    content: "No download needed to start: the Free Cloud Gateway answers instantly. Tap the composer and ask. Load a local model later from NVK Logic Core in the Dock if you want on-device thinking.",
     target: ".dock-container",
     icon: "ri-brain-line"
   }
