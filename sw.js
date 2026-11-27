@@ -1,9 +1,9 @@
 // NVK 3D OS — Sovereign Service Worker (Offline First Shell)
-const CACHE_NAME = 'nvk-sovereign-v2.1';
+const CACHE_NAME = 'nvk-sovereign-v2.2';
 const SHELL_ASSETS = [
-  '/',
-  '/index.html',
-  '/manifest.json'
+  '/NVK-AI-OS/',
+  '/NVK-AI-OS/index.html',
+  '/NVK-AI-OS/manifest.json'
 ];
 
 self.addEventListener('install', (event) => {
@@ -36,7 +36,7 @@ self.addEventListener('fetch', (event) => {
   if (event.request.mode === 'navigate') {
     event.respondWith(
       fetch(event.request).catch(() => {
-        return caches.match('/index.html') || caches.match('/');
+        return caches.match('/NVK-AI-OS/index.html') || caches.match('/NVK-AI-OS/');
       })
     );
     return;

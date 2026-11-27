@@ -135,7 +135,7 @@
   <script>
     if ('serviceWorker' in navigator && window.location.protocol.startsWith('http')) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js').catch((err) => {
+        navigator.serviceWorker.register('/NVK-AI-OS/sw.js').catch((err) => {
           console.debug('[NVK SW] Registration deferred or offline:', err);
         });
       });
