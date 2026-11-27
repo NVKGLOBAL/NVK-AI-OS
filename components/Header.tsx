@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { CodexModeId } from '../types';
 import type { HeaderProps } from '../types';
 import { version as PACKAGE_VERSION } from '../package.json';
@@ -123,11 +124,20 @@ export const Header: React.FC<HeaderProps> = ({
         </button>
       </div>
 
-      {/* Mobile menu sheet — search, mode pill and the four menus. */}
-      {isMobile && isMobileMenuOpen && (
+      {/* Mobile menu sheet — search, mode pill and the four menus.
+          Round-2 phone fix (2026-11-27): this sheet is `fixed`, but it
+          lives inside <header>, which has backdrop-blur-md — and a
+          backdrop-filter makes the header the containing block for fixed
+          descendants. The sheet anchored to the header (top of screen)
+          instead of the viewport, so only a ~130px strip of it was ever
+          visible. It is portaled to document.body so `fixed` means the
+          viewport again; z-1300 at root level keeps it above the console
+          sheet (z-1095). Cap 72dvh keeps its Close button below the
+          floating Apps button (top 108–152px). */}
+      {isMobile && isMobileMenuOpen && createPortal(
         <>
           <div className="fixed inset-0 bg-black/60 z-[1290]" onClick={closeMobileMenu} aria-hidden="true" />
-          <div className="fixed inset-x-0 bottom-0 z-[1300] max-h-[82dvh] bg-slate-950 border-t border-cyan-500/40 rounded-t-2xl flex flex-col overflow-hidden">
+          <div className="fixed inset-x-0 bottom-0 z-[1300] max-h-[72dvh] bg-slate-950 border-t border-cyan-500/40 rounded-t-2xl flex flex-col overflow-hidden">
             <div className="flex items-center justify-center pt-2 pb-1 shrink-0" aria-hidden="true">
               <div className="w-10 h-1 rounded-full bg-slate-600" />
             </div>
@@ -267,7 +277,8 @@ export const Header: React.FC<HeaderProps> = ({
               </div>
             </div>
           </div>
-        </>
+        </>,
+        document.body,
       )}
 
       <div className="w-full hidden md:flex items-center justify-between gap-3 flex-nowrap">

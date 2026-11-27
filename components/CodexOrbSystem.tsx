@@ -3514,8 +3514,13 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
       {/* Phone fix (2026-11-27): bottom-right put the HUD behind the
           expanded NVK panel on phones (z-1095 sheet covers it) — on
           phones it sits top-left of the stage instead, clear of the
-          panel and of the Lattice capsule (top-right). Desktop unchanged. */}
-      <div className={`absolute z-[500] flex flex-col gap-2 select-none pointer-events-auto ${IS_MOBILE ? 'left-3 top-16' : 'bottom-24 right-4'}`}>
+          panel and of the Lattice capsule (top-right). Desktop unchanged.
+          Round-2 phone fix (2026-11-27): top-left alone was not enough —
+          the HUD is z-500 inside the stage while the console sheet is
+          fixed z-1095, so the sheet still painted over it and ate its
+          taps. On phones the HUD is z-1100: above the console, below
+          the header (1200). Desktop keeps z-500. */}
+      <div className={`absolute flex flex-col gap-2 select-none pointer-events-auto ${IS_MOBILE ? 'z-[1100] left-3 top-16' : 'z-[500] bottom-24 right-4'}`}>
         <button
           onClick={(e) => {
             e.stopPropagation();

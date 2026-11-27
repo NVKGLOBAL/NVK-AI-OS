@@ -221,8 +221,16 @@ export const NVKCommandLayer: React.FC<NVKCommandLayerProps> = ({
   // in the hidden history. When a new NVK reply lands while minimized,
   // expand so the answer is visible. Re-minimizing is respected until
   // the next reply.
+  // Round-2 phone fix (2026-11-27): the old check fired on mount — the
+  // seed greeting IS an nvk message — so the console auto-expanded on
+  // fresh load and covered the orb; and it re-expanded on every collapse
+  // (Focus NVK, the "−" button) because history[last] stayed 'nvk'.
+  // Only a NEW nvk message — history growing after mount — expands.
+  const historyLenRef = useRef(history.length);
   useEffect(() => {
-    if (isMinimized && history.length > 0 && history[history.length - 1].role === 'nvk') {
+    const grew = history.length > historyLenRef.current;
+    historyLenRef.current = history.length;
+    if (grew && isMinimized && history.length > 0 && history[history.length - 1].role === 'nvk') {
       setIsMinimized(false);
     }
   }, [history, isMinimized]);
@@ -717,11 +725,17 @@ export const NVKCommandLayer: React.FC<NVKCommandLayerProps> = ({
           </div>
         </div>
       )}
+      {/* Round-2 phone fix (2026-11-27): the expanded sheet was capped
+          at 82dvh, so on a phone its header rose to ~18dvh from the top —
+          exactly where the floating Apps button sits (top 108–152px) —
+          and the "−" Collapse button ended up underneath it. 72dvh keeps
+          the header below the Apps button on phone viewports (top edge
+          ≥ 28dvh) while the sheet still scrolls internally. */}
       <motion.div 
         initial={{ opacity: 0, y: -20, scale: 0.96 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         transition={{ duration: 0.3, ease: 'easeOut' }}
-        className={`pointer-events-auto bg-slate-950/92 backdrop-blur-2xl border border-cyan-500/40 rounded-2xl p-3.5 shadow-[0_0_50px_rgba(0,229,255,0.25)] flex flex-col gap-2.5 relative ${isMobile && !isMinimized ? 'max-h-[82dvh] overflow-y-auto' : 'overflow-hidden'}`}
+        className={`pointer-events-auto bg-slate-950/92 backdrop-blur-2xl border border-cyan-500/40 rounded-2xl p-3.5 shadow-[0_0_50px_rgba(0,229,255,0.25)] flex flex-col gap-2.5 relative ${isMobile && !isMinimized ? 'max-h-[72dvh] overflow-y-auto' : 'overflow-hidden'}`}
       >
         {/* Subtle Cyber Glow Line */}
         <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-cyan-400 to-transparent opacity-80" />

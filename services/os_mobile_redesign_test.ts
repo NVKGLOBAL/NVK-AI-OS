@@ -196,7 +196,16 @@ async function main(): Promise<void> {
   );
   check(
     'Header menu sheet is a bottom sheet',
-    header.includes('max-h-[82dvh]') && header.includes('fixed inset-x-0 bottom-0 z-[1300]'),
+    header.includes('max-h-[72dvh]') && header.includes('fixed inset-x-0 bottom-0 z-[1300]'),
+  );
+  // Round-2 phone fix (2026-11-27): the sheet is `fixed` but lived
+  // inside <header> (backdrop-blur-md), which made the header the
+  // containing block for fixed descendants — the sheet anchored to the
+  // header instead of the viewport and only a ~130px strip showed.
+  // It is portaled to document.body so `fixed` means the viewport.
+  check(
+    'Header menu sheet is portaled to document.body (viewport-fixed)',
+    header.includes('createPortal(') && header.includes('document.body'),
   );
   const dock = read('components/Dock.tsx');
   check(
@@ -222,7 +231,7 @@ async function main(): Promise<void> {
   );
   check(
     'Composer expanded view is a sheet on mobile',
-    layer.includes("max-h-[82dvh] overflow-y-auto") && layer.includes('max-h-[46dvh]'),
+    layer.includes("max-h-[72dvh] overflow-y-auto") && layer.includes('max-h-[46dvh]'),
   );
   check(
     'Composer collapsed bar has an expand chevron',
@@ -302,6 +311,38 @@ async function main(): Promise<void> {
     'no source file imports any of the 5 deleted files',
     !/(spatial\/HUD|spatial\/Orbit|ui\/FlightController|ui\/OmniWheel|nvkActionEngine)['"]/.test(importScan)
       && !/from ['"][^'"]*nvkActionEngine/.test(importScan),
+  );
+
+  // --- 12. Round-2 phone fixes (2026-11-27 retest 13:06–13:13 PT):
+  // fresh load must show the orb, Focus must collapse, the HUD must be
+  // tappable, the Apps button must not cover the collapse button, and
+  // the menu must scroll above the console. ---
+  // (a) Ret12 auto-expand fires ONLY on a NEW nvk message (history
+  // growth) — the old bare check expanded on mount (the seed greeting
+  // IS nvk) and re-expanded on every collapse.
+  check(
+    'Ret12 auto-expand is gated on history growth, not on the last message alone',
+    layer.includes('historyLenRef') && layer.includes('history.length > historyLenRef.current'),
+  );
+  check(
+    'Ret12 bare mount-expanding check is gone',
+    !layer.includes("if (isMinimized && history.length > 0 && history[history.length - 1].role === 'nvk')"),
+  );
+  // (b) The expanded sheet is capped at 72dvh so its header (with the
+  // "−" button) stays below the floating Apps button (top 108–152px).
+  check(
+    'Composer expanded sheet cap is 72dvh (header below the Apps button)',
+    layer.includes("max-h-[72dvh] overflow-y-auto"),
+  );
+  // (c) The 3D HUD sits above the console sheet on phones (z-1100 >
+  // console z-1095) and keeps z-500 on desktop.
+  check(
+    'HUD is above the console on mobile (z-1100, top-left)',
+    orb.includes("z-[1100] left-3 top-16"),
+  );
+  check(
+    'HUD keeps z-500 bottom-right on desktop',
+    orb.includes("z-[500] bottom-24 right-4"),
   );
 
   console.log(failures === 0 ? 'All mobile-first redesign checks passed.' : `${failures} check(s) failed.`);
