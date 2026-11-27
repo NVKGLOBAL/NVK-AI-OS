@@ -203,11 +203,17 @@ export const Workspace2D: React.FC<Workspace2DProps> = ({
     };
   };
 
+  // Round-3 (2026-11-27): in Desk (grid/2d) mode on desktop the console
+  // docks as a bar at bottom 124px (56px tall) above the dock. The grid
+  // clears it with 188px of bottom padding (124 + 56 + 8 clearance) so
+  // no tile — in particular the first tile's heading — sits under it.
+  // Mobile is untouched (the console is a bottom sheet there, and the
+  // Desk grid is not the phone layout).
   return (
     <div 
       className={`absolute inset-0 bg-slate-950 overflow-hidden flex flex-col select-none z-10 transition-colors duration-300 ${
         config.compactMode ? 'text-[11px]' : 'text-xs'
-      }`}
+      } ${(workspaceMode === 'grid' || workspaceMode === '2d') && !isMobile ? 'pb-[188px]' : ''}`}
     >
       {/* Dynamic Customizable Wallpaper Overlay Backing */}
       <div className="absolute inset-0 pointer-events-none z-0 opacity-[0.09] transition-all duration-500">

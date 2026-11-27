@@ -40,6 +40,10 @@ interface NVKCommandLayerProps {
   activeWorkflow?: NVKWorkflow | null;
   activitySteps?: NVKActivityStep[];
   currentStatusText?: string;
+  /** Round-3 (2026-11-27): the effective workspace mode — in Desk
+      (grid/2d) mode on desktop the console docks at the bottom instead
+      of floating top-left over the grid's first tile. */
+  workspaceMode?: string;
 }
 
 const SUGGESTED_COMMANDS = [
@@ -69,7 +73,8 @@ export const NVKCommandLayer: React.FC<NVKCommandLayerProps> = ({
   onToggleVoice,
   activeWorkflow,
   activitySteps = [],
-  currentStatusText = 'Ready for instruction'
+  currentStatusText = 'Ready for instruction',
+  workspaceMode = 'immersive'
 }) => {
   const { isModelLoaded, loadModel, loadStatus, generateText, isCloudMode, freeCloudEnabled } = useLocalLLM();
   // S5 (2026-11-22): shared mobile breakpoint. On mobile the layer docks
@@ -157,7 +162,8 @@ export const NVKCommandLayer: React.FC<NVKCommandLayerProps> = ({
 
   const handlePointerDown = (e: React.PointerEvent) => {
     // S5: no floating position to drag on mobile — the layer is docked.
-    if (isMobile) return;
+    // Round-3: Desk mode docks it too.
+    if (isMobile || isDeskMode) return;
     // Only allow drag from header/handle
     isDraggingRef.current = true;
     dragStartRef.current = {
@@ -246,6 +252,26 @@ export const NVKCommandLayer: React.FC<NVKCommandLayerProps> = ({
     window.addEventListener('nvk-collapse-console', collapse);
     return () => window.removeEventListener('nvk-collapse-console', collapse);
   }, [isMobile]);
+
+  // Round-3 (2026-11-27): in Desk (grid/2d) mode on desktop the console
+  // docks at the bottom instead of floating top-left over the grid's
+  // first tile (it covered the System Monitor panel's heading). Docked
+  // means minimized by default — the bar, not the sheet — and not
+  // draggable; the persisted floating position is kept for the 3D modes.
+  const isDeskMode = !isMobile && (workspaceMode === 'grid' || workspaceMode === '2d');
+  useEffect(() => {
+    if (isDeskMode) setIsMinimized(true);
+  }, [isDeskMode]);
+
+  // Round-3 (2026-11-27): broadcast the expanded state so the 3D HUD
+  // can hide while the console is expanded on phones (same window-event
+  // pattern as 'nvk-collapse-console'). The window property covers
+  // mount order — the orb stage reads it for its initial state.
+  useEffect(() => {
+    const expanded = isMobile && !isMinimized;
+    (window as any).__nvkConsoleExpanded = expanded;
+    window.dispatchEvent(new CustomEvent('nvk-console-state', { detail: { expanded } }));
+  }, [isMobile, isMinimized]);
 
   // Handle Speech Recognition for voice commands
   useEffect(() => {
@@ -707,8 +733,8 @@ export const NVKCommandLayer: React.FC<NVKCommandLayerProps> = ({
       // panel was closed. The console is now z-1095 — above a focused
       // panel (1090) so chat stays clickable, still below the dock
       // (1100) so the dock buttons keep priority.
-      className={`fixed z-[1095] font-mono pointer-events-none transition-shadow ${isMobile ? 'left-2 right-2' : 'w-[92vw] sm:w-[480px] max-w-[94vw]'}`}
-      style={isMobile ? { bottom: 'calc(8px + env(safe-area-inset-bottom, 0px))' } : {
+      className={`fixed z-[1095] font-mono pointer-events-none transition-shadow ${isMobile ? 'left-2 right-2' : isDeskMode ? 'left-1/2 -translate-x-1/2 w-[480px] max-w-[94vw]' : 'w-[92vw] sm:w-[480px] max-w-[94vw]'}`}
+      style={isMobile ? { bottom: 'calc(8px + env(safe-area-inset-bottom, 0px))' } : isDeskMode ? { bottom: '124px' } : {
         left: `${position.x}px`,
         top: `${position.y}px`
       }}
@@ -735,7 +761,7 @@ export const NVKCommandLayer: React.FC<NVKCommandLayerProps> = ({
         initial={{ opacity: 0, y: -20, scale: 0.96 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         transition={{ duration: 0.3, ease: 'easeOut' }}
-        className={`pointer-events-auto bg-slate-950/92 backdrop-blur-2xl border border-cyan-500/40 rounded-2xl p-3.5 shadow-[0_0_50px_rgba(0,229,255,0.25)] flex flex-col gap-2.5 relative ${isMobile && !isMinimized ? 'max-h-[72dvh] overflow-y-auto' : 'overflow-hidden'}`}
+        className={`pointer-events-auto ${isMobile && !isMinimized ? 'bg-slate-950' : 'bg-slate-950/92'} backdrop-blur-2xl border border-cyan-500/40 rounded-2xl p-3.5 shadow-[0_0_50px_rgba(0,229,255,0.25)] flex flex-col gap-2.5 relative ${(isMobile || isDeskMode) && !isMinimized ? 'max-h-[72dvh] overflow-y-auto' : 'overflow-hidden'}`}
       >
         {/* Subtle Cyber Glow Line */}
         <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-cyan-400 to-transparent opacity-80" />
@@ -748,7 +774,7 @@ export const NVKCommandLayer: React.FC<NVKCommandLayerProps> = ({
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
-          className={`flex items-center justify-between select-none pb-1 border-b border-cyan-500/20 ${isMobile ? 'cursor-default' : 'cursor-move active:cursor-grabbing'}`}
+          className={`flex items-center justify-between select-none pb-1 border-b border-cyan-500/20 ${isMobile || isDeskMode ? 'cursor-default' : 'cursor-move active:cursor-grabbing'}`}
         >
           <div className="flex items-center gap-2">
             {!isMobile && <GripHorizontal className="w-3.5 h-3.5 text-cyan-400/70 hover:text-cyan-300" />}
@@ -765,6 +791,9 @@ export const NVKCommandLayer: React.FC<NVKCommandLayerProps> = ({
               <span>{badge.label}</span>
             </div>
             
+            {/* Round-3: no Reset Position while docked in Desk mode —
+                the floating position is meaningless there. */}
+            {!isDeskMode && (
             <button 
               onClick={handleResetPosition}
               className="w-8 h-8 rounded bg-slate-900 border border-slate-700 hover:border-cyan-500/40 text-slate-400 hover:text-cyan-300 flex items-center justify-center text-[10px] transition-all"
@@ -772,6 +801,7 @@ export const NVKCommandLayer: React.FC<NVKCommandLayerProps> = ({
             >
               <RotateCcw className="w-2.5 h-2.5" />
             </button>
+            )}
 
             <button 
               onClick={() => setIsMinimized(v => !v)}
@@ -1051,7 +1081,7 @@ export const NVKCommandLayer: React.FC<NVKCommandLayerProps> = ({
             type="text"
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
-            placeholder="Ask NVK anything... (e.g. 'Research commercial solar in Texas', 'Create pitch deck')"
+            placeholder={isMobile && isMinimized ? 'Ask NVK anything…' : "Ask NVK anything... (e.g. 'Research commercial solar in Texas', 'Create pitch deck')"}
             className="min-w-0 flex-1 bg-transparent px-3 py-1.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none font-mono"
           />
 

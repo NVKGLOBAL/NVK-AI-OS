@@ -270,13 +270,17 @@ async function main(): Promise<void> {
   // 9 sample points, black only when 7+ are black, two consecutive
   // black samples to act. The old one-shot 8x8 centre sample let a
   // drifting strand (or late blackness) lock in "not black" forever.
+  // Round-3 (2026-11-27): the probe reads with gl.readPixels (the old
+  // drawImage readback returned black on iOS WKWebView while the scene
+  // rendered), the decision lives in lib/orbWatchdog with a 5s warm-up,
+  // and the fallback carries a diagnosable reason.
   check(
     'Orb has the silent-black watchdog (9-point sampling, consecutive confirmation)',
-    orb.includes('isCanvasBlack') && orb.includes('blackSamples >= 7') && orb.includes('blackProbeStreakRef'),
+    orb.includes('probeCanvasBlack') && orb.includes('blackSamples >= 7') && orb.includes('blackProbeStreakRef'),
   );
   check(
     'Orb drops the bloom composer when the canvas is black with it active',
-    orb.includes('blackComposerDroppedRef.current = true') && orb.includes('Canvas is black with the bloom composer active'),
+    orb.includes("action === 'drop-composer'") && orb.includes('Canvas is black with the bloom composer active'),
   );
   check(
     'Orb surfaces the fallback when still black without the composer',

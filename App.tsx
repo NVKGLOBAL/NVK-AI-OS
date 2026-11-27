@@ -2613,6 +2613,7 @@ const mockShatterpointData = {
           onToggleVoice={isVoiceActive ? (() => setIsVoiceActive(false)) : (() => setIsVoiceActive(true))}
           activeWorkflow={activeNVKWorkflow}
           activitySteps={nvkActivitySteps}
+          workspaceMode={effectiveWorkspaceMode}
         />
 
         {/* Clean Dock at the bottom */}

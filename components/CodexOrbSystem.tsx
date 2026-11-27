@@ -10,11 +10,18 @@ import { CSS3DRenderer, CSS3DObject } from 'three/addons/renderers/CSS3DRenderer
 import { gsap } from 'gsap';
 import { CyberSynth, playHaptic } from '../lib/soundEffects';
 import { resolveAxiomPanelId, AXIOM_TAP_TOLERANCE_UNITS } from '../lib/axiomPanelMapping';
+import { decideWatchdogSample, WATCHDOG_WARMUP_MS } from '../lib/orbWatchdog';
 import type { PanelDefinition, NodeInfo, SubAgent, ThoughtGlyph, ClusterNode, NavigationInput, NVKOrbState } from '../types';
 import { OrbMode, ParticleBackgroundMode, PanelLayout } from '../types';
 import type { SystemStateContextType } from '../context/SystemContext';
 
 const IS_MOBILE = typeof navigator !== 'undefined' ? /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) : false;
+// Round-3 phone fix (2026-11-27): the decorative orbit rings (axiom
+// radius 15, sub-agent radius 10) sit half off-screen on a narrow phone
+// viewport — the horizontal half-FOV at aspect ~0.46 only spans ~9
+// units at the orb plane. Scale the rings to fit; the orb itself and
+// the interactive panel nodes are untouched.
+const MOBILE_ORBIT_SCALE = 0.5;
 
 const vertexShader = `
   uniform float uTime;
@@ -363,16 +370,30 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
   // without the "3D Engine Context Lost" heading, which is wrong here
   // (the context is not lost, the canvas just paints black).
   const [blackFallback, setBlackFallback] = React.useState(false);
+  // Round-3 (2026-11-27): the diagnosable reason for the fallback,
+  // shown under the fallback banner instead of failing silently.
+  const [blackFallbackReason, setBlackFallbackReason] = React.useState<string | null>(null);
+  // Round-3 (2026-11-27): the HUD hides while the console is expanded
+  // on phones — the HUD column otherwise sits on top of the expanded
+  // sheet and covers its header and chips. NVKCommandLayer broadcasts
+  // 'nvk-console-state'; the window property covers mount order.
+  const [consoleExpanded, setConsoleExpanded] = React.useState<boolean>(
+    () => typeof window !== 'undefined' && Boolean((window as any).__nvkConsoleExpanded),
+  );
   // Silent-black watchdog refs (phone fix, 2026-11-27): the old probe
   // was one-shot — a single 8x8 centre sample at frame 45. A drifting
   // wireframe strand through that exact sample, or blackness arriving
   // after frame 90, locked in "not black" forever. The watchdog samples
-  // continuously instead; see isCanvasBlack + the animate() block.
+  // continuously instead; see probeCanvasBlack + the animate() block.
   const blackProbeFrameRef = useRef(0);
   const blackProbeNextAtRef = useRef(45);
   const blackProbeStreakRef = useRef(0);
   const blackComposerDroppedRef = useRef(false);
   const blackWatchdogDoneRef = useRef(false);
+  // Round-3 (2026-11-27): warm-up arming — black frames while shaders
+  // and the bloom composer compile must never count. Set when the stage
+  // (re)starts and on RETRY 3D; see lib/orbWatchdog.
+  const blackProbeArmedAtRef = useRef(0);
 
   const onNodeHoverRef = useRef(onNodeHover);
   const onPanelNodeClickRef = useRef(onPanelNodeClick);
@@ -385,6 +406,15 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
   useEffect(() => {
     onRendererErrorRef.current = onRendererError;
   }, [onRendererError]);
+
+  useEffect(() => {
+    const onConsoleState = (e: Event) => {
+      const detail = (e as CustomEvent<{ expanded?: boolean }>).detail;
+      if (detail && typeof detail.expanded === 'boolean') setConsoleExpanded(detail.expanded);
+    };
+    window.addEventListener('nvk-console-state', onConsoleState);
+    return () => window.removeEventListener('nvk-console-state', onConsoleState);
+  }, []);
 
   useEffect(() => {
     torusFactorRef.current = torusFactor;
@@ -889,6 +919,30 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
         setRendererError(true);
         onRendererErrorRef.current?.(true);
     }, false);
+
+    const gl = renderer.getContext();
+
+    // Round-3 (2026-11-27): a shader compile failure is a REAL failure —
+    // fall back immediately with the reason, instead of letting the
+    // watchdog guess from black frames later. The default three.js
+    // handler only logs to the console; this one also surfaces the
+    // fallback honestly. (This three version's bundled types do not
+    // declare onShaderError on WebGLDebug, so the assignment goes
+    // through the runtime shape.)
+    (renderer.debug as unknown as { onShaderError?: (gl: WebGLRenderingContext, program: WebGLProgram, glVertexShader: WebGLShader, glFragmentShader: WebGLShader) => void }).onShaderError = (glCtx, _program, glVertexShader, glFragmentShader) => {
+        const vertexLog = glCtx.getShaderInfoLog(glVertexShader) || '';
+        const fragmentLog = glCtx.getShaderInfoLog(glFragmentShader) || '';
+        const reason = `Shader compile error${vertexLog || fragmentLog ? `: ${(vertexLog + ' ' + fragmentLog).trim().slice(0, 200)}` : ''}`;
+        console.error('[NVK Orb] ' + reason);
+        blackWatchdogDoneRef.current = true;
+        setBlackFallbackReason(reason);
+        setBlackFallback(true);
+    };
+
+    // Round-3 (2026-11-27): arm the watchdog warm-up — black frames
+    // while shaders and the bloom composer compile must never count.
+    // Re-armed on every (re)start of the stage and on RETRY 3D.
+    blackProbeArmedAtRef.current = performance.now() + WATCHDOG_WARMUP_MS;
     
     const targetPixelRatio = Math.min(window.devicePixelRatio || 1, 2);
     renderer.setPixelRatio(targetPixelRatio);
@@ -1461,20 +1515,20 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
     // strand cannot veto the verdict. Two consecutive black samples
     // with the composer active drop the composer; two more consecutive
     // black samples surface the CSS orb fallback. Any non-black sample
-    // resets the streak. The probe reads the canvas in the same task as
-    // the render, so the drawing buffer is still valid. The orb shader
-    // is NOT rewritten — no shader error evidence exists.
-    const isCanvasBlack = (): boolean => {
+    // resets the streak. Round-3 (2026-11-27): the probe reads the
+    // just-rendered frame with gl.readPixels in the render task. The
+    // old drawImage readback returned black on iOS WKWebView even while
+    // the scene rendered (preserveDrawingBuffer:false) — the prime
+    // suspect for the iPhone RETRY loop — and the old probe had no
+    // warm-up, so transient black during shader/bloom compile tripped
+    // the fallback on first load (desktop too, 13:42 PT check). The
+    // decision itself lives in lib/orbWatchdog (pure, tested). The orb
+    // shader is NOT rewritten — no shader error evidence exists.
+    const probeCanvasBlack = (gl: WebGLRenderingContext): { black: boolean; ok: boolean } => {
       try {
-        const canvas = renderer.domElement;
-        const w = canvas.width;
-        const h = canvas.height;
-        if (!w || !h) return false;
-        const off = document.createElement('canvas');
-        off.width = 4;
-        off.height = 4;
-        const ctx = off.getContext('2d');
-        if (!ctx) return false;
+        const w = gl.drawingBufferWidth;
+        const h = gl.drawingBufferHeight;
+        if (!w || !h) return { black: false, ok: false };
         const dx = w * 0.15;
         const dy = h * 0.15;
         const points: Array<[number, number]> = [
@@ -1483,22 +1537,17 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
           [w / 2 - dx, h / 2], [w / 2 + dx, h / 2],
           [w / 2 - dx, h / 2 + dy], [w / 2, h / 2 + dy], [w / 2 + dx, h / 2 + dy],
         ];
+        const px = new Uint8Array(4);
         let blackSamples = 0;
-        for (const [px, py] of points) {
-          ctx.clearRect(0, 0, 4, 4);
-          ctx.drawImage(canvas, px - 2, py - 2, 4, 4, 0, 0, 4, 4);
-          const data = ctx.getImageData(0, 0, 4, 4).data;
-          let max = 0;
-          for (let i = 0; i < data.length; i += 4) {
-            if (data[i] > max) max = data[i];
-            if (data[i + 1] > max) max = data[i + 1];
-            if (data[i + 2] > max) max = data[i + 2];
-          }
+        for (const [sx, sy] of points) {
+          // WebGL origin is bottom-left — flip y.
+          gl.readPixels(Math.floor(sx), h - Math.floor(sy), 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px);
+          const max = Math.max(px[0], px[1], px[2]);
           if (max < 10) blackSamples += 1;
         }
-        return blackSamples >= 7;
+        return { black: blackSamples >= 7, ok: true };
       } catch {
-        return false;
+        return { black: false, ok: false };
       }
     };
 
@@ -1519,6 +1568,13 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
         
         cumulativeTime += delta * (speedRef.current || 0.5);
         const elapsedTime = cumulativeTime;
+
+        // Round-3 phone fix (2026-11-27): the decorative orbit rings
+        // (axiom 15, sub-agent 10) sit half off-screen on a narrow
+        // phone viewport — the horizontal half-FOV at aspect ~0.46
+        // only spans ~9 units at the orb plane. Scale the rings to
+        // fit; the orb itself is untouched.
+        const orbitScale = IS_MOBILE ? MOBILE_ORBIT_SCALE : 1;
 
         try {
             // Restore Points base before existing animations modify them
@@ -1855,8 +1911,8 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
 
         axiomNodesGroupRef.current?.children.forEach((node, i) => {
           const angle = (i / AXIOM_NODES_DATA.length) * Math.PI * 2 + elapsedTime * 0.1;
-          node.position.x = 15 * Math.cos(angle);
-          node.position.z = 15 * Math.sin(angle);
+          node.position.x = 15 * orbitScale * Math.cos(angle);
+          node.position.z = 15 * orbitScale * Math.sin(angle);
           node.position.y = (Math.sin(angle * 2.5) * 5);
         });
         
@@ -1950,8 +2006,8 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
         subAgentsGroupRef.current?.children.forEach((node, i) => {
           const count = subAgentsGroupRef.current.children.length;
           const angle = (i / count) * Math.PI * 2 + elapsedTime * 0.2;
-          node.position.x = 10 * Math.cos(angle);
-          node.position.z = 10 * Math.sin(angle);
+          node.position.x = 10 * orbitScale * Math.cos(angle);
+          node.position.z = 10 * orbitScale * Math.sin(angle);
           node.position.y = Math.sin(elapsedTime * 2 + i) * 2;
           node.rotation.y += 0.01;
           node.rotation.x += 0.01;
@@ -2530,28 +2586,36 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
             } else {
                 renderer.render(scene, camera);
             }
-            // Silent-black watchdog — see the declaration above animate().
-            // Runs about once a second for the life of the stage; two
-            // consecutive black samples drop the composer, two more show
-            // the CSS orb fallback. A bright sample resets the streak.
+            // Silent-black watchdog — the decision lives in
+            // lib/orbWatchdog (pure, tested). Runs about once a second
+            // for the life of the stage; two consecutive black samples
+            // after the warm-up drop the composer, two more show the
+            // CSS orb fallback. A bright sample resets the streak; an
+            // inconclusive readback never counts.
             blackProbeFrameRef.current += 1;
             if (!blackWatchdogDoneRef.current && blackProbeFrameRef.current >= blackProbeNextAtRef.current) {
                 blackProbeNextAtRef.current = blackProbeFrameRef.current + 60;
-                if (isCanvasBlack()) {
-                    blackProbeStreakRef.current += 1;
-                    if (blackProbeStreakRef.current >= 2) {
-                        if (!blackComposerDroppedRef.current && composer) {
-                            blackComposerDroppedRef.current = true;
-                            blackProbeStreakRef.current = 0;
-                            console.warn('[NVK Orb] Canvas is black with the bloom composer active — rendering direct without bloom.');
-                        } else {
-                            blackWatchdogDoneRef.current = true;
-                            console.warn('[NVK Orb] Canvas is still black without the composer — showing the CSS orb fallback.');
-                            setBlackFallback(true);
-                        }
-                    }
-                } else {
-                    blackProbeStreakRef.current = 0;
+                const probe = probeCanvasBlack(gl);
+                const decision = decideWatchdogSample({
+                    nowMs: performance.now(),
+                    armedAtMs: blackProbeArmedAtRef.current,
+                    isBlack: probe.black,
+                    readbackOk: probe.ok,
+                    state: {
+                        streak: blackProbeStreakRef.current,
+                        composerDropped: blackComposerDroppedRef.current,
+                        done: blackWatchdogDoneRef.current,
+                    },
+                });
+                blackProbeStreakRef.current = decision.next.streak;
+                blackComposerDroppedRef.current = decision.next.composerDropped;
+                if (decision.action === 'drop-composer') {
+                    console.warn('[NVK Orb] Canvas is black with the bloom composer active — rendering direct without bloom.');
+                } else if (decision.action === 'fallback') {
+                    blackWatchdogDoneRef.current = true;
+                    console.warn('[NVK Orb] ' + (decision.reason ?? 'Canvas is still black without the composer — showing the CSS orb fallback.'));
+                    if (decision.reason) setBlackFallbackReason(decision.reason);
+                    setBlackFallback(true);
                 }
             }
         } catch (rErr) {
@@ -3494,13 +3558,23 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
           <p className="text-slate-400 font-mono text-[11px] mt-6 leading-relaxed max-w-xs">
             3D preview unavailable on this device — showing the NVK orb.
           </p>
+          {blackFallbackReason && (
+            <p className="text-slate-500 font-mono text-[10px] mt-2 leading-relaxed max-w-xs">
+              Reason: {blackFallbackReason}
+            </p>
+          )}
           <button
             onClick={() => {
-              // RETRY: re-enable the composer and restart the watchdog.
+              // RETRY: re-enable the composer and restart the watchdog —
+              // including a fresh warm-up, so the bloom pass settling
+              // after re-enable cannot trip the fallback again.
               blackComposerDroppedRef.current = false;
               blackProbeStreakRef.current = 0;
-              blackProbeNextAtRef.current = blackProbeFrameRef.current + 60;
+              blackProbeFrameRef.current = 0;
+              blackProbeNextAtRef.current = 60;
+              blackProbeArmedAtRef.current = performance.now() + WATCHDOG_WARMUP_MS;
               blackWatchdogDoneRef.current = false;
+              setBlackFallbackReason(null);
               setBlackFallback(false);
             }}
             className="pointer-events-auto mt-5 px-6 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-mono text-sm transition-all shadow-lg hover:shadow-emerald-500/20"
@@ -3519,8 +3593,12 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
           the HUD is z-500 inside the stage while the console sheet is
           fixed z-1095, so the sheet still painted over it and ate its
           taps. On phones the HUD is z-1100: above the console, below
-          the header (1200). Desktop keeps z-500. */}
-      <div className={`absolute flex flex-col gap-2 select-none pointer-events-auto ${IS_MOBILE ? 'z-[1100] left-3 top-16' : 'z-[500] bottom-24 right-4'}`}>
+          the header (1200). Desktop keeps z-500.
+          Round-3 (2026-11-27): the HUD column is tall enough to cover
+          the expanded console's header and chips, so while the console
+          is expanded on phones the HUD hides entirely — the console's
+          own "−" button is the way back. */}
+      <div className={`absolute flex flex-col gap-2 select-none pointer-events-auto ${IS_MOBILE ? (consoleExpanded ? 'hidden' : 'z-[1100] left-3 top-16') : 'z-[500] bottom-24 right-4'}`}>
         <button
           onClick={(e) => {
             e.stopPropagation();
