@@ -29,8 +29,9 @@ const TUTORIAL_STEPS: TutorialStep[] = [
     icon: "ri-menu-line"
   },
   {
-    title: "3. Load a model",
-    content: "Load a model to think locally, or connect a provider. Open the Model Orchestrator from the Dock to pick one.",
+    title: "3. Ask NVK anything — right now",
+    content: "No download needed to start: the Free Cloud Gateway answers instantly. Tap the composer and ask. Load a local model later from the Model Orchestrator in the Dock if you want on-device thinking.",
+    target: ".dock-container",
     icon: "ri-brain-line"
   }
 ];
@@ -217,10 +218,10 @@ export const TutorialOverlay: React.FC<TutorialOverlayProps> = ({ isVisible: for
                 {step.content}
               </p>
 
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-2">
                 <button 
                   onClick={handleSkip}
-                  className="text-slate-500 hover:text-cyan-400 font-mono text-[10px] uppercase tracking-widest font-bold transition-colors"
+                  className="text-slate-500 hover:text-cyan-400 font-mono text-[10px] uppercase tracking-widest font-bold transition-colors min-h-[44px] px-2 flex items-center"
                 >
                   Skip Guide
                 </button>
@@ -229,16 +230,16 @@ export const TutorialOverlay: React.FC<TutorialOverlayProps> = ({ isVisible: for
                   {currentStep > 0 && (
                     <button 
                       onClick={() => setCurrentStep(currentStep - 1)}
-                      className="px-3.5 py-1.5 bg-slate-950 hover:bg-slate-800 border border-slate-800 text-slate-400 hover:text-slate-200 font-mono text-[10px] uppercase tracking-widest font-bold rounded-lg transition-all"
+                      className="px-4 min-h-[44px] bg-slate-950 hover:bg-slate-800 border border-slate-800 text-slate-400 hover:text-slate-200 font-mono text-[10px] uppercase tracking-widest font-bold rounded-lg transition-all flex items-center"
                     >
                       Back
                     </button>
                   )}
                   <button 
                     onClick={handleNext}
-                    className="px-5 py-1.5 bg-cyan-950/80 hover:bg-cyan-900 border border-cyan-500/50 text-cyan-300 font-mono text-[10px] uppercase tracking-widest font-extrabold rounded-lg shadow-[0_0_15px_rgba(0,255,255,0.15)] transition-all flex items-center gap-1.5"
+                    className="px-5 min-h-[44px] bg-cyan-950/80 hover:bg-cyan-900 border border-cyan-500/50 text-cyan-300 font-mono text-[10px] uppercase tracking-widest font-extrabold rounded-lg shadow-[0_0_15px_rgba(0,255,255,0.15)] transition-all flex items-center gap-1.5"
                   >
-                    <span>{currentStep === TUTORIAL_STEPS.length - 1 ? "Get Started" : "Next"}</span>
+                    <span>{currentStep === TUTORIAL_STEPS.length - 1 ? "Ask NVK" : "Next"}</span>
                     <i className="ri-arrow-right-line text-[11px]"></i>
                   </button>
                 </div>

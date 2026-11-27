@@ -32,7 +32,7 @@ export const Dock: React.FC<DockProps> = ({
   }, [apps, onOpenSearch]);
 
   return (
-    <footer className="dock-container fixed bottom-12 left-0 right-0 flex justify-center items-end z-[1100] pointer-events-none">
+    <footer className="dock-container fixed left-0 right-0 flex justify-center items-end z-[1100] pointer-events-none" style={{ bottom: 'calc(3rem + env(safe-area-inset-bottom, 0px))' }}>
       {/* S5: the dock scrolls horizontally on narrow screens instead of
           overflowing off the right edge. */}
       <div className="flex items-end justify-center gap-2 px-6 py-3 pointer-events-auto max-w-[98vw] overflow-x-auto custom-scrollbar">
@@ -58,7 +58,7 @@ export const Dock: React.FC<DockProps> = ({
                 <button
                   id={`dock-app-${item.id}`}
                   onClick={() => onAppClick(item.id)}
-                  className="w-10 h-10 md:w-11 md:h-11 bg-slate-900/90 rounded-full flex items-center justify-center transition-all duration-200 ease-in-out hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-400 active:scale-95 border border-slate-700/40 hover:border-sky-500/60 shadow-[0_4px_12px_rgba(0,0,0,0.5)] cursor-pointer backdrop-blur-xl"
+                  className="w-11 h-11 md:w-11 md:h-11 bg-slate-900/90 rounded-full flex items-center justify-center transition-all duration-200 ease-in-out hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-400 active:scale-95 border border-slate-700/40 hover:border-sky-500/60 shadow-[0_4px_12px_rgba(0,0,0,0.5)] cursor-pointer backdrop-blur-xl"
                   title={item.name}
                   aria-label={`Open ${item.name}`}
                 >

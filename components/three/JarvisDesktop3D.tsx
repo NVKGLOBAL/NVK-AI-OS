@@ -1,6 +1,6 @@
 import React, { Suspense, useState, useEffect, useMemo, useRef } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { OrbitControls, Stars, PerspectiveCamera, Environment, ContactShadows, Float, Html } from '@react-three/drei';
+import { OrbitControls, Stars, PerspectiveCamera, Environment, ContactShadows, Float, Html, Grid } from '@react-three/drei';
 import { AgentCore } from './AgentCore';
 import * as THREE from 'three';
 import { AgentCoreState, GlyphInstance, GlyphToolDefinition } from '../../types';
@@ -73,7 +73,7 @@ const OrbitingGlyph: React.FC<{
              <div className="w-[88vw] sm:w-[420px] max-h-[280px] sm:max-h-[340px] bg-slate-950/95 border border-cyan-500/40 rounded-xl shadow-2xl p-3 sm:p-4 overflow-hidden relative group">
                 <div className="flex justify-between items-center mb-2 pb-1.5 border-b border-white/10">
                    <span className="text-[10px] font-mono text-cyan-400 uppercase tracking-widest truncate">{glyph.name} // NODE_ALPHA</span>
-                   <button onClick={(e) => { e.stopPropagation(); onClick(); }} className="w-5 h-5 rounded-full bg-slate-800 hover:bg-rose-500/80 text-white/70 hover:text-white flex items-center justify-center transition-all cursor-pointer">
+                   <button onClick={(e) => { e.stopPropagation(); onClick(); }} className="w-11 h-11 -m-3 rounded-full bg-slate-800 hover:bg-rose-500/80 text-white/70 hover:text-white flex items-center justify-center transition-all cursor-pointer shrink-0" aria-label="Close node">
                       <i className="ri-close-line text-xs font-bold"></i>
                    </button>
                 </div>
@@ -291,6 +291,10 @@ export const JarvisDesktop3D: React.FC<JarvisDesktop3DProps> = ({
   const [localPerformanceTier, setLocalPerformanceTier] = useState<'low' | 'high'>(performanceTier === 'low' ? 'low' : 'high');
   const [dpr, setDpr] = useState<number>(performanceTier === 'low' ? 0.75 : 1.25);
   const [fps, setFps] = useState<number>(60);
+  // Visual/UX round (2026-11-27): the FPS/DPR/TIER chip is real telemetry
+  // but it read as debug chrome on the hero stage — collapsed to one dot
+  // + FPS, tap to expand the details.
+  const [showPerfDetails, setShowPerfDetails] = useState(false);
 
   // Smooth zoom and reset states
   const controlsRef = useRef<any>(null);
@@ -397,17 +401,27 @@ export const JarvisDesktop3D: React.FC<JarvisDesktop3DProps> = ({
         }
       }}
     >
-      {/* High-Tech Diagnostic HUD for performance scaling telemetry */}
-      <div className="absolute top-[68px] left-4 z-10 font-mono text-[10px] text-cyan-400/80 bg-slate-950/80 border border-cyan-500/20 rounded px-2.5 py-1.5 backdrop-blur-md shadow-[0_0_15px_rgba(6,182,212,0.15)] flex items-center gap-3 select-none transition-all duration-300 hover:text-cyan-400 hover:border-cyan-500/40">
+      {/* High-Tech Diagnostic HUD for performance scaling telemetry —
+          collapsed to a dot + FPS by default (tap to expand DPR/TIER). */}
+      <button
+        onClick={(e) => { e.stopPropagation(); setShowPerfDetails(v => !v); }}
+        title={showPerfDetails ? 'Hide performance details' : 'Show performance details'}
+        aria-expanded={showPerfDetails}
+        className="absolute top-[68px] left-4 z-10 font-mono text-[10px] text-cyan-400/80 bg-slate-950/80 border border-cyan-500/20 rounded px-2.5 py-1.5 backdrop-blur-md shadow-[0_0_15px_rgba(6,182,212,0.15)] flex items-center gap-3 select-none transition-all duration-300 hover:text-cyan-400 hover:border-cyan-500/40 min-h-[44px] cursor-pointer"
+      >
         <div className="flex items-center gap-1.5">
           <span className={`w-1.5 h-1.5 rounded-full ${fps >= 55 ? 'bg-emerald-500 animate-pulse' : fps >= 40 ? 'bg-amber-500 animate-pulse' : 'bg-rose-500 animate-pulse'}`} />
           <span>{fps} FPS</span>
         </div>
-        <div className="w-px h-3 bg-white/10" />
-        <div>DPR: {dpr.toFixed(2)}x</div>
-        <div className="w-px h-3 bg-white/10" />
-        <div className="uppercase">TIER: {localPerformanceTier}</div>
-      </div>
+        {showPerfDetails && (
+          <>
+            <div className="w-px h-3 bg-white/10" />
+            <div>DPR: {dpr.toFixed(2)}x</div>
+            <div className="w-px h-3 bg-white/10" />
+            <div className="uppercase">TIER: {localPerformanceTier}</div>
+          </>
+        )}
+      </button>
 
       {/* 3D Navigation Control Pad */}
       <div className="absolute bottom-24 right-4 z-10 flex flex-col gap-2.5 select-none md:bottom-28">
@@ -416,7 +430,7 @@ export const JarvisDesktop3D: React.FC<JarvisDesktop3DProps> = ({
             e.stopPropagation();
             setTargetDistance(prev => Math.max(8, prev - 4));
           }}
-          className="w-9 h-9 rounded-lg bg-slate-950/85 border border-cyan-500/20 hover:border-cyan-400/60 text-cyan-400/80 hover:text-cyan-300 flex items-center justify-center backdrop-blur-md transition-all duration-200 hover:shadow-[0_0_12px_rgba(6,182,212,0.25)] active:scale-95 shadow-lg"
+          className="w-11 h-11 rounded-lg bg-slate-950/85 border border-cyan-500/20 hover:border-cyan-400/60 text-cyan-400/80 hover:text-cyan-300 flex items-center justify-center backdrop-blur-md transition-all duration-200 hover:shadow-[0_0_12px_rgba(6,182,212,0.25)] active:scale-95 shadow-lg"
           title="Zoom In"
         >
           <i className="ri-add-line text-lg"></i>
@@ -426,7 +440,7 @@ export const JarvisDesktop3D: React.FC<JarvisDesktop3DProps> = ({
             e.stopPropagation();
             setTargetDistance(prev => Math.min(isMobile ? 55 : 35, prev + 4));
           }}
-          className="w-9 h-9 rounded-lg bg-slate-950/85 border border-cyan-500/20 hover:border-cyan-400/60 text-cyan-400/80 hover:text-cyan-300 flex items-center justify-center backdrop-blur-md transition-all duration-200 hover:shadow-[0_0_12px_rgba(6,182,212,0.25)] active:scale-95 shadow-lg"
+          className="w-11 h-11 rounded-lg bg-slate-950/85 border border-cyan-500/20 hover:border-cyan-400/60 text-cyan-400/80 hover:text-cyan-300 flex items-center justify-center backdrop-blur-md transition-all duration-200 hover:shadow-[0_0_12px_rgba(6,182,212,0.25)] active:scale-95 shadow-lg"
           title="Zoom Out"
         >
           <i className="ri-subtract-line text-lg"></i>
@@ -436,12 +450,16 @@ export const JarvisDesktop3D: React.FC<JarvisDesktop3DProps> = ({
             e.stopPropagation();
             setResetTrigger(true);
           }}
-          className="w-9 h-9 rounded-lg bg-slate-950/85 border border-cyan-500/20 hover:border-cyan-400/60 text-cyan-400/80 hover:text-cyan-300 flex items-center justify-center backdrop-blur-md transition-all duration-200 hover:shadow-[0_0_12px_rgba(6,182,212,0.25)] active:scale-95 shadow-lg"
+          className="w-11 h-11 rounded-lg bg-slate-950/85 border border-cyan-500/20 hover:border-cyan-400/60 text-cyan-400/80 hover:text-cyan-300 flex items-center justify-center backdrop-blur-md transition-all duration-200 hover:shadow-[0_0_12px_rgba(6,182,212,0.25)] active:scale-95 shadow-lg"
           title="Reset Viewport"
         >
           <i className="ri-refresh-line text-base"></i>
         </button>
       </div>
+
+      {/* Vignette: darkens the stage edges so the orb and glyphs read
+          against depth. pointer-events-none — the canvas keeps every tap. */}
+      <div className="absolute inset-0 z-[5] pointer-events-none" style={{ background: 'radial-gradient(ellipse at center, transparent 52%, rgba(2, 6, 23, 0.6) 100%)' }} aria-hidden="true" />
 
       <Canvas shadows={false} dpr={dpr} onCreated={({ scene }) => { (sceneRef.current as any) = scene; }}>
         <PerspectiveCamera makeDefault position={[0, 0, isMobile ? 25 : 20]} fov={isMobile ? 65 : 50} />
@@ -483,6 +501,9 @@ export const JarvisDesktop3D: React.FC<JarvisDesktop3DProps> = ({
             controlsRef={controlsRef}
             isMobile={isMobile}
           />
+          {/* Visual round (2026-11-27): fog + a faint grid floor give the
+              stage depth — the orb reads against space, not a black box. */}
+          <fog attach="fog" args={['#020617', 18, 55]} />
           <Stars radius={100} depth={50} count={localPerformanceTier === 'low' ? 150 : 3000} factor={4} saturation={0} fade speed={1} />
           {localPerformanceTier !== 'low' ? (
             <Environment preset="city" />
@@ -516,6 +537,19 @@ export const JarvisDesktop3D: React.FC<JarvisDesktop3DProps> = ({
           {localPerformanceTier !== 'low' && (
             <ContactShadows position={[0, -10, 0]} opacity={0.4} scale={40} blur={2} far={15} />
           )}
+          <Grid
+            position={[0, -10, 0]}
+            args={[40, 40]}
+            cellSize={1}
+            cellThickness={0.6}
+            cellColor="#0e7490"
+            sectionSize={5}
+            sectionThickness={1}
+            sectionColor="#22d3ee"
+            fadeDistance={45}
+            fadeStrength={2}
+            infiniteGrid
+          />
         </Suspense>
       </Canvas>
     </div>

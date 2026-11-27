@@ -70,7 +70,7 @@ export const Header: React.FC<HeaderProps> = ({
   const displayEntropyValue = masterEntropyOverride < 0 ? Math.abs(masterEntropyOverride) : masterEntropyOverride;
 
   return (
-    <header className="relative bg-slate-950/85 backdrop-blur-md border-b border-slate-800/80 px-4 py-2.5 top-0 z-[1200] shrink-0 select-none">
+    <header className="relative bg-slate-950/85 backdrop-blur-md border-b border-slate-800/80 px-4 py-2.5 top-0 z-[1200] shrink-0 select-none" style={{ paddingTop: 'calc(0.625rem + env(safe-area-inset-top, 0px))' }}>
       {/* R11-1: the round-2 `overflow-hidden` backstop is REMOVED. It
           clipped the header's own absolutely-positioned dropdown menus
           (Environment / Codex Modes / Oracle AI / System) — see the
@@ -132,7 +132,7 @@ export const Header: React.FC<HeaderProps> = ({
         {/* Global OmniSearch Bar */}
         <button
           onClick={onOpenSearch}
-          className="flex-1 min-w-0 max-w-md bg-slate-900/90 hover:bg-slate-900 border border-slate-700/80 hover:border-cyan-500/50 rounded-xl px-3 py-1.5 text-xs text-slate-400 hover:text-slate-200 transition-all flex items-center justify-between shadow-inner group cursor-pointer"
+          className="flex-1 min-w-0 max-w-md min-h-[44px] bg-slate-900/90 hover:bg-slate-900 border border-slate-700/80 hover:border-cyan-500/50 rounded-xl px-3 py-1.5 text-xs text-slate-400 hover:text-slate-200 transition-all flex items-center justify-between shadow-inner group cursor-pointer"
         >
           <div className="flex items-center gap-2 truncate">
             <i className="ri-search-line text-cyan-400 group-hover:scale-110 transition-transform"></i>
@@ -148,7 +148,7 @@ export const Header: React.FC<HeaderProps> = ({
           <div className="flex items-center shrink-0 bg-slate-900/90 border border-slate-800/90 rounded-full p-0.5 shadow-lg overflow-x-auto max-w-full">
             <button
               onClick={() => onWorkspaceModeChange('split')}
-              className={`px-2.5 sm:px-3 py-1 rounded-full text-[9px] sm:text-[10px] font-mono uppercase tracking-wider transition-all flex items-center gap-1 cursor-pointer whitespace-nowrap ${
+              className={`px-2.5 sm:px-3 py-1 min-h-[44px] rounded-full text-[9px] sm:text-[10px] font-mono uppercase tracking-wider transition-all flex items-center gap-1 cursor-pointer whitespace-nowrap ${
                 workspaceMode === 'split'
                   ? 'bg-cyan-500/25 text-cyan-300 border border-cyan-400/80 font-bold shadow-[0_0_12px_rgba(6,182,212,0.35)]'
                   : 'text-slate-400 hover:text-slate-200'
@@ -160,7 +160,7 @@ export const Header: React.FC<HeaderProps> = ({
             </button>
             <button
               onClick={() => onWorkspaceModeChange('immersive')}
-              className={`px-2.5 sm:px-3 py-1 rounded-full text-[9px] sm:text-[10px] font-mono uppercase tracking-wider transition-all flex items-center gap-1 cursor-pointer whitespace-nowrap ${
+              className={`px-2.5 sm:px-3 py-1 min-h-[44px] rounded-full text-[9px] sm:text-[10px] font-mono uppercase tracking-wider transition-all flex items-center gap-1 cursor-pointer whitespace-nowrap ${
                 workspaceMode === 'immersive' || workspaceMode === '3d'
                   ? 'bg-purple-500/25 text-purple-300 border border-purple-400/80 font-bold shadow-[0_0_12px_rgba(168,85,247,0.35)]'
                   : 'text-slate-400 hover:text-slate-200'
@@ -172,7 +172,7 @@ export const Header: React.FC<HeaderProps> = ({
             </button>
             <button
               onClick={() => onWorkspaceModeChange('grid')}
-              className={`px-2.5 sm:px-3 py-1 rounded-full text-[9px] sm:text-[10px] font-mono uppercase tracking-wider transition-all flex items-center gap-1 cursor-pointer whitespace-nowrap ${
+              className={`px-2.5 sm:px-3 py-1 min-h-[44px] rounded-full text-[9px] sm:text-[10px] font-mono uppercase tracking-wider transition-all flex items-center gap-1 cursor-pointer whitespace-nowrap ${
                 workspaceMode === 'grid' || workspaceMode === '2d'
                   ? 'bg-emerald-500/25 text-emerald-300 border border-emerald-400/80 font-bold shadow-[0_0_12px_rgba(16,185,129,0.35)]'
                   : 'text-slate-400 hover:text-slate-200'
@@ -193,7 +193,7 @@ export const Header: React.FC<HeaderProps> = ({
           <div className="relative">
             <button
               onClick={() => setIsEnvPopoverOpen(!isEnvPopoverOpen)}
-              className="px-2.5 py-1.5 rounded-lg bg-slate-900/80 hover:bg-slate-800 border border-slate-700 text-slate-300 text-xs font-mono transition-all flex items-center gap-1.5"
+              className="px-2.5 py-1.5 min-h-[44px] rounded-lg bg-slate-900/80 hover:bg-slate-800 border border-slate-700 text-slate-300 text-xs font-mono transition-all flex items-center gap-1.5"
               title="Tweak Master Chaos, Order, and Flow Settings"
             >
               <i className="ri-sound-module-line text-cyan-400"></i>
@@ -276,7 +276,7 @@ export const Header: React.FC<HeaderProps> = ({
           <div className="relative">
             <button
               onClick={() => setIsCodexModeMenuOpen(!isCodexModeMenuOpen)}
-              className="px-2.5 py-1.5 rounded-lg bg-purple-900/40 hover:bg-purple-900/60 border border-purple-500/40 text-purple-200 text-xs font-mono transition-all flex items-center gap-1.5"
+              className="px-2.5 py-1.5 min-h-[44px] rounded-lg bg-purple-900/40 hover:bg-purple-900/60 border border-purple-500/40 text-purple-200 text-xs font-mono transition-all flex items-center gap-1.5"
             >
               <i className="ri-compass-discover-line text-purple-400"></i>
               <span className="hidden md:inline">Codex Mode</span>
@@ -306,7 +306,7 @@ export const Header: React.FC<HeaderProps> = ({
           <div className="relative">
             <button
               onClick={() => setIsOracleMenuOpen(!isOracleMenuOpen)}
-              className="px-2.5 py-1.5 rounded-lg bg-fuchsia-900/40 hover:bg-fuchsia-900/60 border border-fuchsia-500/40 text-fuchsia-200 text-xs font-mono transition-all flex items-center gap-1.5"
+              className="px-2.5 py-1.5 min-h-[44px] rounded-lg bg-fuchsia-900/40 hover:bg-fuchsia-900/60 border border-fuchsia-500/40 text-fuchsia-200 text-xs font-mono transition-all flex items-center gap-1.5"
             >
               <i className="ri-sparkling-2-line text-fuchsia-400"></i>
               <span className="hidden md:inline">Oracle AI</span>
@@ -328,7 +328,7 @@ export const Header: React.FC<HeaderProps> = ({
           <div className="relative">
             <button
               onClick={() => setIsSystemMenuOpen(!isSystemMenuOpen)}
-              className="px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 text-xs font-mono transition-all flex items-center gap-1.5"
+              className="px-2.5 py-1.5 min-h-[44px] rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 text-xs font-mono transition-all flex items-center gap-1.5"
             >
               <i className="ri-settings-3-line text-slate-400"></i>
               <span className="hidden md:inline">System</span>

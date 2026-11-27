@@ -24,7 +24,7 @@ import { ShardRenderer } from '../ui/ShardRenderer';
 import { useIsMobile } from '../../lib/useIsMobile';
 import { dispatchPanelCommand } from '../../services/OsPanelCommandDispatcher';
 import { resolveTerminalOrbState } from '../../lib/orbStateMapping';
-import { tryAnswerMath, isSearchQuestion, answerSearchQuestion, needsNoModelReply, NO_MODEL_REPLY } from '../../services/osNoModelAnswers';
+import { tryAnswerMath, isSearchQuestion, answerSearchQuestion, needsNoModelReply, NO_MODEL_REPLY, GATEWAY_OFFLINE_REPLY } from '../../services/osNoModelAnswers';
 import { intentEngine } from '../../src/nvk/intent/IntentEngine';
 
 interface NVKCommandLayerProps {
@@ -67,7 +67,7 @@ export const NVKCommandLayer: React.FC<NVKCommandLayerProps> = ({
   activitySteps = [],
   currentStatusText = 'Ready for instruction'
 }) => {
-  const { isModelLoaded, loadModel, loadStatus, generateText, isCloudMode } = useLocalLLM();
+  const { isModelLoaded, loadModel, loadStatus, generateText, isCloudMode, freeCloudEnabled } = useLocalLLM();
   // S5 (2026-11-22): shared mobile breakpoint. On mobile the layer docks
   // to the bottom as a bottom sheet (see the outer div); on desktop it
   // stays a draggable floating panel at the persisted position.
@@ -130,7 +130,9 @@ export const NVKCommandLayer: React.FC<NVKCommandLayerProps> = ({
       }
     };
     const unsub = eventBus.subscribe((e) => {
-      setLiveEvents(prev => [...prev, formatEvent(e)]);
+      // Cap the feed: the console shows the last few, storage never grows
+      // unbounded on a long session.
+      setLiveEvents(prev => [...prev.slice(-49), formatEvent(e)]);
     });
     return () => unsub();
   }, []);
@@ -325,6 +327,26 @@ export const NVKCommandLayer: React.FC<NVKCommandLayerProps> = ({
     }
   }, [onSetOrbState, onExecuteAction]);
 
+  // 2026-11-26 follow-up: the single brain call shared by the no-model
+  // branch and the no-tool-matched branch. Passes the conversation so far
+  // (role 'nvk' maps to 'assistant') so the brain answers in context, not
+  // on one line alone. Returns the answer text, or null when the brain
+  // could not answer (gateway 429/offline, or no model loaded) — the
+  // caller renders the honest offline message, never a fabricated answer.
+  // Precedence (local model / key / gateway) lives in generateText.
+  const askBrain = useCallback(async (prompt: string): Promise<string | null> => {
+    const gatewayHistory = history
+      .filter((m) => m.text && m.text.trim())
+      .map((m) => ({ role: (m.role === 'user' ? 'user' : 'assistant') as 'user' | 'assistant', content: m.text }));
+    return generateText(
+      prompt,
+      'You are NVK, the central intelligence of the NVK OS. Answer helpfully and concisely.',
+      0.7,
+      500,
+      gatewayHistory,
+    );
+  }, [generateText, history]);
+
   const handleSendCommand = useCallback(async (textToSend?: string) => {
     const prompt = (textToSend || inputValue).trim();
     if (!prompt) return;
@@ -380,9 +402,26 @@ export const NVKCommandLayer: React.FC<NVKCommandLayerProps> = ({
 
     // Ret12 fix: with no model loaded, a general question has no honest
     // runtime answer (the planner routes it to web.search, which cannot
-    // run on the static deploy). Say so plainly instead of sending it to
-    // the runtime for a confusing proxy/calculation error.
+    // run on the static deploy). 2026-11-26 fix: the free cloud gateway
+    // answers it instead — generateText routes a no-model call to the
+    // gateway when freeCloudEnabled is on (the default), so the chat works
+    // on a fresh phone with nothing downloaded. Only when the gateway is
+    // off does the honest no-model reply still apply. A gateway failure
+    // (generateText returns null) renders the honest offline message —
+    // never a fabricated answer, never a dead input.
     if (needsNoModelReply(intentEngine.classify(prompt).intent, isModelLoaded)) {
+      if (freeCloudEnabled) {
+        onSetOrbState('THINKING');
+        const answer = await askBrain(prompt);
+        if (answer) {
+          setHistory(prev => [...prev, { role: 'nvk', text: answer }]);
+          onSetOrbState('COMPLETE');
+        } else {
+          setHistory(prev => [...prev, { role: 'nvk', text: GATEWAY_OFFLINE_REPLY }]);
+          onSetOrbState('ERROR');
+        }
+        return;
+      }
       setHistory(prev => [...prev, { role: 'nvk', text: NO_MODEL_REPLY }]);
       onSetOrbState('IDLE');
       return;
@@ -399,6 +438,28 @@ export const NVKCommandLayer: React.FC<NVKCommandLayerProps> = ({
       // not gated here — the engine reports them unavailable instead.
       const preview = nvkRuntime.preview(prompt);
       if (preview.needsInput) {
+        // 2026-11-26 follow-up: an empty plan means no tool matches — but
+        // a free-text request (write, answer, summarize, create) is
+        // general chat, not a missing tool. With the gateway on, the brain
+        // answers it instead of the canned decline. Only when the gateway
+        // is off does the canned decline still apply. A brain failure
+        // renders the honest offline message when no model is loaded —
+        // never a fabricated answer, never the canned decline.
+        if (preview.noToolMatched && freeCloudEnabled) {
+          onSetOrbState('THINKING');
+          const answer = await askBrain(prompt);
+          if (answer) {
+            setHistory(prev => [...prev, { role: 'nvk', text: answer }]);
+            onSetOrbState('COMPLETE');
+          } else if (!isModelLoaded) {
+            setHistory(prev => [...prev, { role: 'nvk', text: GATEWAY_OFFLINE_REPLY }]);
+            onSetOrbState('ERROR');
+          } else {
+            setHistory(prev => [...prev, { role: 'nvk', text: preview.needsInput! }]);
+            onSetOrbState('IDLE');
+          }
+          return;
+        }
         // Slice 3: needs-input means waiting on the user, not calm —
         // and the runtime publishes IDLE for the same case, so both
         // writers agree.
@@ -433,7 +494,7 @@ export const NVKCommandLayer: React.FC<NVKCommandLayerProps> = ({
         text: `Execution failed: ${err.message || err}`
       }]);
     }
-  }, [inputValue, onSetOrbState, executeAndRender, pendingConfirmation, isModelLoaded]);
+  }, [inputValue, onSetOrbState, executeAndRender, pendingConfirmation, isModelLoaded, generateText, freeCloudEnabled, history, askBrain]);
 
   const handleConfirmAction = useCallback(async () => {
     if (!pendingConfirmation) return;
@@ -559,7 +620,7 @@ export const NVKCommandLayer: React.FC<NVKCommandLayerProps> = ({
       // panel (1090) so chat stays clickable, still below the dock
       // (1100) so the dock buttons keep priority.
       className={`fixed z-[1095] font-mono pointer-events-none transition-shadow ${isMobile ? 'left-2 right-2' : 'w-[92vw] sm:w-[480px] max-w-[94vw]'}`}
-      style={isMobile ? { bottom: '128px' } : {
+      style={isMobile ? { bottom: 'calc(128px + env(safe-area-inset-bottom, 0px))' } : {
         left: `${position.x}px`,
         top: `${position.y}px`
       }}
@@ -597,7 +658,7 @@ export const NVKCommandLayer: React.FC<NVKCommandLayerProps> = ({
             
             <button 
               onClick={handleResetPosition}
-              className="w-5 h-5 rounded bg-slate-900 border border-slate-700 hover:border-cyan-500/40 text-slate-400 hover:text-cyan-300 flex items-center justify-center text-[10px] transition-all"
+              className="w-8 h-8 rounded bg-slate-900 border border-slate-700 hover:border-cyan-500/40 text-slate-400 hover:text-cyan-300 flex items-center justify-center text-[10px] transition-all"
               title="Reset to Top-Left"
             >
               <RotateCcw className="w-2.5 h-2.5" />
@@ -605,7 +666,7 @@ export const NVKCommandLayer: React.FC<NVKCommandLayerProps> = ({
 
             <button 
               onClick={() => setIsMinimized(v => !v)}
-              className="w-5 h-5 rounded bg-slate-900 border border-slate-700 hover:border-cyan-500/40 text-slate-400 hover:text-cyan-300 flex items-center justify-center text-xs transition-all font-bold"
+              className="w-8 h-8 rounded bg-slate-900 border border-slate-700 hover:border-cyan-500/40 text-slate-400 hover:text-cyan-300 flex items-center justify-center text-xs transition-all font-bold"
               title={isMinimized ? "Expand Console" : "Collapse Console"}
             >
               {isMinimized ? '+' : '−'}
@@ -620,6 +681,10 @@ export const NVKCommandLayer: React.FC<NVKCommandLayerProps> = ({
             {isModelLoaded ? (
               <span className="text-emerald-400 flex items-center gap-1">
                 <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse shadow-[0_0_5px_rgba(52,211,153,0.8)]" /> ML Brain Active
+              </span>
+            ) : freeCloudEnabled ? (
+              <span className="text-cyan-400 flex items-center gap-1">
+                <span className="w-1.5 h-1.5 bg-cyan-400 rounded-full animate-pulse shadow-[0_0_5px_rgba(34,211,238,0.8)]" /> Free Cloud Gateway
               </span>
             ) : (
               <span className="text-amber-500/80 flex items-center gap-1">
@@ -649,7 +714,7 @@ export const NVKCommandLayer: React.FC<NVKCommandLayerProps> = ({
               {/* Chat & Activity Stream */}
               <div 
                 ref={scrollContainerRef}
-                className="max-h-36 overflow-y-auto space-y-2 pr-1 custom-scrollbar text-xs"
+                className="max-h-36 sm:max-h-64 overflow-y-auto space-y-2 pr-1 custom-scrollbar text-xs"
               >
                 {history.map((msg, idx) => (
                   <div 
@@ -730,6 +795,27 @@ export const NVKCommandLayer: React.FC<NVKCommandLayerProps> = ({
                     ))}
                   </div>
                 )}
+
+                {/* Live event feed — the orb's work, visible. liveEvents
+                    was collected from the event bus but never rendered, so
+                    the console showed nothing between commands. The last
+                    four real bus events (actions, spawns, task starts and
+                    finishes) render here with timestamps; nothing is
+                    invented, and the feed is empty — not placeholder —
+                    when nothing has run yet. */}
+                {liveEvents.length > 0 && (
+                  <div className="p-2 bg-slate-950/60 border border-slate-800 rounded-xl space-y-1 my-1">
+                    <div className="text-[9px] uppercase tracking-widest text-slate-500 font-bold mb-1 flex items-center gap-1.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> Live — what NVK just did
+                    </div>
+                    {liveEvents.slice(-4).map((ev, i) => (
+                      <div key={`${ev.time}-${i}`} className="flex items-baseline gap-2 text-[10px] text-slate-400">
+                        <span className="text-slate-600 font-mono shrink-0">{ev.time}</span>
+                        <span className="truncate">{ev.text}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {/* Consequential Action / Permission Modal Card */}
@@ -749,13 +835,13 @@ export const NVKCommandLayer: React.FC<NVKCommandLayerProps> = ({
                   <div className="flex items-center justify-end gap-2 pt-1 border-t border-amber-500/20">
                     <button
                       onClick={handleCancelAction}
-                      className="px-3 py-1 bg-slate-900 border border-slate-700 hover:bg-slate-800 text-slate-300 rounded text-[10px] uppercase font-semibold"
+                      className="px-3 min-h-[44px] bg-slate-900 border border-slate-700 hover:bg-slate-800 text-slate-300 rounded text-[10px] uppercase font-semibold flex items-center"
                     >
                       Cancel
                     </button>
                     <button
                       onClick={handleConfirmAction}
-                      className="px-3 py-1 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded text-[10px] uppercase font-bold shadow-[0_0_10px_rgba(245,158,11,0.5)]"
+                      className="px-3 min-h-[44px] bg-amber-500 hover:bg-amber-400 text-slate-950 rounded text-[10px] uppercase font-bold shadow-[0_0_10px_rgba(245,158,11,0.5)] flex items-center"
                     >
                       Confirm & Execute
                     </button>
@@ -774,7 +860,7 @@ export const NVKCommandLayer: React.FC<NVKCommandLayerProps> = ({
                     <button
                       key={idx}
                       onClick={() => handleSendCommand(cmd.label)}
-                      className="px-2.5 py-1 rounded-full bg-slate-900/90 hover:bg-cyan-950 border border-slate-800 hover:border-cyan-500/50 text-[10px] text-slate-300 hover:text-cyan-300 whitespace-nowrap transition-all flex items-center gap-1.5 shrink-0 active:scale-95 cursor-pointer"
+                      className="px-2.5 py-1 min-h-[44px] sm:min-h-0 rounded-full bg-slate-900/90 hover:bg-cyan-950 border border-slate-800 hover:border-cyan-500/50 text-[10px] text-slate-300 hover:text-cyan-300 whitespace-nowrap transition-all flex items-center gap-1.5 shrink-0 active:scale-95 cursor-pointer"
                     >
                       <Icon className="w-3 h-3 text-cyan-400/80" />
                       <span>{cmd.label}</span>
@@ -791,7 +877,7 @@ export const NVKCommandLayer: React.FC<NVKCommandLayerProps> = ({
           <select
             value={shardVariant}
             onChange={(e) => setShardVariant(e.target.value as ShardVariant)}
-            className="bg-slate-900/90 border border-cyan-500/30 rounded-lg text-[11px] text-slate-200 px-2 py-1.5 focus:outline-none"
+            className="bg-slate-900/90 border border-cyan-500/30 rounded-lg text-[11px] text-slate-200 px-2 py-1.5 min-h-[36px] focus:outline-none"
             title="Shard format"
           >
             {SHARD_VARIANTS.map(v => (
@@ -803,11 +889,11 @@ export const NVKCommandLayer: React.FC<NVKCommandLayerProps> = ({
             onClick={handleSynthesizeShard}
             disabled={isSynthesizingShard}
             title="Synthesize a shard from the current input using the local model"
-            className="px-3 py-1.5 bg-slate-800/80 hover:bg-slate-800 disabled:opacity-40 text-cyan-300 border border-cyan-500/30 rounded-lg text-[11px] font-bold uppercase tracking-wider transition-all"
+            className="px-3 py-1.5 min-h-[36px] bg-slate-800/80 hover:bg-slate-800 disabled:opacity-40 text-cyan-300 border border-cyan-500/30 rounded-lg text-[11px] font-bold uppercase tracking-wider transition-all flex items-center"
           >
             {isSynthesizingShard ? 'Synthesizing…' : 'Synthesize shard'}
           </button>
-          {!isModelLoaded && !isCloudMode && (
+          {!isModelLoaded && !isCloudMode && !freeCloudEnabled && (
             <span className="text-[10px] text-slate-500">Load a local model to synthesize shards.</span>
           )}
         </div>
@@ -832,7 +918,7 @@ export const NVKCommandLayer: React.FC<NVKCommandLayerProps> = ({
           <button
             type="button"
             onClick={handleToggleListening}
-            className={`p-2 rounded-lg transition-all flex items-center justify-center ${
+            className={`min-h-[44px] min-w-[44px] p-2 rounded-lg transition-all flex items-center justify-center ${
               isListening || isVoiceActive
                 ? 'bg-cyan-500 text-slate-950 shadow-[0_0_15px_rgba(0,229,255,0.8)] animate-pulse'
                 : 'bg-slate-800/80 hover:bg-slate-800 text-slate-300 hover:text-cyan-400 border border-slate-700'
@@ -845,7 +931,7 @@ export const NVKCommandLayer: React.FC<NVKCommandLayerProps> = ({
           <button
             type="submit"
             disabled={!inputValue.trim()}
-            className="px-3.5 py-1.5 bg-gradient-to-r from-cyan-500 to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 disabled:opacity-40 disabled:pointer-events-none text-slate-950 font-bold rounded-lg text-xs uppercase tracking-wider flex items-center gap-1.5 transition-all shadow-[0_0_12px_rgba(0,229,255,0.3)] active:scale-95"
+            className="px-3.5 min-h-[44px] bg-gradient-to-r from-cyan-500 to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 disabled:opacity-40 disabled:pointer-events-none text-slate-950 font-bold rounded-lg text-xs uppercase tracking-wider flex items-center gap-1.5 transition-all shadow-[0_0_12px_rgba(0,229,255,0.3)] active:scale-95"
           >
             <span>Send</span>
             <Send className="w-3 h-3" />

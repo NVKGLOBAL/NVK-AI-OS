@@ -2220,7 +2220,7 @@ const mockShatterpointData = {
                       onClick={() => handleAppClick(panel.id)}
                       disabled={!!blocked}
                       title={blocked ? `${panel.name} — ${panel.availability!.reason}` : panel.name}
-                      className={`px-3 py-1 rounded-lg border font-mono text-[9.5px] uppercase tracking-wider flex items-center gap-1.5 shrink-0 transition-all ${
+                      className={`px-3 py-1 min-h-[44px] rounded-lg border font-mono text-[9.5px] uppercase tracking-wider flex items-center gap-1.5 shrink-0 transition-all ${
                         blocked
                           ? 'bg-slate-950/40 border-slate-800/60 text-slate-600 cursor-not-allowed'
                           : isOpen
@@ -2370,7 +2370,7 @@ const mockShatterpointData = {
                   <h3 className="text-cyan-400 font-mono text-lg uppercase tracking-widest">Select Replacement Panel</h3>
                   <button 
                     onClick={() => setSwappingNodeId(null)} 
-                    className="w-7 h-7 rounded-full bg-rose-600/90 hover:bg-rose-500 border border-rose-400 text-white shadow-[0_0_8px_rgba(244,63,94,0.5)] flex items-center justify-center transition-all font-bold shrink-0 cursor-pointer"
+                    className="w-11 h-11 rounded-full bg-rose-600/90 hover:bg-rose-500 border border-rose-400 text-white shadow-[0_0_8px_rgba(244,63,94,0.5)] flex items-center justify-center transition-all font-bold shrink-0 cursor-pointer"
                     title="Close replacement panel selector"
                   >
                     <i className="ri-close-line text-lg font-bold"></i>
@@ -2483,10 +2483,10 @@ const mockShatterpointData = {
               exit={{ opacity: 0, scale: 0.9 }}
               className="fixed inset-0 z-[2000] flex items-center justify-center pointer-events-none"
             >
-              <div className="bg-slate-900/95 backdrop-blur-xl border border-cyan-500/30 rounded-2xl p-6 w-[400px] shadow-[0_0_50px_rgba(0,255,179,0.2)] pointer-events-auto relative">
+              <div className="bg-slate-900/95 backdrop-blur-xl border border-cyan-500/30 rounded-2xl p-6 w-[400px] max-w-[calc(100vw-2rem)] shadow-[0_0_50px_rgba(0,255,179,0.2)] pointer-events-auto relative">
                 <button 
                   onClick={() => setIsCoreControlsOpen(false)}
-                  className="absolute top-4 right-4 w-7 h-7 rounded-full bg-rose-600/90 hover:bg-rose-500 border border-rose-400 text-white shadow-[0_0_8px_rgba(244,63,94,0.5)] flex items-center justify-center transition-all font-bold shrink-0 cursor-pointer"
+                  className="absolute top-4 right-4 w-11 h-11 rounded-full bg-rose-600/90 hover:bg-rose-500 border border-rose-400 text-white shadow-[0_0_8px_rgba(244,63,94,0.5)] flex items-center justify-center transition-all font-bold shrink-0 cursor-pointer"
                   title="Close Orb Controls"
                 >
                   <i className="ri-close-line text-lg font-bold"></i>

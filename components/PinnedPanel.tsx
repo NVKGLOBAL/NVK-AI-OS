@@ -310,23 +310,32 @@ export const PinnedPanel: React.FC<PinnedPanelProps> = ({
                             <button 
                                 onClick={onClose} 
                                 title="Close Panel (X)"
-                                className="w-3.5 h-3.5 rounded-full bg-rose-500 hover:bg-rose-400 border border-rose-300/60 flex items-center justify-center transition-transform hover:scale-110 cursor-pointer shadow-[0_0_6px_rgba(244,63,94,0.6)] group"
+                                aria-label="Close panel"
+                                className="w-11 h-11 -m-3.5 flex items-center justify-center cursor-pointer group shrink-0"
                             >
-                                <i className="ri-close-line text-[9px] text-rose-950 opacity-0 group-hover:opacity-100 font-extrabold transition-opacity"></i>
+                                <span className="w-3.5 h-3.5 rounded-full bg-rose-500 group-hover:bg-rose-400 border border-rose-300/60 flex items-center justify-center transition-transform group-hover:scale-110 shadow-[0_0_6px_rgba(244,63,94,0.6)]">
+                                    <i className="ri-close-line text-[9px] text-rose-950 opacity-0 group-hover:opacity-100 font-extrabold transition-opacity"></i>
+                                </span>
                             </button>
                             <button 
                                 onClick={handleMinimizeToggle} 
                                 title={isMinimized ? "Restore Panel" : "Minimize Panel"}
-                                className="w-3.5 h-3.5 rounded-full bg-amber-500 hover:bg-amber-400 border border-amber-300/60 flex items-center justify-center transition-transform hover:scale-110 cursor-pointer shadow-[0_0_6px_rgba(245,158,11,0.5)] group"
+                                aria-label={isMinimized ? "Restore panel" : "Minimize panel"}
+                                className="w-11 h-11 -m-3.5 flex items-center justify-center cursor-pointer group shrink-0"
                             >
-                                <i className="ri-subtract-line text-[9px] text-amber-950 opacity-0 group-hover:opacity-100 font-bold transition-opacity"></i>
+                                <span className="w-3.5 h-3.5 rounded-full bg-amber-500 group-hover:bg-amber-400 border border-amber-300/60 flex items-center justify-center transition-transform group-hover:scale-110 shadow-[0_0_6px_rgba(245,158,11,0.5)]">
+                                    <i className="ri-subtract-line text-[9px] text-amber-950 opacity-0 group-hover:opacity-100 font-bold transition-opacity"></i>
+                                </span>
                             </button>
                             <button 
                                 onClick={handleMaximizeToggle} 
                                 title={isMaximized ? "Restore Size" : "Maximize Panel"}
-                                className="w-3.5 h-3.5 rounded-full bg-emerald-500 hover:bg-emerald-400 border border-emerald-300/60 flex items-center justify-center transition-transform hover:scale-110 cursor-pointer shadow-[0_0_6px_rgba(16,185,129,0.5)] group"
+                                aria-label={isMaximized ? "Restore panel size" : "Maximize panel"}
+                                className="w-11 h-11 -m-3.5 flex items-center justify-center cursor-pointer group shrink-0"
                             >
-                                <i className="ri-add-line text-[9px] text-emerald-950 opacity-0 group-hover:opacity-100 font-bold transition-opacity"></i>
+                                <span className="w-3.5 h-3.5 rounded-full bg-emerald-500 group-hover:bg-emerald-400 border border-emerald-300/60 flex items-center justify-center transition-transform group-hover:scale-110 shadow-[0_0_6px_rgba(16,185,129,0.5)]">
+                                    <i className="ri-add-line text-[9px] text-emerald-950 opacity-0 group-hover:opacity-100 font-bold transition-opacity"></i>
+                                </span>
                             </button>
                         </div>
 
@@ -351,7 +360,7 @@ export const PinnedPanel: React.FC<PinnedPanelProps> = ({
                         {/* Secondary Utilities */}
                         <div className="hidden md:flex items-center gap-1.5 px-2 border-r border-slate-700/80">
                             <button
-                                className={`panel-control text-xs ${autoScale ? 'text-cyan-400' : 'text-slate-400 hover:text-cyan-400'}`}
+                                className={`panel-control min-h-8 min-w-8 flex items-center justify-center text-xs ${autoScale ? 'text-cyan-400' : 'text-slate-400 hover:text-cyan-400'}`}
                                 onClick={() => setAutoScale(!autoScale)}
                                 title="Toggle Auto Scale / fit container"
                             >
@@ -360,7 +369,7 @@ export const PinnedPanel: React.FC<PinnedPanelProps> = ({
                             {!autoScale && (
                                 <div className="flex items-center gap-1">
                                     <button
-                                        className="panel-control hover:text-cyan-400 p-0 text-xs"
+                                        className="panel-control hover:text-cyan-400 min-h-8 min-w-8 flex items-center justify-center text-xs"
                                         onClick={() => setZoomFactor(z => Math.max(0.5, z - 0.1))}
                                         title="Zoom Out"
                                     >
@@ -370,7 +379,7 @@ export const PinnedPanel: React.FC<PinnedPanelProps> = ({
                                         {Math.round(calculatedZoom * 100)}%
                                     </span>
                                     <button
-                                        className="panel-control hover:text-cyan-400 p-0 text-xs"
+                                        className="panel-control hover:text-cyan-400 min-h-8 min-w-8 flex items-center justify-center text-xs"
                                         onClick={() => setZoomFactor(z => Math.min(2.0, z + 0.1))}
                                         title="Zoom In"
                                     >
@@ -393,7 +402,7 @@ export const PinnedPanel: React.FC<PinnedPanelProps> = ({
 
                         <div className="relative">
                             <button 
-                                className={`panel-control hover:text-cyan-400 ${isSwapMenuOpen ? 'text-cyan-400' : ''}`} 
+                                className={`panel-control hover:text-cyan-400 min-h-8 min-w-8 flex items-center justify-center ${isSwapMenuOpen ? 'text-cyan-400' : ''}`} 
                                 onClick={() => setIsSwapMenuOpen(!isSwapMenuOpen)} 
                                 title="Swap with another app"
                             >
@@ -421,7 +430,7 @@ export const PinnedPanel: React.FC<PinnedPanelProps> = ({
                         {/* Focus/Zen Mode Control */}
                         {onToggleFocus && (
                             <button 
-                                className={`panel-control ${isFocused ? 'text-amber-400 hover:text-amber-300 animate-pulse' : 'text-slate-400 hover:text-amber-400'}`} 
+                                className={`panel-control min-h-8 min-w-8 flex items-center justify-center ${isFocused ? 'text-amber-400 hover:text-amber-300 animate-pulse' : 'text-slate-400 hover:text-amber-400'}`} 
                                 onClick={onToggleFocus} 
                                 title={isFocused ? "Exit Focus Mode" : "Enter Deep Focus Mode"}
                             >
@@ -429,21 +438,21 @@ export const PinnedPanel: React.FC<PinnedPanelProps> = ({
                             </button>
                         )}
 
-                        <button className="panel-control hover:text-emerald-400" onClick={onUnpin} title="Unpin to 3D Cluster">
+                        <button className="panel-control hover:text-emerald-400 min-h-8 min-w-8 flex items-center justify-center" onClick={onUnpin} title="Unpin to 3D Cluster">
                             <i className="ri-pushpin-2-line"></i>
                         </button>
 
                         {/* Primary Window Control Cluster (Minimize, Maximize, CLOSE) */}
                         <div className="flex items-center gap-1 pl-1 sm:pl-2 border-l border-slate-700/80 shrink-0">
                             <button 
-                                className="px-2 py-1 bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-600/80 rounded-md text-xs transition-all flex items-center justify-center shrink-0" 
+                                className="px-2 py-1 min-h-[44px] min-w-[44px] bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-600/80 rounded-md text-xs transition-all flex items-center justify-center shrink-0" 
                                 onClick={handleMinimizeToggle} 
                                 title={isMinimized ? "Restore Panel" : "Minimize Panel"}
                             >
                                 <i className="ri-subtract-line"></i>
                             </button>
                             <button 
-                                className="px-2 py-1 bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-600/80 rounded-md text-xs transition-all flex items-center justify-center shrink-0" 
+                                className="px-2 py-1 min-h-[44px] min-w-[44px] bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-600/80 rounded-md text-xs transition-all flex items-center justify-center shrink-0" 
                                 onClick={handleMaximizeToggle} 
                                 title={isMaximized ? "Restore Panel" : "Maximize Panel"}
                             >
@@ -451,7 +460,7 @@ export const PinnedPanel: React.FC<PinnedPanelProps> = ({
                             </button>
                             {/* PROMINENT CLOSE BUTTON */}
                             <button 
-                                className="px-2.5 py-1 bg-rose-600 hover:bg-rose-500 active:bg-rose-700 text-white font-extrabold border border-rose-400/90 rounded-md text-xs transition-all flex items-center gap-1 shrink-0 shadow-[0_0_12px_rgba(244,63,94,0.7)] hover:shadow-[0_0_18px_rgba(244,63,94,0.9)] cursor-pointer" 
+                                className="px-2.5 py-1 min-h-[44px] min-w-[44px] bg-rose-600 hover:bg-rose-500 active:bg-rose-700 text-white font-extrabold border border-rose-400/90 rounded-md text-xs transition-all flex items-center gap-1 shrink-0 shadow-[0_0_12px_rgba(244,63,94,0.7)] hover:shadow-[0_0_18px_rgba(244,63,94,0.9)] cursor-pointer" 
                                 onClick={onClose} 
                                 title="Close Panel (X)"
                             >

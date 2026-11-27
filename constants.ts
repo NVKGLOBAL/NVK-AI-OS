@@ -98,6 +98,11 @@ export const DOCK_APPS = [
   'CommandBridgePanel',
   'IntegrationHubPanel',
   'NexusTerminal',
+  // Visual/UX round (2026-11-27): the first-run tour sends new users to
+  // the Dock for the Model Orchestrator, and Files is the other
+  // every-day surface — both were buried in the App Library. Docked.
+  'ModelOrchestratorPanel',
+  'FileSystemPanel',
   'PricingPage',
 ];
 

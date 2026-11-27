@@ -29,4 +29,11 @@
 
 body {
     background-color: #0A0A1A;
+    font-family: "DM Sans", system-ui, sans-serif;
+    /* Touch: no 300ms tap delay, no double-tap zoom on buttons. */
+    -webkit-tap-highlight-color: transparent;
+}
+
+button, [role="button"] {
+    touch-action: manipulation;
 }
