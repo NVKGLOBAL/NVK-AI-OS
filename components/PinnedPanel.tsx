@@ -139,7 +139,7 @@ export const PinnedPanel: React.FC<PinnedPanelProps> = ({
         });
         observer.observe(panelRef.current);
         return () => observer.disconnect();
-    }, []);
+    }, [isMobile]);
 
     const initialWidth = 850; // Always scale from full desktop layout width of 850px for content to fit beautifully
     const calculatedZoom = autoScale ? Math.min(2.0, Math.max(0.4, dimensions.width / initialWidth)) : zoomFactor;
@@ -238,6 +238,104 @@ export const PinnedPanel: React.FC<PinnedPanelProps> = ({
         document.addEventListener('pointermove', onPointerMove);
         document.addEventListener('pointerup', onPointerUp);
     };
+
+    // Mobile-first redesign (2026-11-27): swipe-down dismiss for the
+    // bottom sheet. Drag the handle / title row down >90px to close;
+    // otherwise the sheet springs back.
+    const [sheetDragY, setSheetDragY] = useState(0);
+    const [sheetDragging, setSheetDragging] = useState(false);
+    const sheetDragStartRef = useRef<{ startY: number } | null>(null);
+
+    const handleSheetTouchStart = (e: React.TouchEvent) => {
+        sheetDragStartRef.current = { startY: e.touches[0].clientY };
+        setSheetDragging(true);
+    };
+    const handleSheetTouchMove = (e: React.TouchEvent) => {
+        const start = sheetDragStartRef.current;
+        if (!start) return;
+        const dy = e.touches[0].clientY - start.startY;
+        setSheetDragY(Math.max(0, dy));
+    };
+    const handleSheetTouchEnd = () => {
+        sheetDragStartRef.current = null;
+        setSheetDragging(false);
+        if (sheetDragY > 90) onClose();
+        setSheetDragY(0);
+    };
+
+    // Mobile-first redesign (2026-11-27): on a phone a panel is a
+    // bottom sheet — full-width, bottom-anchored, max-h-[82dvh], drag
+    // handle, tap-X / swipe-down / backdrop-tap to dismiss. Desktop
+    // keeps the floating-window return below (tile targets,
+    // focus/maximize/minimize untouched). Minimized panels render
+    // nothing on mobile — they are restored by tapping them in the
+    // Apps picker (App focuses an already-open panel).
+    if (isMobile) {
+        if (isMinimized) return null;
+        return (
+            <>
+                <div
+                    className="fixed inset-0 bg-black/60 z-[1140]"
+                    onClick={onClose}
+                    aria-hidden="true"
+                />
+                <div
+                    className="fixed inset-x-0 bottom-0 z-[1150] max-h-[82dvh] bg-slate-950 border-t border-cyan-500/40 rounded-t-2xl flex flex-col overflow-hidden shadow-[0_-10px_50px_rgba(0,229,255,0.15)]"
+                    style={{
+                        paddingBottom: 'env(safe-area-inset-bottom, 0px)',
+                        transform: `translateY(${sheetDragY}px)`,
+                        transition: sheetDragging ? 'none' : 'transform 0.2s ease-out',
+                    }}
+                >
+                    <div
+                        className="shrink-0 select-none"
+                        onTouchStart={handleSheetTouchStart}
+                        onTouchMove={handleSheetTouchMove}
+                        onTouchEnd={handleSheetTouchEnd}
+                    >
+                        <div className="flex items-center justify-center pt-2 pb-1" aria-hidden="true">
+                            <div className="w-10 h-1 rounded-full bg-slate-600" />
+                        </div>
+                        <div className="flex items-center justify-between gap-2 px-3 pb-2 border-b border-slate-800">
+                            <div className="flex items-center gap-2 min-w-0 flex-1 overflow-hidden">
+                                {panelDef?.icon && (
+                                    <i className={`${panelDef.icon} text-cyan-400 text-sm shrink-0`}></i>
+                                )}
+                                <h3 className="text-sm font-semibold tracking-wide truncate text-slate-100">
+                                    {panelDef?.name || 'Pinned Panel'}
+                                </h3>
+                            </div>
+                            <button
+                                onClick={onClose}
+                                className="w-11 h-11 min-h-[44px] min-w-[44px] rounded-full bg-rose-600 hover:bg-rose-500 text-white flex items-center justify-center shrink-0 cursor-pointer"
+                                title="Close Panel (X)"
+                                aria-label="Close panel"
+                            >
+                                <i className="ri-close-line text-lg font-black"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div
+                        ref={panelRef}
+                        className="flex-1 overflow-y-auto p-4 custom-scrollbar relative"
+                        style={{ opacity: panelOpacity }}
+                    >
+                        <div style={{
+                            transform: `scale(${calculatedZoom})`,
+                            transformOrigin: 'top left',
+                            width: `${(dimensions.width - 32) / calculatedZoom}px`,
+                            height: `${(dimensions.height - 75) / calculatedZoom}px`,
+                            minHeight: '100%',
+                        }}>
+                            <PanelErrorBoundary panelName={panelDef?.name || 'Pinned Panel'}>
+                                {getPanelContent(panelId)}
+                            </PanelErrorBoundary>
+                        </div>
+                    </div>
+                </div>
+            </>
+        );
+    }
 
     return (
         <>

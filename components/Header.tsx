@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { CodexModeId } from '../types';
 import type { HeaderProps } from '../types';
 import { version as PACKAGE_VERSION } from '../package.json';
+import { useIsMobile } from '../lib/useIsMobile';
 
 export const Header: React.FC<HeaderProps> = ({ 
   onOpenAllPanels,
@@ -51,6 +52,12 @@ export const Header: React.FC<HeaderProps> = ({
   const [isCodexModeMenuOpen, setIsCodexModeMenuOpen] = useState(false);
   const [isOracleMenuOpen, setIsOracleMenuOpen] = useState(false); 
   const [isEnvPopoverOpen, setIsEnvPopoverOpen] = useState(false);
+  // Mobile-first redesign (2026-11-27): on a phone the header is only
+  // the logo mark + wordmark + ONE menu button. Search, the mode pill
+  // and the four menus live in the sheet below. Desktop is unchanged.
+  const isMobile = useIsMobile();
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const closeMobileMenu = () => setIsMobileMenuOpen(false);
 
   const availableModesForSwitching: {id: CodexModeId, name: string, icon: string}[] = [
     {id: CodexModeId.ORIGIN_STATE, name: "Δ.OriginState", icon: "ri-omega"},
@@ -92,7 +99,178 @@ export const Header: React.FC<HeaderProps> = ({
           retest #11 confirmed no horizontal scrollbar with them. The
           header is `relative` so its z-[1200] actually takes effect (z-index
           without position was a no-op). */}
-      <div className="w-full flex items-center justify-between gap-3 flex-wrap md:flex-nowrap">
+      {/* Mobile-first redesign (2026-11-27): compact phone header —
+          logo mark + wordmark + ONE menu button. The full row below is
+          desktop-only (hidden md:flex). */}
+      <div className="w-full flex md:hidden items-center justify-between gap-3">
+        <div className="flex items-center gap-2 shrink-0">
+          <div className="w-7 h-7 shrink-0 rounded-lg bg-cyan-500/15 border border-cyan-500/50 flex items-center justify-center shadow-[0_0_10px_rgba(6,182,212,0.3)]" aria-hidden="true">
+            <svg width="13" height="12" viewBox="0 0 13 12" fill="none">
+              <path d="M6.5 1.5 L12 11 H1 Z" stroke="#22d3ee" strokeWidth="1.5" strokeLinejoin="round" />
+            </svg>
+          </div>
+          <h1 className="text-sm font-bold tracking-wider text-slate-100 font-mono flex items-center gap-1.5">
+            NVK OS <span className="text-[10px] text-cyan-400/80 font-normal">v{PACKAGE_VERSION}</span>
+          </h1>
+        </div>
+        <button
+          onClick={() => setIsMobileMenuOpen(true)}
+          className="w-11 h-11 min-h-[44px] min-w-[44px] rounded-lg bg-slate-900/80 hover:bg-slate-800 border border-slate-700 text-slate-200 flex items-center justify-center transition-all shrink-0 cursor-pointer"
+          title="Menu"
+          aria-label="Open menu"
+        >
+          <i className="ri-menu-line text-lg"></i>
+        </button>
+      </div>
+
+      {/* Mobile menu sheet — search, mode pill and the four menus. */}
+      {isMobile && isMobileMenuOpen && (
+        <>
+          <div className="fixed inset-0 bg-black/60 z-[1290]" onClick={closeMobileMenu} aria-hidden="true" />
+          <div className="fixed inset-x-0 bottom-0 z-[1300] max-h-[82dvh] bg-slate-950 border-t border-cyan-500/40 rounded-t-2xl flex flex-col overflow-hidden">
+            <div className="flex items-center justify-center pt-2 pb-1 shrink-0" aria-hidden="true">
+              <div className="w-10 h-1 rounded-full bg-slate-600" />
+            </div>
+            <div className="flex items-center justify-between px-4 pb-2 border-b border-slate-800 shrink-0">
+              <span className="text-xs font-mono font-bold uppercase tracking-widest text-cyan-400">Menu</span>
+              <button
+                onClick={closeMobileMenu}
+                className="w-11 h-11 min-h-[44px] min-w-[44px] rounded-full bg-rose-600/90 hover:bg-rose-500 text-white flex items-center justify-center shrink-0 cursor-pointer"
+                title="Close menu"
+                aria-label="Close menu"
+              >
+                <i className="ri-close-line text-lg"></i>
+              </button>
+            </div>
+            <div className="overflow-y-auto px-4 py-3 space-y-4 font-mono text-xs custom-scrollbar" style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom, 0px))' }}>
+              <button
+                onClick={() => { onOpenSearch(); closeMobileMenu(); }}
+                className="w-full min-h-[44px] bg-slate-900/90 hover:bg-slate-900 border border-slate-700/80 rounded-xl px-3 py-2 text-slate-300 flex items-center gap-2 cursor-pointer"
+              >
+                <i className="ri-search-line text-cyan-400"></i>
+                <span>Search panels, AI commands...</span>
+              </button>
+
+              {onWorkspaceModeChange && (
+                <div>
+                  <div className="text-[10px] uppercase tracking-widest text-slate-500 font-bold mb-2">Workspace mode</div>
+                  <div className="flex items-center bg-slate-900/90 border border-slate-800/90 rounded-full p-0.5">
+                    <button
+                      onClick={() => { onWorkspaceModeChange('split'); closeMobileMenu(); }}
+                      className={`flex-1 px-2 py-1 min-h-[44px] rounded-full text-[10px] font-mono uppercase tracking-wider transition-all cursor-pointer ${workspaceMode === 'split' ? 'bg-cyan-500/25 text-cyan-300 border border-cyan-400/80 font-bold' : 'text-slate-400'}`}
+                    >
+                      3D Split
+                    </button>
+                    <button
+                      onClick={() => { onWorkspaceModeChange('immersive'); closeMobileMenu(); }}
+                      className={`flex-1 px-2 py-1 min-h-[44px] rounded-full text-[10px] font-mono uppercase tracking-wider transition-all cursor-pointer ${workspaceMode === 'immersive' ? 'bg-purple-500/25 text-purple-300 border border-purple-400/80 font-bold' : 'text-slate-400'}`}
+                    >
+                      3D Universe
+                    </button>
+                    <button
+                      onClick={() => { onWorkspaceModeChange('grid'); closeMobileMenu(); }}
+                      className={`flex-1 px-2 py-1 min-h-[44px] rounded-full text-[10px] font-mono uppercase tracking-wider transition-all cursor-pointer ${workspaceMode === 'grid' || workspaceMode === '2d' ? 'bg-emerald-500/25 text-emerald-300 border border-emerald-400/80 font-bold' : 'text-slate-400'}`}
+                    >
+                      3D Desk
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              <div>
+                <div className="text-[10px] uppercase tracking-widest text-slate-500 font-bold mb-2">Environment</div>
+                <div className="space-y-3 bg-slate-900 border border-slate-800 rounded-xl p-3">
+                  <div>
+                    <div className="flex justify-between text-[10px] mb-1">
+                      <span className="text-slate-400">Master Chaos:</span>
+                      <span className="text-red-400">{isMasterEntropyLocked ? "LOCKED" : (displayEntropyValue ?? 0).toFixed(1)}</span>
+                    </div>
+                    <input type="range" min="-10" max="10" step="0.1" value={isMasterEntropyLocked ? 0 : (masterEntropyOverride ?? 0)} onChange={(e) => onSetMasterEntropyOverride(Number(e.target.value))} disabled={isMasterEntropyLocked} className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-red-500" />
+                  </div>
+                  <div>
+                    <div className="flex justify-between text-[10px] mb-1">
+                      <span className="text-slate-400">Master Order:</span>
+                      <span className="text-emerald-400">{isMasterNegentropyLocked ? "LOCKED" : (masterNegentropyLevel ?? 5).toFixed(1)}</span>
+                    </div>
+                    <input type="range" min="0" max="10" step="0.1" value={isMasterNegentropyLocked ? 5 : (masterNegentropyLevel ?? 5)} onChange={(e) => onSetMasterNegentropyLevel(Number(e.target.value))} disabled={isMasterNegentropyLocked} className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-emerald-500" />
+                  </div>
+                  <div>
+                    <div className="flex justify-between text-[10px] mb-1">
+                      <span className="text-slate-400">Node Flow Speed:</span>
+                      <span className="text-cyan-400">{(nodeAnimationSpeed ?? 0).toFixed(2)}x</span>
+                    </div>
+                    <input type="range" min="0" max="1" step="0.05" value={nodeAnimationSpeed} onChange={(e) => onSetNodeAnimationSpeed(Number(e.target.value))} className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-500" />
+                  </div>
+                  <button onClick={onToggleAshfall} className={`px-3 py-2 min-h-[44px] rounded border text-[11px] ${showAshfall ? 'bg-cyan-950/50 border-cyan-500 text-cyan-300' : 'bg-slate-800 border-slate-700 text-slate-400'}`}>
+                    Ashfall: {showAshfall ? 'ON' : 'OFF'}
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <div className="text-[10px] uppercase tracking-widest text-slate-500 font-bold mb-2">Codex Mode</div>
+                <div className="bg-slate-900 border border-purple-500/30 rounded-xl py-1 max-h-64 overflow-y-auto custom-scrollbar">
+                  {availableModesForSwitching.map(mode => (
+                    <button
+                      key={mode.id}
+                      onClick={() => { activateCodexMode(mode.id); closeMobileMenu(); }}
+                      className={`w-full text-left px-3 py-2 min-h-[44px] transition flex items-center gap-2 ${currentCodexModeId === mode.id ? 'text-amber-300 bg-amber-500/15 font-bold border-l-2 border-amber-400' : 'text-slate-300 hover:bg-slate-800'}`}
+                    >
+                      <i className={`${mode.icon} ${currentCodexModeId === mode.id ? 'text-amber-400' : 'text-slate-500'}`}></i>
+                      <span className="truncate">{mode.name}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <div className="text-[10px] uppercase tracking-widest text-slate-500 font-bold mb-2">Oracle AI</div>
+                <button onClick={() => { onContextualOracleQuery(); closeMobileMenu(); }} className="w-full text-left px-3 py-2 min-h-[44px] text-teal-300 bg-slate-900 border border-fuchsia-500/30 rounded-xl transition flex items-center gap-2">
+                  <i className="ri-compass-3-line text-teal-400"></i> Contextual Query
+                </button>
+                <p className="px-1 pt-2 text-[10px] text-slate-500 leading-relaxed">
+                  One insight from the real workspace state, generated by the loaded model.
+                </p>
+              </div>
+
+              <div>
+                <div className="text-[10px] uppercase tracking-widest text-slate-500 font-bold mb-2">System</div>
+                <div className="bg-slate-900 border border-slate-700 rounded-xl py-1">
+                  <button onClick={() => { onOpenAllPanels(); closeMobileMenu(); }} className="w-full text-left px-3 py-2 min-h-[44px] text-cyan-300 hover:bg-slate-800 transition flex items-center gap-2">
+                    <i className="ri-layout-grid-fill text-cyan-400"></i> Open All Panels
+                  </button>
+                  <button onClick={() => { onCloseAllPanels(); closeMobileMenu(); }} className="w-full text-left px-3 py-2 min-h-[44px] text-rose-300 hover:bg-slate-800 transition flex items-center gap-2">
+                    <i className="ri-close-circle-line text-rose-400"></i> Close All Panels
+                  </button>
+                  <div className="my-1 border-t border-slate-800"></div>
+                  <button onClick={() => { onToggleBugaMode(); closeMobileMenu(); }} className={`w-full text-left px-3 py-2 min-h-[44px] transition flex items-center gap-2 ${isBugaModeActive ? 'text-lime-300 bg-lime-950/30' : 'text-slate-300 hover:bg-slate-800'}`}>
+                    <i className="ri-test-tube-line text-lime-400"></i> Buga Sphere Mode
+                  </button>
+                  <button onClick={() => { onToggleAuditMode(); closeMobileMenu(); }} className={`w-full text-left px-3 py-2 min-h-[44px] transition flex items-center gap-2 ${isAuditing ? 'text-cyan-300 bg-cyan-950/30' : 'text-slate-300 hover:bg-slate-800'}`}>
+                    <i className="ri-search-eye-line text-cyan-400"></i> Recursive Audit
+                  </button>
+                  <div className="my-1 border-t border-slate-800"></div>
+                  <button onClick={() => { onOpenCoreControls?.(); closeMobileMenu(); }} className="w-full text-left px-3 py-2 min-h-[44px] text-cyan-300 hover:bg-slate-800 transition flex items-center gap-2">
+                    <i className="ri-bubble-chart-line text-cyan-400"></i> Core Controls
+                  </button>
+                  <button onClick={() => { onOpenSettings?.(); closeMobileMenu(); }} className="w-full text-left px-3 py-2 min-h-[44px] text-slate-300 hover:bg-slate-800 transition flex items-center gap-2">
+                    <i className="ri-settings-3-line text-slate-400"></i> Settings
+                  </button>
+                  <button onClick={() => { onOpenTutorial?.(); closeMobileMenu(); }} className="w-full text-left px-3 py-2 min-h-[44px] text-slate-300 hover:bg-slate-800 transition flex items-center gap-2">
+                    <i className="ri-question-line text-slate-400"></i> First-run tour
+                  </button>
+                  <div className="my-1 border-t border-slate-800"></div>
+                  <button onClick={() => { onInitiateShatterpointTrace(); closeMobileMenu(); }} className="w-full text-left px-3 py-2 min-h-[44px] text-rose-300 hover:bg-slate-800 transition flex items-center gap-2">
+                    <i className="ri-focus-3-line text-rose-400"></i> Shatterpoint Trace
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      <div className="w-full hidden md:flex items-center justify-between gap-3 flex-nowrap">
         
         {/* Brand & Status */}
         <div className="flex items-center gap-3 shrink-0">

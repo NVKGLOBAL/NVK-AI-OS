@@ -1,5 +1,11 @@
 // NVK 3D OS — Sovereign Service Worker (Offline First Shell)
-const CACHE_NAME = 'nvk-sovereign-v2.2';
+// CACHE v2.3 (2026-11-27, mobile-first redesign): bumped UNCONDITIONALLY.
+// The SW serves scripts/styles stale-while-revalidate, so a phone that
+// loaded an earlier build keeps serving the old bundle until the SW
+// itself updates. Bumping the name forces a fresh cache on the next
+// SW update check and prevents exactly this stale-cache class of bug
+// (the black-orb report on NvK's phone).
+const CACHE_NAME = 'nvk-sovereign-v2.3';
 const SHELL_ASSETS = [
   '/NVK-AI-OS/',
   '/NVK-AI-OS/index.html',

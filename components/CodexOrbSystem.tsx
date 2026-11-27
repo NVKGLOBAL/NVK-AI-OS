@@ -1430,6 +1430,50 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
     const tempChildPos = new THREE.Vector3();
 
     let cumulativeTime = 0;
+    // Silent-black probe (mobile-first redesign, 2026-11-27). Phone
+    // diagnosis (2026-11-27, his iPhone): the stage is black while the
+    // render loop runs at 60 FPS — the bloom composer initializes fine
+    // but paints black every frame, throws nothing, and the old
+    // fallback (which only fires when render() THROWS) never runs.
+    // So: after a few frames, read a center pixel off the canvas.
+    // Pure black (max channel < 10 across an 8x8 sample) with the
+    // composer active means the composer is the black painter — drop
+    // it and render direct. Probe again 45 frames later; still black
+    // means the canvas itself is black — surface the fallback view
+    // (which now shows a visible CSS orb, never a void). The probe
+    // reads the canvas in the same task as the render, so the drawing
+    // buffer is still valid. The orb shader is NOT rewritten — no
+    // shader error evidence exists.
+    let blackProbeFrame = 0;
+    let blackProbeStage = 0; // 0 = not yet probed, 1 = composer dropped, re-probing, 2 = done
+    let blackProbeNextAt = 45;
+    let composerDisabled = false;
+
+    const isCanvasBlack = (): boolean => {
+      try {
+        const canvas = renderer.domElement;
+        const w = canvas.width;
+        const h = canvas.height;
+        if (!w || !h) return false;
+        const off = document.createElement('canvas');
+        off.width = 8;
+        off.height = 8;
+        const ctx = off.getContext('2d');
+        if (!ctx) return false;
+        ctx.drawImage(canvas, w / 2 - 4, h / 2 - 4, 8, 8, 0, 0, 8, 8);
+        const data = ctx.getImageData(0, 0, 8, 8).data;
+        let max = 0;
+        for (let i = 0; i < data.length; i += 4) {
+          if (data[i] > max) max = data[i];
+          if (data[i + 1] > max) max = data[i + 1];
+          if (data[i + 2] > max) max = data[i + 2];
+        }
+        return max < 10;
+      } catch {
+        return false;
+      }
+    };
+
     const animate = () => {
         animationFrameIdRef.current = requestAnimationFrame(animate);
         (window as any).frameCount = ((window as any).frameCount || 0) + 1;
@@ -2453,10 +2497,29 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
             clampCamera({ clampTarget: focusedNodeIdRef.current === null });
         }
         try {
-            if (composer) {
+            if (composer && !composerDisabled) {
                 composer.render();
             } else {
                 renderer.render(scene, camera);
+            }
+            // Silent-black probe — see the declaration above animate().
+            blackProbeFrame += 1;
+            if (blackProbeStage < 2 && blackProbeFrame >= blackProbeNextAt) {
+                if (isCanvasBlack()) {
+                    if (blackProbeStage === 0 && composer) {
+                        composerDisabled = true;
+                        blackProbeStage = 1;
+                        blackProbeNextAt = blackProbeFrame + 45;
+                        console.warn('[NVK Orb] Canvas is black with the bloom composer active — rendering direct without bloom.');
+                    } else {
+                        blackProbeStage = 2;
+                        console.warn('[NVK Orb] Canvas is still black without the composer — showing the CSS orb fallback.');
+                        setRendererError(true);
+                        onRendererErrorRef.current?.(true);
+                    }
+                } else {
+                    blackProbeStage = 2;
+                }
             }
         } catch (rErr) {
             renderer.render(scene, camera);
@@ -3337,7 +3400,19 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
     return (
       <div className="w-full h-full flex flex-col items-center justify-center bg-slate-950 text-slate-100 p-8 text-center">
         <div className="max-w-md space-y-6">
-          <div className="text-4xl mb-4">⚠️</div>
+          {/* CSS orb fallback (mobile-first redesign, 2026-11-27): the
+              screen is never an empty black void. When the WebGL canvas
+              is black or the context is lost, NVK is still visibly
+              present as a glowing orb while the user retries. */}
+          <div className="flex items-center justify-center">
+            <div className="relative w-28 h-28">
+              <div className="absolute inset-0 rounded-full bg-[radial-gradient(circle_at_35%_35%,rgba(52,211,153,0.9),rgba(6,182,212,0.55)_45%,rgba(2,6,23,0)_75%)] shadow-[0_0_60px_rgba(6,182,212,0.6)] animate-pulse" />
+              <div className="absolute inset-3 rounded-full border border-dashed border-cyan-400/50 animate-[spin_8s_linear_infinite]" />
+              <div className="absolute inset-0 flex items-center justify-center">
+                <span className="text-cyan-100 font-mono text-xs font-bold tracking-widest">NVK</span>
+              </div>
+            </div>
+          </div>
           <h2 className="text-2xl font-cinzel font-bold text-rose-400">3D Engine Context Lost</h2>
           <p className="text-slate-400 font-mono text-sm leading-relaxed">
             The browser has reached its WebGL limit or encountered a GPU error. 

@@ -4,7 +4,7 @@ import {
   Sparkles, Mic, MicOff, Send, Compass, Layers, Terminal, 
   CheckCircle2, AlertTriangle, ShieldCheck, ArrowRight, X, 
   Activity, Globe, FileText, GitMerge, Search, Cpu, RefreshCw, Volume2,
-  GripHorizontal, RotateCcw, Calculator
+  GripHorizontal, RotateCcw, Calculator, ChevronUp
 } from 'lucide-react';
 import { 
   NVKOrbState, 
@@ -27,6 +27,7 @@ import { resolveTerminalOrbState } from '../../lib/orbStateMapping';
 import { answerCatalogQuestion } from '../../lib/catalogLookup';
 import { NVK_PRODUCT_FACTS } from '../../lib/nvkProductFacts';
 import { liveEventText, runtimeEventText } from '../../services/liveFeedFormat';
+import { latestLiveEventLine, shouldAutofocusInput } from '../../lib/mobileWorkspace';
 import { tryAnswerMath, isSearchQuestion, answerSearchQuestion, needsNoModelReply, NO_MODEL_REPLY, GATEWAY_OFFLINE_REPLY } from '../../services/osNoModelAnswers';
 import { intentEngine } from '../../src/nvk/intent/IntentEngine';
 
@@ -194,8 +195,14 @@ export const NVKCommandLayer: React.FC<NVKCommandLayerProps> = ({
     } catch (e) {}
   };
 
-  // Auto focus input on mount for immediate first-turn interaction
+  // Auto focus input on mount for immediate first-turn interaction.
+  // Mobile-first redesign (2026-11-27): NO autofocus on touch — the
+  // current focus() on mount pops the iOS keyboard on load and shrinks
+  // the viewport. Autofocus only on non-touch.
   useEffect(() => {
+    const isCoarsePointer = typeof window !== 'undefined'
+      && (window.matchMedia?.('(pointer: coarse)').matches || 'ontouchstart' in window);
+    if (!shouldAutofocusInput(isCoarsePointer)) return;
     const timer = setTimeout(() => {
       inputRef.current?.focus();
     }, 400);
@@ -670,9 +677,10 @@ export const NVKCommandLayer: React.FC<NVKCommandLayerProps> = ({
   return (
     <div
       // S5 (2026-11-22): on mobile the CommandLayer is a bottom sheet —
-      // full-width minus small margins, anchored above the dock (the Dock
-      // footer sits at bottom-12, so 128px clears it) — instead of floating
-      // top-left over the orb. Desktop keeps the draggable persisted
+      // full-width minus small margins, anchored just above the safe-area
+      // inset. Mobile-first redesign (2026-11-27): the dock is gone on
+      // phones, so the 128px dock clearance is gone too — the bar floats
+      // at 8px + safe-area. Desktop keeps the draggable persisted
       // top-left position exactly as before.
       // Retest #13 (2026-11-23): a panel in Deep Focus (z-1090) covered
       // the chat SEND button, so a command could not be sent until the
@@ -680,21 +688,36 @@ export const NVKCommandLayer: React.FC<NVKCommandLayerProps> = ({
       // panel (1090) so chat stays clickable, still below the dock
       // (1100) so the dock buttons keep priority.
       className={`fixed z-[1095] font-mono pointer-events-none transition-shadow ${isMobile ? 'left-2 right-2' : 'w-[92vw] sm:w-[480px] max-w-[94vw]'}`}
-      style={isMobile ? { bottom: 'calc(128px + env(safe-area-inset-bottom, 0px))' } : {
+      style={isMobile ? { bottom: 'calc(8px + env(safe-area-inset-bottom, 0px))' } : {
         left: `${position.x}px`,
         top: `${position.y}px`
       }}
     >
+      {/* Mobile-first redesign (2026-11-27): live feed as a ONE-LINE
+          overlay above the collapsed composer bar — latest event only.
+          The full 4-event feed stays in the expanded console. Shown
+          only while the bar is collapsed; the overlay never covers the
+          orb's centre, it sits just above the bar. */}
+      {isMobile && isMinimized && (
+        <div className="pointer-events-none absolute bottom-full left-0 right-0 mb-2 px-1">
+          <div className="bg-slate-950/85 border border-slate-800 rounded-full px-3 py-1.5 text-[10px] font-mono text-slate-300 truncate">
+            {latestLiveEventLine(liveEvents)}
+          </div>
+        </div>
+      )}
       <motion.div 
         initial={{ opacity: 0, y: -20, scale: 0.96 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         transition={{ duration: 0.3, ease: 'easeOut' }}
-        className="pointer-events-auto bg-slate-950/92 backdrop-blur-2xl border border-cyan-500/40 rounded-2xl p-3.5 shadow-[0_0_50px_rgba(0,229,255,0.25)] flex flex-col gap-2.5 relative overflow-hidden"
+        className={`pointer-events-auto bg-slate-950/92 backdrop-blur-2xl border border-cyan-500/40 rounded-2xl p-3.5 shadow-[0_0_50px_rgba(0,229,255,0.25)] flex flex-col gap-2.5 relative ${isMobile && !isMinimized ? 'max-h-[82dvh] overflow-y-auto' : 'overflow-hidden'}`}
       >
         {/* Subtle Cyber Glow Line */}
         <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-cyan-400 to-transparent opacity-80" />
 
-        {/* Top Header Bar / Drag Handle */}
+        {/* Top Header Bar / Drag Handle — hidden on the collapsed mobile
+            bar (input + mic + Send only); the expand chevron in the
+            input row is the way back in. */}
+        {!(isMobile && isMinimized) && (
         <div
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
@@ -733,8 +756,10 @@ export const NVKCommandLayer: React.FC<NVKCommandLayerProps> = ({
             </button>
           </div>
         </div>
+        )}
 
-        {/* Core Status Indicator */}
+        {/* Core Status Indicator — hidden on the collapsed mobile bar. */}
+        {!(isMobile && isMinimized) && (
         <div className="flex items-center justify-between px-1 border-b border-cyan-500/10 pb-1.5 mb-1 select-none">
           <div className="text-[9px] uppercase font-mono font-bold tracking-widest flex items-center gap-2">
             <span className="text-slate-500">Logic Core:</span>
@@ -761,6 +786,7 @@ export const NVKCommandLayer: React.FC<NVKCommandLayerProps> = ({
             </button>
           )}
         </div>
+        )}
 
         {/* Expandable Body */}
         <AnimatePresence>
@@ -771,10 +797,12 @@ export const NVKCommandLayer: React.FC<NVKCommandLayerProps> = ({
               exit={{ height: 0, opacity: 0 }}
               className="flex flex-col gap-3"
             >
-              {/* Chat & Activity Stream */}
+              {/* Chat & Activity Stream — taller on the expanded mobile
+                  sheet so a reply is readable without scrolling the
+                  whole sheet. */}
               <div 
                 ref={scrollContainerRef}
-                className="max-h-36 sm:max-h-64 overflow-y-auto space-y-2 pr-1 custom-scrollbar text-xs"
+                className={isMobile && !isMinimized ? 'max-h-[46dvh] overflow-y-auto space-y-2 pr-1 custom-scrollbar text-xs' : 'max-h-36 sm:max-h-64 overflow-y-auto space-y-2 pr-1 custom-scrollbar text-xs'}
               >
                 {history.map((msg, idx) => (
                   <div 
@@ -936,7 +964,9 @@ export const NVKCommandLayer: React.FC<NVKCommandLayerProps> = ({
           )}
         </AnimatePresence>
 
-        {/* Shard synthesis controls (defect 8) */}
+        {/* Shard synthesis controls (defect 8) — hidden on the collapsed
+            mobile bar; they live in the expanded sheet. */}
+        {!(isMobile && isMinimized) && (
         <div className="flex items-center gap-2">
           <select
             value={shardVariant}
@@ -961,6 +991,7 @@ export const NVKCommandLayer: React.FC<NVKCommandLayerProps> = ({
             <span className="text-[10px] text-slate-500">Load a local model to synthesize shards.</span>
           )}
         </div>
+        )}
 
         {/* Input Bar & Voice Controls */}
         <form 
@@ -970,6 +1001,20 @@ export const NVKCommandLayer: React.FC<NVKCommandLayerProps> = ({
           }}
           className="flex items-center gap-2 bg-slate-900/90 border border-cyan-500/30 rounded-xl p-1.5 focus-within:border-cyan-400 focus-within:shadow-[0_0_20px_rgba(0,229,255,0.3)] transition-all"
         >
+          {/* Collapsed mobile bar: tap to expand into the full console
+              sheet. The Ret12 auto-expand (a reply landing while
+              minimized) still works on top of this. */}
+          {isMobile && isMinimized && (
+            <button
+              type="button"
+              onClick={() => setIsMinimized(false)}
+              className="min-h-[44px] min-w-[44px] p-2 rounded-lg bg-slate-800/80 hover:bg-slate-800 text-cyan-400 border border-slate-700 flex items-center justify-center shrink-0"
+              title="Expand console"
+              aria-label="Expand console"
+            >
+              <ChevronUp className="w-4 h-4" />
+            </button>
+          )}
           <input
             ref={inputRef}
             type="text"

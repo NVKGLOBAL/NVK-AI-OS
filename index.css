@@ -32,6 +32,9 @@ body {
     font-family: "DM Sans", system-ui, sans-serif;
     /* Touch: no 300ms tap delay, no double-tap zoom on buttons. */
     -webkit-tap-highlight-color: transparent;
+    /* Mobile-first redesign (2026-11-27): the OS is an app, not a
+       page — no pull-to-refresh / overscroll bounce. */
+    overscroll-behavior: none;
 }
 
 button, [role="button"] {

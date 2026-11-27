@@ -144,6 +144,7 @@ import { Workspace2D } from './components/spatial/Workspace2D';
 import type { WorkspaceConfig } from './components/spatial/Workspace2D';
 import { SettingsPanel } from './components/panels/SettingsPanel';
 import { useIsMobile } from './lib/useIsMobile';
+import { resolveWorkspaceMode, effectiveWorkspaceMode as resolveEffectiveWorkspaceMode } from './lib/mobileWorkspace';
 import AshfallEffect from './components/visuals/AshfallEffect';
 
 class ThreeErrorBoundary extends React.Component<
@@ -269,17 +270,22 @@ export const App: React.FC = () => {
   // (the modes with no orb stage), start in immersive instead. The
   // open/pinned panels themselves are untouched — only the first thing
   // seen changes. Split keeps its 3D stage on top, so it is not forced.
+  // Mobile-first redesign (2026-11-27): the mode resolution lives in
+  // lib/mobileWorkspace.resolveWorkspaceMode — a phone always opens
+  // immersive (the saved mode is the desktop mode, preserved).
   const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>(() => {
     try {
       const saved = localStorage.getItem('nvk_workspace_mode');
-      let mode: WorkspaceMode | null = null;
-      if (saved === '3d') mode = 'immersive';
-      else if (saved === 'immersive' || saved === 'split' || saved === 'grid' || saved === '2d') mode = saved;
-      if ((mode === 'grid' || mode === '2d') && persistedClusterHasOpenPanels()) return 'immersive';
-      return mode ?? 'immersive';
+      return resolveWorkspaceMode(isMobile, saved, persistedClusterHasOpenPanels());
     } catch {}
     return 'immersive';
   });
+  // Mobile-first redesign (2026-11-27): the RENDERED mode. The
+  // persisted state above stays the desktop value; on a phone every
+  // mode except the explicit '2d' renders immersive. '2d' is reachable
+  // at runtime only (WebGL crash cascade) so a dead GPU can still
+  // reach the desk. See lib/mobileWorkspace.effectiveWorkspaceMode.
+  const effectiveWorkspaceMode = resolveEffectiveWorkspaceMode(isMobile, workspaceMode);
   const [active2dNodeId, setActive2dNodeId] = useState<string | null>(null);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   // Voice listening toggle (N7: orb click toggles it; Esc stops it; passed
@@ -2087,7 +2093,7 @@ const mockShatterpointData = {
   return (
     <SystemStateProvider value={systemState}>
       <div 
-        className="app-container w-full h-screen bg-black overflow-hidden relative flex flex-col select-none"
+        className="app-container w-full h-dvh bg-black overflow-hidden relative flex flex-col select-none"
         onDragOver={(e) => e.preventDefault()}
         onDrop={handleGlobalDrop}
         onMouseMove={handleContainerMouseMove}
@@ -2101,9 +2107,12 @@ const mockShatterpointData = {
           </div>
         )}
 
-        {/* Global NVK OS Top Header */}
+        {/* Global NVK OS Top Header — receives the EFFECTIVE mode so
+            the pill highlights what is actually on screen (immersive
+            on a phone); the setter still writes the persisted desktop
+            mode. */}
         <Header 
-          workspaceMode={workspaceMode}
+          workspaceMode={effectiveWorkspaceMode}
           onWorkspaceModeChange={setWorkspaceMode}
           onOpenSearch={() => setIsSearchOpen(true)}
           onOpenAllPanels={handleOpenAllPanels}
@@ -2149,7 +2158,7 @@ const mockShatterpointData = {
 
         {/* Main 3D Spatial Layout Engine */}
         <div className="flex-1 w-full overflow-hidden relative flex flex-col min-h-0">
-          {workspaceMode === 'split' ? (
+          {effectiveWorkspaceMode === 'split' ? (
             /* 3D SPLIT VIEWPORT MODE (Optimal for Mobile & Clutter-Free Touch Control) */
             <div className="w-full h-full flex flex-col overflow-hidden bg-slate-950">
               {/* Top 3D Spatial Stage Canvas */}
@@ -2256,7 +2265,7 @@ const mockShatterpointData = {
                 />
               </div>
             </div>
-          ) : workspaceMode === 'grid' || workspaceMode === '2d' ? (
+          ) : effectiveWorkspaceMode === 'grid' || effectiveWorkspaceMode === '2d' ? (
             /* 3D DESK GRID MODE (Bento Desk with Live Integrated 3D Core Stage) */
             <Workspace2D 
               activeCluster={activeCluster}
@@ -2274,7 +2283,7 @@ const mockShatterpointData = {
               onDeskConfigChange={setDeskConfig}
               onOpenSettings={() => handleAppClick('SettingsPanel')}
             />
-          ) : workspaceMode === 'immersive' ? (
+          ) : effectiveWorkspaceMode === 'immersive' ? (
             /* 3D IMMERSIVE UNIVERSE MODE (Full Canvas Spatial Experience) */
             <ThreeErrorBoundary
               fallback={
@@ -2344,7 +2353,7 @@ const mockShatterpointData = {
               <div className="max-w-sm">
                 <h2 className="text-sm font-mono text-rose-400 uppercase tracking-widest">Unknown workspace mode</h2>
                 <p className="text-slate-400 font-mono text-[11px] mt-3 leading-relaxed">
-                  The saved workspace mode &ldquo;{workspaceMode}&rdquo; is not a known mode (immersive, split, grid, 2d). Nothing was rendered rather than guessing a stage.
+                  The saved workspace mode &ldquo;{effectiveWorkspaceMode}&rdquo; is not a known mode (immersive, split, grid, 2d). Nothing was rendered rather than guessing a stage.
                 </p>
                 <button
                   onClick={() => setWorkspaceMode('immersive')}
@@ -2616,7 +2625,7 @@ const mockShatterpointData = {
             handleAppClick(panelId);
             setIsSearchOpen(false);
           }}
-          workspaceMode={workspaceMode}
+          workspaceMode={effectiveWorkspaceMode}
           onWorkspaceModeChange={setWorkspaceMode}
           onCloseAllPanels={handleCloseAllPanels}
           onOpenAllPanels={handleOpenAllPanels}

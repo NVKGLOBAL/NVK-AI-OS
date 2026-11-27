@@ -1,5 +1,6 @@
 import React from 'react';
 import type { PanelDefinition } from '../types';
+import { useIsMobile } from '../lib/useIsMobile';
 
 interface DockProps {
   apps: PanelDefinition[];
@@ -14,6 +15,30 @@ export const Dock: React.FC<DockProps> = ({
   onAppClick,
   onOpenSearch,
 }) => {
+  // Mobile-first redesign (2026-11-27): the 12-icon row is gone on a
+  // phone — it ate the bottom of the stage and, per the phone diagnosis
+  // (2026-11-27), hid the orb behind the dock. One "Apps" button (the
+  // existing App Library launcher icon) opens the panel picker as a
+  // sheet. Top-right, below the header, so the orb's centre is never
+  // covered by default chrome. The full dock renders only on ≥sm.
+  const isMobile = useIsMobile();
+  if (isMobile) {
+    return (
+      <div
+        className="fixed right-3 z-[1100]"
+        style={{ top: 'calc(108px + env(safe-area-inset-top, 0px))' }}
+      >
+        <button
+          onClick={onOpenSearch}
+          className="w-11 h-11 min-h-[44px] min-w-[44px] rounded-full bg-slate-900/80 hover:bg-slate-800 border border-cyan-500/40 text-cyan-300 flex items-center justify-center shadow-[0_0_14px_rgba(6,182,212,0.25)] transition-all cursor-pointer"
+          title="Apps — open the panel picker"
+          aria-label="Apps — open the panel picker"
+        >
+          <i className="ri-apps-2-fill text-xl"></i>
+        </button>
+      </div>
+    );
+  }
   // Combine all items into one flat row. (Was a circular "smartwatch
   // arc" polar transform: it lifted the end buttons clean off the
   // visible strip — the strip's overflow-x-auto clips anything above its

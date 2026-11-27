@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import { useIsMobile } from '../lib/useIsMobile';
+import { MOBILE_HINT_TEXT, MOBILE_HINT_DISMISSED_KEY } from '../lib/mobileWorkspace';
 
 interface TutorialStep {
   title: string;
@@ -45,6 +47,9 @@ export const TutorialOverlay: React.FC<TutorialOverlayProps> = ({ isVisible: for
   const [currentStep, setCurrentStep] = useState(0);
   const [isVisible, setIsVisible] = useState(false);
   const [targetRect, setTargetRect] = useState<DOMRect | null>(null);
+  // Mobile-first redesign (2026-11-27): a phone gets one hint pill,
+  // not the 3-step spotlight tour. Desktop keeps the tour.
+  const isMobile = useIsMobile();
 
   useEffect(() => {
     if (forceVisible) {
@@ -53,15 +58,16 @@ export const TutorialOverlay: React.FC<TutorialOverlayProps> = ({ isVisible: for
       return;
     }
 
-    const hasSeenTutorial = localStorage.getItem('nvk_tutorial_completed');
+    const hasSeenTutorial = localStorage.getItem(MOBILE_HINT_DISMISSED_KEY);
     if (!hasSeenTutorial) {
       setIsVisible(true);
     }
   }, [forceVisible]);
 
-  // Track and measure the targeted element dynamically
+  // Track and measure the targeted element dynamically. Desktop tour
+  // only — the mobile hint pill has no spotlight target to poll for.
   useEffect(() => {
-    if (!isVisible) return;
+    if (!isVisible || isMobile) return;
     const step = TUTORIAL_STEPS[currentStep];
     
     const updateRect = () => {
@@ -90,7 +96,7 @@ export const TutorialOverlay: React.FC<TutorialOverlayProps> = ({ isVisible: for
       window.removeEventListener('resize', updateRect);
       window.removeEventListener('scroll', updateRect);
     };
-  }, [currentStep, isVisible]);
+  }, [currentStep, isVisible, isMobile]);
 
   const handleNext = () => {
     if (currentStep < TUTORIAL_STEPS.length - 1) {
@@ -102,11 +108,37 @@ export const TutorialOverlay: React.FC<TutorialOverlayProps> = ({ isVisible: for
 
   const handleSkip = () => {
     setIsVisible(false);
-    localStorage.setItem('nvk_tutorial_completed', 'true');
+    localStorage.setItem(MOBILE_HINT_DISMISSED_KEY, 'true');
     onComplete();
   };
 
   if (!isVisible) return null;
+
+  // Mobile-first redesign (2026-11-27): one dismissible hint pill
+  // above the composer — the one-line feed sits just above the bar,
+  // so the pill floats above that line. Dismissal persists in the
+  // existing nvk_tutorial_completed key; the Help menu entry re-shows
+  // it (forceVisible sets isVisible). The 3-step tour stays desktop.
+  if (isMobile) {
+    return (
+      <div
+        className="fixed inset-x-2 z-[4900] pointer-events-none"
+        style={{ bottom: 'calc(100px + env(safe-area-inset-bottom, 0px))' }}
+      >
+        <div className="pointer-events-auto bg-slate-900/95 backdrop-blur-xl border border-cyan-500/40 rounded-full pl-4 pr-1 py-1 shadow-[0_0_30px_rgba(0,255,255,0.2)] flex items-center gap-2">
+          <span className="flex-1 text-xs font-mono text-cyan-100 leading-snug">{MOBILE_HINT_TEXT}</span>
+          <button
+            onClick={handleSkip}
+            className="w-11 h-11 min-h-[44px] min-w-[44px] rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center shrink-0 cursor-pointer"
+            title="Dismiss"
+            aria-label="Dismiss hint"
+          >
+            <i className="ri-close-line text-base"></i>
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   const step = TUTORIAL_STEPS[currentStep];
   const isNearBottom = targetRect ? targetRect.top > window.innerHeight / 2 : false;
