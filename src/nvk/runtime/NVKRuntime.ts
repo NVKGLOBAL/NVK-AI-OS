@@ -47,6 +47,8 @@ export interface NVKPlanPreview {
   intent: string;
   /** Set when the intent needs a missing input before any plan can exist. */
   needsInput?: string;
+  /** Set when the planner built no nodes: no tool matches the input. */
+  noToolMatched?: boolean;
   steps: NVKPlanStep[];
 }
 
@@ -74,6 +76,11 @@ export class NVKRuntime {
       return {
         intent: parsed.intent,
         needsInput: 'I don\'t have a tool for that yet — can you say what you want me to do? (For example: search the web, do a calculation, or open an application.)',
+        // 2026-11-26 follow-up: marks the empty plan so the caller can
+        // tell "no tool matches" apart from a genuine missing input
+        // ('Which application...?'). Free-text with no matching tool is
+        // general chat — with the gateway on it goes to the brain.
+        noToolMatched: true,
         steps: [],
       };
     }

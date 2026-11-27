@@ -2,6 +2,65 @@ import React, { createContext, useState, useCallback, useContext, ReactNode, use
 import { CreateMLCEngine, CreateWebWorkerMLCEngine, prebuiltAppConfig } from "@mlc-ai/web-llm";
 import type { MLCEngineInterface } from "@mlc-ai/web-llm";
 import type { LocalLLMContextType } from '../types';
+import { GATEWAY_OFFLINE_REPLY } from '../services/osNoModelAnswers';
+
+/**
+ * The shared NVK brain endpoint — the same Worker CODEXA serves from, and
+ * the same endpoint the NVK Agent uses for its free cloud gateway (Kilo
+ * free tier, keyless). 2026-11-26 fix: the OS chat defaults to this gateway
+ * when no local model is loaded, so the chat works on a fresh phone with
+ * nothing downloaded. A loaded local model still wins; a user-configured
+ * provider key still wins. No key is ever sent here — the gateway is keyless.
+ */
+export const NVK_GATEWAY_BASE = 'https://codexa.nvkglobal.workers.dev';
+
+/**
+ * Free cloud gateway generation — mirrors the NVK Agent's
+ * generateViaGateway (src/intelligence/router.ts). Returns the answer text,
+ * or null when the gateway cannot serve the request (HTTP 429
+ * all_cloud_tiers_exhausted, a network failure, a non-JSON response, or an
+ * empty reply). A null result is an honest offline signal — the caller
+ * renders GATEWAY_OFFLINE_REPLY, never a fabricated answer. The gateway's
+ * CORS is `*`, so this works cross-origin from the GitHub Pages origin.
+ * The gateway takes `{messages, max_tokens}` and returns
+ * `{tier, model, text, usage, notice}` or HTTP 429.
+ */
+export async function generateViaGateway(
+  prompt: string,
+  systemPrompt?: string,
+  maxTokens: number = 512,
+  history?: Array<{ role: 'user' | 'assistant'; content: string }>,
+): Promise<string | null> {
+  const messages: Array<{ role: string; content: string }> = [];
+  if (systemPrompt && systemPrompt.trim()) {
+    messages.push({ role: 'system', content: systemPrompt });
+  }
+  for (const turn of history || []) {
+    if (turn && turn.content && turn.content.trim()) {
+      messages.push({ role: turn.role, content: turn.content });
+    }
+  }
+  messages.push({ role: 'user', content: prompt });
+  let res: Response;
+  try {
+    res = await fetch(`${NVK_GATEWAY_BASE}/ai/generate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messages, max_tokens: maxTokens }),
+    });
+  } catch {
+    return null;
+  }
+  if (!res.ok) return null;
+  let data: any;
+  try {
+    data = await res.json();
+  } catch {
+    return null;
+  }
+  const text = typeof data?.text === 'string' ? data.text.trim() : '';
+  return text || null;
+}
 
 /**
  * Standardized model ID for Gemma 3 1B Instruct.
@@ -147,6 +206,14 @@ export const LocalLLMProvider: React.FC<{ children: ReactNode }> = ({ children }
   const [isCloudMode, setIsCloudMode] = useState<boolean>(() => {
     return localStorage.getItem('nvk_is_cloud_mode') === 'true';
   });
+  // 2026-11-26 fix (free cloud gateway, NVK Agent pattern): ON by default.
+  // The gateway answers only when no local model is loaded and no provider
+  // key is configured; a loaded model or a configured key always wins over
+  // it. Only an explicit 'false' turns it off — an unset key means on, so a
+  // fresh phone gets a working chat with nothing downloaded.
+  const [freeCloudEnabled, setFreeCloudEnabled] = useState<boolean>(() => {
+    try { return localStorage.getItem('nvk_free_cloud_enabled') !== 'false'; } catch { return true; }
+  });
   const [ollamaConfig, setOllamaConfig] = useState(() => {
     try {
       const saved = localStorage.getItem('nvk_ollama_config');
@@ -201,6 +268,10 @@ export const LocalLLMProvider: React.FC<{ children: ReactNode }> = ({ children }
   useEffect(() => {
     localStorage.setItem('nvk_is_cloud_mode', String(isCloudMode));
   }, [isCloudMode]);
+
+  useEffect(() => {
+    try { localStorage.setItem('nvk_free_cloud_enabled', String(freeCloudEnabled)); } catch { /* storage unavailable */ }
+  }, [freeCloudEnabled]);
 
   useEffect(() => {
     localStorage.setItem('nvk_ollama_config', JSON.stringify(ollamaConfig));
@@ -481,7 +552,14 @@ export const LocalLLMProvider: React.FC<{ children: ReactNode }> = ({ children }
       }
     }
 
-    if (isCloudMode || (selectedProvider !== 'local' && !isModelLoaded)) {
+    // 2026-11-26 fix: the keyed-provider path only fires when a key is
+    // actually configured for the selected provider. Cloud mode or a
+    // non-local provider with NO key used to POST /api/ai/chat (a dev-server
+    // route that does not exist on the static Pages deploy) and fail — now
+    // that case falls through to the free cloud gateway below instead.
+    // A configured key still wins over the gateway, as before.
+    const hasProviderKey = selectedProvider !== 'local' && Boolean((apiKeys[selectedProvider] || '').trim());
+    if ((isCloudMode && hasProviderKey) || (selectedProvider !== 'local' && !isModelLoaded && hasProviderKey)) {
       setIsGenerating(true);
       setError(null);
       try {
@@ -518,6 +596,29 @@ export const LocalLLMProvider: React.FC<{ children: ReactNode }> = ({ children }
         console.error("Error in AI inference:", err);
         setError(err instanceof Error ? err : new Error("Unknown error generating text"));
         setIsGenerating(false);
+        return null;
+      }
+    }
+
+    // 2026-11-26 fix: free cloud gateway (NVK Agent pattern). No local
+    // model is loaded and no provider key is configured — the gateway
+    // answers keyless from the shared NVK brain endpoint. A loaded local
+    // model never reaches this branch (local wins); a configured key took
+    // the branch above (key wins). On any gateway failure the result is
+    // null with the honest offline message — never a fabricated answer.
+    if (!isModelLoaded && freeCloudEnabled) {
+      setIsGenerating(true);
+      setError(null);
+      try {
+        const text = await generateViaGateway(prompt, systemPrompt, maxTokens, boundedHistory);
+        setIsGenerating(false);
+        if (text) return text;
+        setError(new Error(GATEWAY_OFFLINE_REPLY));
+        return null;
+      } catch (err) {
+        console.error("Error in gateway inference:", err);
+        setIsGenerating(false);
+        setError(new Error(GATEWAY_OFFLINE_REPLY));
         return null;
       }
     }
@@ -566,7 +667,7 @@ export const LocalLLMProvider: React.FC<{ children: ReactNode }> = ({ children }
       setError(err instanceof Error ? err : new Error("Local inference failed"));
       return null;
     }
-  }, [isCloudMode, selectedProvider, apiKeys, isModelLoaded]);
+  }, [isCloudMode, selectedProvider, apiKeys, isModelLoaded, freeCloudEnabled]);
 
   return (
     <LocalLLMContext.Provider value={{
@@ -591,6 +692,8 @@ export const LocalLLMProvider: React.FC<{ children: ReactNode }> = ({ children }
       setSelectedProvider,
       isCloudMode,
       setIsCloudMode,
+      freeCloudEnabled,
+      setFreeCloudEnabled,
       ollamaConfig,
       setOllamaConfig
     }}>

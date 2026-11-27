@@ -1453,6 +1453,9 @@ export interface LocalLLMContextType {
   setSelectedProvider: (provider: string) => void;
   isCloudMode: boolean;
   setIsCloudMode: (isCloud: boolean) => void;
+  /** Free cloud gateway (Kilo, keyless, via the shared NVK brain endpoint) — ON by default; answers only when no local model is loaded and no provider key is configured. */
+  freeCloudEnabled: boolean;
+  setFreeCloudEnabled: (enabled: boolean) => void;
   ollamaConfig: {
     url: string;
     model: string;

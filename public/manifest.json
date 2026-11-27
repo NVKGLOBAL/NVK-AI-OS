@@ -1,21 +1,25 @@
 {
-  "short_name": "NVK 3D OS",
-  "name": "NVK 3D OS — Sovereign Spatial Operating System",
-  "description": "AI you own. Local-first intelligence. Your data stays with you by default.",
-  "start_url": "/",
-  "display": "standalone",
-  "theme_color": "#020617",
-  "background_color": "#020617",
-  "icons": [
-    {
-      "src": "/assets/icon-192.png",
-      "type": "image/png",
-      "sizes": "192x192"
-    },
-    {
-      "src": "/assets/icon-512.png",
-      "type": "image/png",
-      "sizes": "512x512"
-    }
-  ]
+    "background_color": "#020617",
+    "description": "AI you own. Local-first intelligence. Your data stays with you by default.",
+    "display": "standalone",
+    "icons": [
+        {
+            "purpose": "any",
+            "sizes": "192x192",
+            "src": "/NVK-AI-OS/assets/icon-192.png",
+            "type": "image/png"
+        },
+        {
+            "purpose": "any",
+            "sizes": "512x512",
+            "src": "/NVK-AI-OS/assets/icon-512.png",
+            "type": "image/png"
+        }
+    ],
+    "id": "/NVK-AI-OS/",
+    "name": "NVK 3D OS \u2014 Sovereign Spatial Operating System",
+    "scope": "/NVK-AI-OS/",
+    "short_name": "NVK 3D OS",
+    "start_url": "/NVK-AI-OS/",
+    "theme_color": "#020617"
 }

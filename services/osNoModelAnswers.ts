@@ -139,3 +139,14 @@ export function needsNoModelReply(intent: string, isModelLoaded: boolean): boole
 /** The honest no-model reply (same wording as the Logic Core status line). */
 export const NO_MODEL_REPLY =
   'No model loaded — hydrate the matrix to begin. I can\'t answer questions or search the web until a model is loaded; load one in the Logic Core and ask again.';
+
+/**
+ * The honest offline reply when the free cloud gateway cannot answer
+ * (2026-11-26 fix: the OS chat defaults to the gateway with no local model
+ * loaded). The gateway is keyless and shared, so its free capacity can be
+ * exhausted (HTTP 429 all_cloud_tiers_exhausted) — that is a capacity
+ * limit, not a broken chat, and it is never papered over with a made-up
+ * answer. The user retries later or loads a local model to answer on-device.
+ */
+export const GATEWAY_OFFLINE_REPLY =
+  'NVK is offline right now — the free cloud gateway couldn\'t answer (its free capacity is exhausted). Nothing was made up; try again in a little while, or load a local model in the Logic Core to answer on-device.';
