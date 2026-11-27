@@ -227,6 +227,18 @@ export const NVKCommandLayer: React.FC<NVKCommandLayerProps> = ({
     }
   }, [history, isMinimized]);
 
+  // Phone fix (2026-11-27): Focus NVK / Reset Viewport in the 3D HUD
+  // collapse the console on phones so the orb they reveal is actually
+  // visible — the expanded sheet covers it at z-1095. Desktop
+  // unaffected: the console is a draggable panel there and must not
+  // collapse on focus. Only the HUD dispatches this event (mobile-gated
+  // at the source); the isMobile guard here is belt-and-braces.
+  useEffect(() => {
+    const collapse = () => { if (isMobile) setIsMinimized(true); };
+    window.addEventListener('nvk-collapse-console', collapse);
+    return () => window.removeEventListener('nvk-collapse-console', collapse);
+  }, [isMobile]);
+
   // Handle Speech Recognition for voice commands
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -942,7 +954,12 @@ export const NVKCommandLayer: React.FC<NVKCommandLayerProps> = ({
               )}
 
               {/* Clickable Suggested Commands */}
-              <div className="flex items-center gap-1.5 overflow-x-auto py-1 custom-scrollbar select-none">
+              {/* Phone fix (2026-11-27): on phones the chips ran off the
+                  right edge in a single scrollable line (iOS hides the
+                  scrollbar, so they just looked cut off). On phones they
+                  wrap to a second row so every chip is visible; desktop
+                  keeps the single scrollable line. */}
+              <div className={isMobile ? 'flex flex-wrap items-center gap-1.5 py-1 select-none' : 'flex items-center gap-1.5 overflow-x-auto py-1 custom-scrollbar select-none'}>
                 <span className="text-[9px] uppercase tracking-wider text-slate-500 shrink-0 font-semibold">
                   Try asking:
                 </span>
@@ -967,11 +984,11 @@ export const NVKCommandLayer: React.FC<NVKCommandLayerProps> = ({
         {/* Shard synthesis controls (defect 8) — hidden on the collapsed
             mobile bar; they live in the expanded sheet. */}
         {!(isMobile && isMinimized) && (
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <select
             value={shardVariant}
             onChange={(e) => setShardVariant(e.target.value as ShardVariant)}
-            className="bg-slate-900/90 border border-cyan-500/30 rounded-lg text-[11px] text-slate-200 px-2 py-1.5 min-h-[36px] focus:outline-none"
+            className="min-w-0 max-w-full bg-slate-900/90 border border-cyan-500/30 rounded-lg text-[11px] text-slate-200 px-2 py-1.5 min-h-[36px] focus:outline-none"
             title="Shard format"
           >
             {SHARD_VARIANTS.map(v => (
@@ -983,7 +1000,7 @@ export const NVKCommandLayer: React.FC<NVKCommandLayerProps> = ({
             onClick={handleSynthesizeShard}
             disabled={isSynthesizingShard}
             title="Synthesize a shard from the current input using the local model"
-            className="px-3 py-1.5 min-h-[36px] bg-slate-800/80 hover:bg-slate-800 disabled:opacity-40 text-cyan-300 border border-cyan-500/30 rounded-lg text-[11px] font-bold uppercase tracking-wider transition-all flex items-center"
+            className="shrink-0 px-3 py-1.5 min-h-[36px] bg-slate-800/80 hover:bg-slate-800 disabled:opacity-40 text-cyan-300 border border-cyan-500/30 rounded-lg text-[11px] font-bold uppercase tracking-wider transition-all flex items-center"
           >
             {isSynthesizingShard ? 'Synthesizing…' : 'Synthesize shard'}
           </button>
@@ -1021,13 +1038,13 @@ export const NVKCommandLayer: React.FC<NVKCommandLayerProps> = ({
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
             placeholder="Ask NVK anything... (e.g. 'Research commercial solar in Texas', 'Create pitch deck')"
-            className="flex-1 bg-transparent px-3 py-1.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none font-mono"
+            className="min-w-0 flex-1 bg-transparent px-3 py-1.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none font-mono"
           />
 
           <button
             type="button"
             onClick={handleToggleListening}
-            className={`min-h-[44px] min-w-[44px] p-2 rounded-lg transition-all flex items-center justify-center ${
+            className={`shrink-0 min-h-[44px] min-w-[44px] p-2 rounded-lg transition-all flex items-center justify-center ${
               isListening || isVoiceActive
                 ? 'bg-cyan-500 text-slate-950 shadow-[0_0_15px_rgba(0,229,255,0.8)] animate-pulse'
                 : 'bg-slate-800/80 hover:bg-slate-800 text-slate-300 hover:text-cyan-400 border border-slate-700'
@@ -1040,7 +1057,7 @@ export const NVKCommandLayer: React.FC<NVKCommandLayerProps> = ({
           <button
             type="submit"
             disabled={!inputValue.trim()}
-            className="px-3.5 min-h-[44px] bg-gradient-to-r from-cyan-500 to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 disabled:opacity-40 disabled:pointer-events-none text-slate-950 font-bold rounded-lg text-xs uppercase tracking-wider flex items-center gap-1.5 transition-all shadow-[0_0_12px_rgba(0,229,255,0.3)] active:scale-95"
+            className="shrink-0 px-3.5 min-h-[44px] bg-gradient-to-r from-cyan-500 to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 disabled:opacity-40 disabled:pointer-events-none text-slate-950 font-bold rounded-lg text-xs uppercase tracking-wider flex items-center gap-1.5 transition-all shadow-[0_0_12px_rgba(0,229,255,0.3)] active:scale-95"
           >
             <span>Send</span>
             <Send className="w-3 h-3" />

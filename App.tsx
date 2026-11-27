@@ -2492,7 +2492,12 @@ const mockShatterpointData = {
               exit={{ opacity: 0, scale: 0.9 }}
               className="fixed inset-0 z-[2000] flex items-center justify-center pointer-events-none"
             >
-              <div className="bg-slate-900/95 backdrop-blur-xl border border-cyan-500/30 rounded-2xl p-6 w-[400px] max-w-[calc(100vw-2rem)] shadow-[0_0_50px_rgba(0,255,179,0.2)] pointer-events-auto relative">
+              {/* Phone fix (2026-11-27): this modal had no max-height and
+                  no scroll — on a phone viewport it overflowed top and
+                  bottom and its Close button was unreachable without a
+                  reload. max-h + overflow-y-auto keeps every control
+                  reachable. */}
+              <div className="bg-slate-900/95 backdrop-blur-xl border border-cyan-500/30 rounded-2xl p-6 w-[400px] max-w-[calc(100vw-2rem)] max-h-[calc(100dvh-2rem)] overflow-y-auto shadow-[0_0_50px_rgba(0,255,179,0.2)] pointer-events-auto relative">
                 <button 
                   onClick={() => setIsCoreControlsOpen(false)}
                   className="absolute top-4 right-4 w-11 h-11 rounded-full bg-rose-600/90 hover:bg-rose-500 border border-rose-400 text-white shadow-[0_0_8px_rgba(244,63,94,0.5)] flex items-center justify-center transition-all font-bold shrink-0 cursor-pointer"

@@ -257,13 +257,17 @@ async function main(): Promise<void> {
 
   // --- 10. Source pins: black-orb hardening (bloom composer probe). ---
   const orb = read('components/CodexOrbSystem.tsx');
+  // Phone fix (2026-11-27): the probe is now a continuous watchdog —
+  // 9 sample points, black only when 7+ are black, two consecutive
+  // black samples to act. The old one-shot 8x8 centre sample let a
+  // drifting strand (or late blackness) lock in "not black" forever.
   check(
-    'Orb has the silent-black probe (center-pixel read)',
-    orb.includes('isCanvasBlack') && orb.includes('drawImage(canvas, w / 2 - 4, h / 2 - 4, 8, 8, 0, 0, 8, 8)'),
+    'Orb has the silent-black watchdog (9-point sampling, consecutive confirmation)',
+    orb.includes('isCanvasBlack') && orb.includes('blackSamples >= 7') && orb.includes('blackProbeStreakRef'),
   );
   check(
     'Orb drops the bloom composer when the canvas is black with it active',
-    orb.includes('composerDisabled = true') && orb.includes('Canvas is black with the bloom composer active'),
+    orb.includes('blackComposerDroppedRef.current = true') && orb.includes('Canvas is black with the bloom composer active'),
   );
   check(
     'Orb surfaces the fallback when still black without the composer',

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import type { PanelDefinition } from '../types';
 import { CyberSynth } from '../lib/soundEffects';
+import { useIsMobile } from '../lib/useIsMobile';
 
 interface PanelManagerProps {
   pinnedPanelIds: string[];
@@ -46,6 +47,7 @@ export const PanelManager: React.FC<PanelManagerProps> = ({
   panelDefinitions,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
+  const isMobile = useIsMobile();
 
   const handleToggleOpen = () => {
     CyberSynth.playClick();
@@ -89,8 +91,17 @@ export const PanelManager: React.FC<PanelManagerProps> = ({
   // Lattice Manager capsule lives bottom-right, clear of the dock:
   // centered bottom-20/24 used to overlap the center dock icons' top
   // sliver (capsule z-1150 over dock z-1100).
+  // Phone fix (2026-11-27): bottom-right put the capsule on top of the
+  // expanded NVK console sheet, covering the "Synthesize shard" button
+  // at z-1150 over the sheet's z-1095. On phones it docks top-right
+  // (below the header + safe area, opposite the 3D HUD at top-left)
+  // and the panel opens downward (flex-col-reverse) so it never runs
+  // off the top of the viewport. Desktop unchanged.
   return (
-    <div className="fixed bottom-24 right-4 z-[1150] flex flex-col items-end gap-2 pointer-events-none select-none">
+    <div
+      className={`fixed z-[1150] flex items-end gap-2 pointer-events-none select-none ${isMobile ? 'right-3 flex-col-reverse' : 'right-4 bottom-24 flex-col'}`}
+      style={isMobile ? { top: 'calc(64px + env(safe-area-inset-top, 0px))' } : undefined}
+    >
       <AnimatePresence>
         {isOpen && (
           <motion.div
@@ -98,7 +109,7 @@ export const PanelManager: React.FC<PanelManagerProps> = ({
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 15, scale: 0.95 }}
             transition={{ type: 'spring', stiffness: 400, damping: 25 }}
-            className="pointer-events-auto bg-slate-950/90 backdrop-blur-xl border border-slate-800/80 p-3.5 rounded-2xl shadow-[0_15px_35px_rgba(0,0,0,0.8)] flex flex-col gap-3 min-w-[320px] max-w-[90vw]"
+            className={`pointer-events-auto bg-slate-950/90 backdrop-blur-xl border border-slate-800/80 p-3.5 rounded-2xl shadow-[0_15px_35px_rgba(0,0,0,0.8)] flex flex-col gap-3 min-w-[320px] max-w-[90vw] ${isMobile ? 'max-h-[calc(100dvh-160px)] overflow-y-auto' : ''}`}
           >
             {/* Header / Global Actions */}
             <div className="flex items-center justify-between border-b border-slate-800/60 pb-2">

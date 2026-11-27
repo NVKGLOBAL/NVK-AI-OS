@@ -358,6 +358,21 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
   const nvkOrbStateRef = useRef<NVKOrbState>(nvkOrbState);
   const [rendererError, setRendererError] = React.useState(false);
   const [retryCount, setRetryCount] = React.useState(0);
+  // Silent-black fallback view (phone fix, 2026-11-27): when the canvas
+  // is black on a phone the orb must still be visible as a CSS orb —
+  // without the "3D Engine Context Lost" heading, which is wrong here
+  // (the context is not lost, the canvas just paints black).
+  const [blackFallback, setBlackFallback] = React.useState(false);
+  // Silent-black watchdog refs (phone fix, 2026-11-27): the old probe
+  // was one-shot — a single 8x8 centre sample at frame 45. A drifting
+  // wireframe strand through that exact sample, or blackness arriving
+  // after frame 90, locked in "not black" forever. The watchdog samples
+  // continuously instead; see isCanvasBlack + the animate() block.
+  const blackProbeFrameRef = useRef(0);
+  const blackProbeNextAtRef = useRef(45);
+  const blackProbeStreakRef = useRef(0);
+  const blackComposerDroppedRef = useRef(false);
+  const blackWatchdogDoneRef = useRef(false);
 
   const onNodeHoverRef = useRef(onNodeHover);
   const onPanelNodeClickRef = useRef(onPanelNodeClick);
@@ -1430,25 +1445,25 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
     const tempChildPos = new THREE.Vector3();
 
     let cumulativeTime = 0;
-    // Silent-black probe (mobile-first redesign, 2026-11-27). Phone
-    // diagnosis (2026-11-27, his iPhone): the stage is black while the
-    // render loop runs at 60 FPS — the bloom composer initializes fine
-    // but paints black every frame, throws nothing, and the old
-    // fallback (which only fires when render() THROWS) never runs.
-    // So: after a few frames, read a center pixel off the canvas.
-    // Pure black (max channel < 10 across an 8x8 sample) with the
-    // composer active means the composer is the black painter — drop
-    // it and render direct. Probe again 45 frames later; still black
-    // means the canvas itself is black — surface the fallback view
-    // (which now shows a visible CSS orb, never a void). The probe
-    // reads the canvas in the same task as the render, so the drawing
-    // buffer is still valid. The orb shader is NOT rewritten — no
-    // shader error evidence exists.
-    let blackProbeFrame = 0;
-    let blackProbeStage = 0; // 0 = not yet probed, 1 = composer dropped, re-probing, 2 = done
-    let blackProbeNextAt = 45;
-    let composerDisabled = false;
-
+    // Silent-black watchdog (mobile-first redesign, 2026-11-27; hardened
+    // phone fix, 2026-11-27). Phone diagnosis (2026-11-27, his iPhone):
+    // the stage is black while the render loop runs at 60 FPS — the
+    // bloom composer initializes fine but paints black every frame,
+    // throws nothing, and the old fallback (which only fires when
+    // render() THROWS) never runs. The first probe was one-shot: a
+    // single 8x8 centre sample at frame 45. A drifting wireframe strand
+    // through that exact sample, or blackness arriving after frame 90,
+    // locked in "not black" forever — the 12:34 PT phone retest still
+    // saw a black stage with no fallback shown. So the watchdog samples
+    // continuously, about once a second: 9 points (centre + a ring at
+    // 15% of the canvas size). The canvas counts as black only when at
+    // least 7 of 9 samples are black (max channel < 10), so one bright
+    // strand cannot veto the verdict. Two consecutive black samples
+    // with the composer active drop the composer; two more consecutive
+    // black samples surface the CSS orb fallback. Any non-black sample
+    // resets the streak. The probe reads the canvas in the same task as
+    // the render, so the drawing buffer is still valid. The orb shader
+    // is NOT rewritten — no shader error evidence exists.
     const isCanvasBlack = (): boolean => {
       try {
         const canvas = renderer.domElement;
@@ -1456,19 +1471,32 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
         const h = canvas.height;
         if (!w || !h) return false;
         const off = document.createElement('canvas');
-        off.width = 8;
-        off.height = 8;
+        off.width = 4;
+        off.height = 4;
         const ctx = off.getContext('2d');
         if (!ctx) return false;
-        ctx.drawImage(canvas, w / 2 - 4, h / 2 - 4, 8, 8, 0, 0, 8, 8);
-        const data = ctx.getImageData(0, 0, 8, 8).data;
-        let max = 0;
-        for (let i = 0; i < data.length; i += 4) {
-          if (data[i] > max) max = data[i];
-          if (data[i + 1] > max) max = data[i + 1];
-          if (data[i + 2] > max) max = data[i + 2];
+        const dx = w * 0.15;
+        const dy = h * 0.15;
+        const points: Array<[number, number]> = [
+          [w / 2, h / 2],
+          [w / 2 - dx, h / 2 - dy], [w / 2, h / 2 - dy], [w / 2 + dx, h / 2 - dy],
+          [w / 2 - dx, h / 2], [w / 2 + dx, h / 2],
+          [w / 2 - dx, h / 2 + dy], [w / 2, h / 2 + dy], [w / 2 + dx, h / 2 + dy],
+        ];
+        let blackSamples = 0;
+        for (const [px, py] of points) {
+          ctx.clearRect(0, 0, 4, 4);
+          ctx.drawImage(canvas, px - 2, py - 2, 4, 4, 0, 0, 4, 4);
+          const data = ctx.getImageData(0, 0, 4, 4).data;
+          let max = 0;
+          for (let i = 0; i < data.length; i += 4) {
+            if (data[i] > max) max = data[i];
+            if (data[i + 1] > max) max = data[i + 1];
+            if (data[i + 2] > max) max = data[i + 2];
+          }
+          if (max < 10) blackSamples += 1;
         }
-        return max < 10;
+        return blackSamples >= 7;
       } catch {
         return false;
       }
@@ -2497,28 +2525,33 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
             clampCamera({ clampTarget: focusedNodeIdRef.current === null });
         }
         try {
-            if (composer && !composerDisabled) {
+            if (composer && !blackComposerDroppedRef.current) {
                 composer.render();
             } else {
                 renderer.render(scene, camera);
             }
-            // Silent-black probe — see the declaration above animate().
-            blackProbeFrame += 1;
-            if (blackProbeStage < 2 && blackProbeFrame >= blackProbeNextAt) {
+            // Silent-black watchdog — see the declaration above animate().
+            // Runs about once a second for the life of the stage; two
+            // consecutive black samples drop the composer, two more show
+            // the CSS orb fallback. A bright sample resets the streak.
+            blackProbeFrameRef.current += 1;
+            if (!blackWatchdogDoneRef.current && blackProbeFrameRef.current >= blackProbeNextAtRef.current) {
+                blackProbeNextAtRef.current = blackProbeFrameRef.current + 60;
                 if (isCanvasBlack()) {
-                    if (blackProbeStage === 0 && composer) {
-                        composerDisabled = true;
-                        blackProbeStage = 1;
-                        blackProbeNextAt = blackProbeFrame + 45;
-                        console.warn('[NVK Orb] Canvas is black with the bloom composer active — rendering direct without bloom.');
-                    } else {
-                        blackProbeStage = 2;
-                        console.warn('[NVK Orb] Canvas is still black without the composer — showing the CSS orb fallback.');
-                        setRendererError(true);
-                        onRendererErrorRef.current?.(true);
+                    blackProbeStreakRef.current += 1;
+                    if (blackProbeStreakRef.current >= 2) {
+                        if (!blackComposerDroppedRef.current && composer) {
+                            blackComposerDroppedRef.current = true;
+                            blackProbeStreakRef.current = 0;
+                            console.warn('[NVK Orb] Canvas is black with the bloom composer active — rendering direct without bloom.');
+                        } else {
+                            blackWatchdogDoneRef.current = true;
+                            console.warn('[NVK Orb] Canvas is still black without the composer — showing the CSS orb fallback.');
+                            setBlackFallback(true);
+                        }
                     }
                 } else {
-                    blackProbeStage = 2;
+                    blackProbeStreakRef.current = 0;
                 }
             }
         } catch (rErr) {
@@ -3443,9 +3476,46 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
   return (
     <>
       <div ref={mountRef} id="codex-orb-canvas-container" className="absolute inset-0 z-10 pointer-events-auto touch-none" />
+
+      {/* Silent-black fallback (phone fix, 2026-11-27): when the watchdog
+          finds the canvas black, NVK is still visibly present as a
+          glowing CSS orb — no "Context Lost" heading, the context is not
+          lost. Pointer-events-none except RETRY, so stage taps still
+          reach the canvas. */}
+      {blackFallback && (
+        <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-slate-950/85 text-center p-8 pointer-events-none">
+          <div className="relative w-40 h-40">
+            <div className="absolute inset-0 rounded-full bg-[radial-gradient(circle_at_35%_35%,rgba(52,211,153,0.9),rgba(6,182,212,0.55)_45%,rgba(2,6,23,0)_75%)] shadow-[0_0_60px_rgba(6,182,212,0.6)] animate-pulse" />
+            <div className="absolute inset-3 rounded-full border border-dashed border-cyan-400/50 animate-[spin_8s_linear_infinite]" />
+            <div className="absolute inset-0 flex items-center justify-center">
+              <span className="text-cyan-100 font-mono text-sm font-bold tracking-widest">NVK</span>
+            </div>
+          </div>
+          <p className="text-slate-400 font-mono text-[11px] mt-6 leading-relaxed max-w-xs">
+            3D preview unavailable on this device — showing the NVK orb.
+          </p>
+          <button
+            onClick={() => {
+              // RETRY: re-enable the composer and restart the watchdog.
+              blackComposerDroppedRef.current = false;
+              blackProbeStreakRef.current = 0;
+              blackProbeNextAtRef.current = blackProbeFrameRef.current + 60;
+              blackWatchdogDoneRef.current = false;
+              setBlackFallback(false);
+            }}
+            className="pointer-events-auto mt-5 px-6 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-mono text-sm transition-all shadow-lg hover:shadow-emerald-500/20"
+          >
+            RETRY 3D
+          </button>
+        </div>
+      )}
       
       {/* 3D Navigation Controls HUD (Zoom, Focus NVK, Recenter) */}
-      <div className="absolute bottom-24 right-4 z-[500] flex flex-col gap-2 select-none pointer-events-auto">
+      {/* Phone fix (2026-11-27): bottom-right put the HUD behind the
+          expanded NVK panel on phones (z-1095 sheet covers it) — on
+          phones it sits top-left of the stage instead, clear of the
+          panel and of the Lattice capsule (top-right). Desktop unchanged. */}
+      <div className={`absolute z-[500] flex flex-col gap-2 select-none pointer-events-auto ${IS_MOBILE ? 'left-3 top-16' : 'bottom-24 right-4'}`}>
         <button
           onClick={(e) => {
             e.stopPropagation();
@@ -3507,6 +3577,12 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
               gsap.to(cameraRef.current.position, { x: 0, y: 0, z: 14, duration: 1, ease: 'power2.inOut' });
               gsap.to(controlsRef.current.target, { x: 0, y: 0, z: 0, duration: 1, ease: 'power2.inOut', onUpdate: () => controlsRef.current?.update(), onComplete: () => { isTransitioningRef.current = false; } });
               // N7: camera only — Focus must never start the microphone.
+              // Phone fix (2026-11-27): the expanded mobile console sheet
+              // covers the orb at z-1095 — collapse it so Focus NVK
+              // actually reveals the orb. Desktop unaffected (IS_MOBILE
+              // gate); the console is a draggable panel there and must
+              // not collapse on focus.
+              if (IS_MOBILE) window.dispatchEvent(new CustomEvent('nvk-collapse-console'));
             }
           }}
           className="w-10 h-10 rounded-xl bg-slate-950/85 border border-emerald-500/40 hover:border-emerald-400 text-emerald-400 flex items-center justify-center backdrop-blur-md transition-all shadow-[0_0_20px_rgba(16,185,129,0.3)] active:scale-95"
@@ -3530,6 +3606,9 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
               isTransitioningRef.current = true;
               gsap.to(cameraRef.current.position, { x: 0, y: 0, z: 25, duration: 1, ease: 'power2.inOut' });
               gsap.to(controlsRef.current.target, { x: 0, y: 0, z: 0, duration: 1, ease: 'power2.inOut', onUpdate: () => controlsRef.current?.update(), onComplete: () => { isTransitioningRef.current = false; } });
+              // Phone fix (2026-11-27): same as Focus NVK — collapse the
+              // expanded mobile console sheet so the reset orb is visible.
+              if (IS_MOBILE) window.dispatchEvent(new CustomEvent('nvk-collapse-console'));
             }
           }}
           className="w-10 h-10 rounded-xl bg-slate-950/85 border border-cyan-500/30 hover:border-cyan-400 text-cyan-400 flex items-center justify-center backdrop-blur-md transition-all shadow-[0_0_15px_rgba(0,255,255,0.2)] active:scale-95"
