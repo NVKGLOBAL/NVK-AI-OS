@@ -512,8 +512,9 @@ export const NVKCommandLayer: React.FC<NVKCommandLayerProps> = ({
     }
 
     // Ret12 fix: with no model loaded, a general question has no honest
-    // runtime answer (the planner routes it to web.search, which cannot
-    // run on the static deploy). 2026-11-26 fix: the free cloud gateway
+    // runtime answer. (web.search itself is NOT gated here — it runs
+    // client-side via CORS search APIs and is answered by the search
+    // intercept above.) 2026-11-26 fix: the free cloud gateway
     // answers it instead — generateText routes a no-model call to the
     // gateway when freeCloudEnabled is on (the default), so the chat works
     // on a fresh phone with nothing downloaded. Only when the gateway is
@@ -803,6 +804,22 @@ export const NVKCommandLayer: React.FC<NVKCommandLayerProps> = ({
             </button>
             )}
 
+            {/* Round-3 fix (2026-11-27): the HUD hides while the console
+                is expanded on phones, which hid Focus NVK — the only
+                focus control. This header button is the reachable Focus
+                while expanded: it dispatches 'nvk-focus-orb' and the
+                stage runs the same routine as the HUD button (centre the
+                orb, close the focused panel, collapse the console on
+                phones). The "−" button stays the plain collapse path. */}
+            <button
+              onClick={() => window.dispatchEvent(new CustomEvent('nvk-focus-orb'))}
+              className="w-8 h-8 rounded bg-slate-900 border border-emerald-500/40 hover:border-emerald-400 text-emerald-400 hover:text-emerald-300 flex items-center justify-center transition-all"
+              title="Focus NVK — centre the orb"
+              aria-label="Focus NVK — centre the orb"
+            >
+              <i className="ri-focus-3-line text-sm"></i>
+            </button>
+
             <button 
               onClick={() => setIsMinimized(v => !v)}
               className="w-8 h-8 rounded bg-slate-900 border border-slate-700 hover:border-cyan-500/40 text-slate-400 hover:text-cyan-300 flex items-center justify-center text-xs transition-all font-bold"
@@ -1064,11 +1081,19 @@ export const NVKCommandLayer: React.FC<NVKCommandLayerProps> = ({
         >
           {/* Collapsed mobile bar: tap to expand into the full console
               sheet. The Ret12 auto-expand (a reply landing while
-              minimized) still works on top of this. */}
+              minimized) still works on top of this.
+              Round-3 fix (2026-11-27): the chevron ignored taps while a
+              panel sheet was open — the sheet's full-screen backdrop
+              (PinnedPanel, z-1140) sits above this bar (z-1095) and, with
+              no cursor:pointer, iOS never fired its onClick to dismiss.
+              The backdrop is fixed there; this button ALSO expands on
+              pointerdown, so expansion is never gated on click delivery
+              alone. */}
           {isMobile && isMinimized && (
             <button
               type="button"
               onClick={() => setIsMinimized(false)}
+              onPointerDown={() => setIsMinimized(false)}
               className="min-h-[44px] min-w-[44px] p-2 rounded-lg bg-slate-800/80 hover:bg-slate-800 text-cyan-400 border border-slate-700 flex items-center justify-center shrink-0"
               title="Expand console"
               aria-label="Expand console"
@@ -1081,7 +1106,14 @@ export const NVKCommandLayer: React.FC<NVKCommandLayerProps> = ({
             type="text"
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
-            placeholder={isMobile && isMinimized ? 'Ask NVK anything…' : "Ask NVK anything... (e.g. 'Research commercial solar in Texas', 'Create pitch deck')"}
+            // Round-3 fix (2026-11-27): tapping the composer to type
+            // expands the console at pointerdown — typing is an expand
+            // intent, and the ask flow must never depend on the chevron
+            // alone. Pointerdown only (not focus): the mount autofocus
+            // on desktop focuses programmatically and must not expand a
+            // deliberately minimized console.
+            onPointerDown={() => { if (isMinimized) setIsMinimized(false); }}
+            placeholder={isMobile && isMinimized ? 'Ask NVK…' : "Ask NVK anything... (e.g. 'Research commercial solar in Texas', 'Create pitch deck')"}
             className="min-w-0 flex-1 bg-transparent px-3 py-1.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none font-mono"
           />
 

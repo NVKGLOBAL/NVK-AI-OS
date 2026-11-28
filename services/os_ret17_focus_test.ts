@@ -133,10 +133,14 @@ async function main(): Promise<void> {
     /gsap\.killTweensOf\(currentCamera\.position\);[\s\S]{0,80}gsap\.killTweensOf\(currentControls\.target\);/.test(focusPanel),
   );
 
-  const focusNvk = orb.slice(orb.indexOf('title="Focus NVK"') - 2200, orb.indexOf('title="Focus NVK"'));
+  // Round-3 fix (2026-11-27): the routine moved out of the button into
+  // the focusNvk callback (shared with the console header's Focus button
+  // via 'nvk-focus-orb') — same objects (locals camera/controls), same
+  // values, one routine. The HUD button calls focusNvk().
+  const focusNvk = orb.slice(orb.indexOf('const focusNvk = useCallback'), orb.indexOf('}, [onClosePanel]);'));
   check(
     'Focus NVK kills in-flight camera tweens before its tween',
-    /gsap\.killTweensOf\(cameraRef\.current\.position\);[\s\S]{0,80}gsap\.killTweensOf\(controlsRef\.current\.target\);/.test(focusNvk),
+    /gsap\.killTweensOf\(camera\.position\);[\s\S]{0,80}gsap\.killTweensOf\(controls\.target\);/.test(focusNvk),
   );
   check(
     'Focus NVK still closes the focused panel and clears the follow lock',
@@ -144,8 +148,12 @@ async function main(): Promise<void> {
   );
   check(
     'Focus NVK still tweens to (0,0,14) looking at the origin',
-    /gsap\.to\(cameraRef\.current\.position, \{ x: 0, y: 0, z: 14/.test(focusNvk) &&
-      /gsap\.to\(controlsRef\.current\.target, \{ x: 0, y: 0, z: 0/.test(focusNvk),
+    /gsap\.to\(camera\.position, \{ x: 0, y: 0, z: 14/.test(focusNvk) &&
+      /gsap\.to\(controls\.target, \{ x: 0, y: 0, z: 0/.test(focusNvk),
+  );
+  check(
+    'HUD Focus NVK button runs the shared focusNvk routine',
+    /focusNvk\(\);/.test(orb.slice(orb.indexOf('title="Focus NVK"') - 400, orb.indexOf('title="Focus NVK"'))),
   );
 
   const resetVp = orb.slice(orb.indexOf('title="Reset Viewport"') - 1400, orb.indexOf('title="Reset Viewport"'));

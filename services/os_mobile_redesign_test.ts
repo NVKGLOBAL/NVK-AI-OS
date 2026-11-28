@@ -264,27 +264,26 @@ async function main(): Promise<void> {
     tutorial.includes('MOBILE_HINT_DISMISSED_KEY'),
   );
 
-  // --- 10. Source pins: black-orb hardening (bloom composer probe). ---
+  // --- 10. Source pins: black-orb hardening (pixel sampling RETIRED). ---
   const orb = read('components/CodexOrbSystem.tsx');
-  // Phone fix (2026-11-27): the probe is now a continuous watchdog —
-  // 9 sample points, black only when 7+ are black, two consecutive
-  // black samples to act. The old one-shot 8x8 centre sample let a
-  // drifting strand (or late blackness) lock in "not black" forever.
-  // Round-3 (2026-11-27): the probe reads with gl.readPixels (the old
-  // drawImage readback returned black on iOS WKWebView while the scene
-  // rendered), the decision lives in lib/orbWatchdog with a 5s warm-up,
-  // and the fallback carries a diagnosable reason.
+  // Phone retest (2026-11-27, 14:00–14:06 PT): the lattice visibly
+  // rendered on every fresh load while the sampler reported black —
+  // readPixels returns black on iOS WKWebView while the scene renders,
+  // so the 9-point probe / drop-composer / pixel fallback is retired.
+  // A visibly rendering scene must never trigger the fallback. The
+  // fallback now fires only on real failures (shader error, context
+  // loss, render throw) and still carries a diagnosable reason.
   check(
-    'Orb has the silent-black watchdog (9-point sampling, consecutive confirmation)',
-    orb.includes('probeCanvasBlack') && orb.includes('blackSamples >= 7') && orb.includes('blackProbeStreakRef'),
+    'Orb never samples pixels to decide failure (no readPixels probe)',
+    !orb.includes('probeCanvasBlack(') && !orb.includes('gl.readPixels(') && !orb.includes('blackSamples >= 7'),
   );
   check(
-    'Orb drops the bloom composer when the canvas is black with it active',
-    orb.includes("action === 'drop-composer'") && orb.includes('Canvas is black with the bloom composer active'),
+    'Orb falls back on real failures, with a reason (shader error hook)',
+    orb.includes('onShaderError') && orb.includes('Shader compile error') && orb.includes('blackFallbackReason'),
   );
   check(
-    'Orb surfaces the fallback when still black without the composer',
-    orb.includes('Canvas is still black without the composer'),
+    'Orb falls back on context loss (not on sampled pixels)',
+    orb.includes('webglcontextlost') && orb.includes('setRendererError(true)'),
   );
   check(
     'Fallback view shows a visible CSS orb, never a void',

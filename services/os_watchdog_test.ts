@@ -9,6 +9,16 @@
  * decision: transient black during warm-up must never trigger the
  * fallback; sustained black after warm-up must.
  *
+ * RETIRED FROM THE STAGE (2026-11-27, phone retest 14:00–14:06 PT):
+ * the pixel-sampling premise was wrong — the lattice visibly rendered
+ * on every fresh load while the sampler reported black (readPixels
+ * returns black on iOS WKWebView while the scene renders), so the
+ * stage no longer samples pixels or consults this module. §§1–7 keep
+ * testing the pure decision as a module; §8 pins the retirement
+ * (no pixel sampling in the stage; real-failure hooks are the only
+ * fallback signal). The full new invariant lives in
+ * services/os_orb_no_pixel_fallback_test.ts.
+ *
  * Run: npx tsx services/os_watchdog_test.ts
  * (also wired into `npm test`.)
  */
@@ -145,18 +155,27 @@ async function main(): Promise<void> {
   // --- 7. Warm-up constant is sane (compile gets seconds, not frames). ---
   check('warm-up is at least 5s', WATCHDOG_WARMUP_MS >= 5000, `WATCHDOG_WARMUP_MS=${WATCHDOG_WARMUP_MS}`);
 
-  // --- 8. Source pins: the stage uses the readPixels probe + warm-up. ---
+  // --- 8. Source pins: pixel sampling is RETIRED from the stage. ---
+  // Phone retest (2026-11-27, 14:00–14:06 PT): the lattice visibly
+  // rendered while the sampler reported black, so sampled pixels must
+  // never decide the fallback. The reason mechanism and the real-
+  // failure hooks stay.
   const orb = read('components/CodexOrbSystem.tsx');
   check(
-    'stage probes with gl.readPixels (not drawImage)',
-    orb.includes('readPixels') && !orb.includes('drawImage(canvas'),
+    'stage does not sample pixels (no readPixels call)',
+    !orb.includes('gl.readPixels(') && !orb.includes('probeCanvasBlack('),
     '',
   );
-  check('stage imports the watchdog decision', orb.includes("from '../lib/orbWatchdog'"), '');
-  check('stage arms the warm-up after (re)start', orb.includes('WATCHDOG_WARMUP_MS'), '');
+  check('stage does not consult the watchdog decision', !orb.includes('decideWatchdogSample') && !orb.includes("from '../lib/orbWatchdog'"), '');
+  check('stage has no pixel-probe refs left', !orb.includes('blackProbe') && !orb.includes('blackComposerDropped'), '');
   check('stage surfaces the fallback reason', orb.includes('blackFallbackReason'), '');
   check('stage hooks shader compile errors', orb.includes('onShaderError'), '');
-  check('RETRY re-arms the warm-up', orb.includes('blackProbeArmedAtRef.current = performance.now() + WATCHDOG_WARMUP_MS'), '');
+  check('stage hooks context loss', orb.includes('webglcontextlost'), '');
+  check(
+    'RETRY only hides the fallback (no stage re-init, no watchdog re-arm)',
+    orb.includes('setBlackFallback(false)') && !orb.includes('blackProbeArmedAtRef'),
+    '',
+  );
 
   // --- 9. Source pins: HUD hides while the console is expanded (round-3 #2). ---
   check(

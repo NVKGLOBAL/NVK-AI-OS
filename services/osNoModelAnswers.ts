@@ -8,9 +8,12 @@
 //   - math DID compute in the runtime (calculation.math is deterministic),
 //     but the reply sat in the chat history, invisible while the console
 //     was minimized at narrow widths — the retest saw silence;
-//   - web.search depends on web.fetch, which calls the same-origin
-//     /api/proxy endpoint — there is no server on the GitHub Pages deploy,
-//     so every search failed with a proxy error;
+//   - web.search runs client-side with no server: it queries
+//     CORS-enabled public search APIs (DuckDuckGo Instant Answer,
+//     Wikipedia) directly from the browser, with the dev-server proxy
+//     scrape only as a fallback — so a search works on the static
+//     GitHub Pages deploy too, and a failure names the reason instead
+//     of inventing results;
 //   - general "what is ...?" questions were misrouted to the calculator by
 //     IntentEngine's greedy "what is " rule and failed with "no arithmetic
 //     expression found" — a confusing error, not an answer.
@@ -125,10 +128,11 @@ export async function answerSearchQuestion(query: string): Promise<SearchAnswer>
 
 /**
  * True when a general question/conversation has no honest runtime answer
- * without a model: the planner routes it to web.search, which cannot run
- * on the static deploy, so the caller should answer with NO_MODEL_REPLY
- * instead of sending it to the runtime for a confusing proxy or
- * calculation error. Capability discovery and deterministic paths (panel
+ * without a model: the planner routes it to web.search, which now runs
+ * client-side (CORS search APIs, no server needed), so a search question
+ * is NOT gated — it is answered by answerSearchQuestion above. Only a
+ * general question that is neither search, math, nor a panel command is
+ * gated here. Capability discovery and deterministic paths (panel
  * commands, math, search) are NOT gated — they work without a model.
  */
 export function needsNoModelReply(intent: string, isModelLoaded: boolean): boolean {
@@ -138,7 +142,7 @@ export function needsNoModelReply(intent: string, isModelLoaded: boolean): boole
 
 /** The honest no-model reply (same wording as the Logic Core status line). */
 export const NO_MODEL_REPLY =
-  'No model loaded — hydrate the matrix to begin. I can\'t answer questions or search the web until a model is loaded; load one in the Logic Core and ask again.';
+  'No model loaded — hydrate the matrix to begin. I can\'t answer general questions until a model is loaded; load one in the Logic Core and ask again. (Web search and math still work without a model.)';
 
 /**
  * The honest offline reply when the free cloud gateway cannot answer

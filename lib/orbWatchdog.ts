@@ -1,9 +1,21 @@
 /**
  * Orb black-frame watchdog decision (round-3 phone fix, 2026-11-27).
  *
+ * RETIRED FROM THE STAGE (2026-11-27, phone retest 14:00–14:06 PT):
+ * the stage no longer samples pixels or consults this module. The
+ * phone retest proved the sampler wrong, not the scene — the lattice
+ * visibly rendered on every fresh load while the sampler reported
+ * black, because readPixels returns black on iOS WKWebView while the
+ * scene renders (preserveDrawingBuffer:false). The fallback now fires
+ * only on real failures (onShaderError, webglcontextlost, render
+ * throw) with the diagnosable reason kept. This module stays as a
+ * tested pure function (services/os_watchdog_test.ts §§1–7) in case a
+ * trustworthy sampling path ever exists — it must NOT be re-wired as
+ * the fallback signal on a preserveDrawingBuffer:false canvas.
+ *
  * Pure logic — no DOM, no three.js — so the regression tests in
  * services/os_watchdog_test.ts exercise the exact decision the stage
- * runs in CodexOrbSystem.tsx.
+ * USED to run in CodexOrbSystem.tsx.
  *
  * What the desktop check (2026-11-27, 13:42–13:44 PT) proved: the
  * first-load CSS fallback is NOT phone-specific. Desktop also showed

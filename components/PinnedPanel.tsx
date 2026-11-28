@@ -274,8 +274,16 @@ export const PinnedPanel: React.FC<PinnedPanelProps> = ({
         if (isMinimized) return null;
         return (
             <>
+                {/* Round-3 fix (2026-11-27): this backdrop sits at z-1140,
+                    ABOVE the console bar (z-1095) — while a sheet is open
+                    every console tap lands here. It MUST dismiss on tap:
+                    without cursor:pointer iOS never fires onClick on a
+                    plain div, so the backdrop was a dead shield and the
+                    console chevron ignored taps until the sheet was closed
+                    via its X / swipe-down. cursor:pointer restores the
+                    click on iOS; the sheet stays modal by design. */}
                 <div
-                    className="fixed inset-0 bg-black/60 z-[1140]"
+                    className="fixed inset-0 bg-black/60 z-[1140] cursor-pointer"
                     onClick={onClose}
                     aria-hidden="true"
                 />

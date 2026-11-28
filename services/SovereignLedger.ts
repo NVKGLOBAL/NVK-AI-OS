@@ -134,6 +134,31 @@ class SovereignLedger {
     return this.entries.slice(-count);
   }
 
+  /**
+   * Re-verify the whole chain (matrix program, 2026-11-27 — item 8):
+   * recompute every entry hash from its stored fields and check each
+   * previousHash link. Returns valid:false + the first broken index when
+   * any entry was altered after it was written. The hash input is the
+   * same payload append() hashed: index, previousHash, capabilityId,
+   * timestamp, success flag (stored as status), inputSummary.
+   */
+  async verifyChain(): Promise<{ valid: boolean; brokenAt: number; entriesChecked: number }> {
+    let prevHash = '0000000000000000000000000000000000000000000000000000000000000000';
+    for (let i = 0; i < this.entries.length; i++) {
+      const e = this.entries[i];
+      if (e.previousHash !== prevHash || e.index !== i) {
+        return { valid: false, brokenAt: i, entriesChecked: this.entries.length };
+      }
+      const rawPayload = `${e.index}:${e.previousHash}:${e.capabilityId}:${e.timestamp}:${e.status === 'success'}:${e.inputSummary}`;
+      const recomputed = await computeHash(rawPayload);
+      if (recomputed !== e.entryHash) {
+        return { valid: false, brokenAt: i, entriesChecked: this.entries.length };
+      }
+      prevHash = e.entryHash;
+    }
+    return { valid: true, brokenAt: -1, entriesChecked: this.entries.length };
+  }
+
   clear() {
     this.entries = [];
     this.lastHash = '0000000000000000000000000000000000000000000000000000000000000000';

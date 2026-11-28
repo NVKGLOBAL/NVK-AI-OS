@@ -3,6 +3,7 @@ import { CreateMLCEngine, CreateWebWorkerMLCEngine, prebuiltAppConfig } from "@m
 import type { MLCEngineInterface } from "@mlc-ai/web-llm";
 import type { LocalLLMContextType } from '../types';
 import { GATEWAY_OFFLINE_REPLY } from '../services/osNoModelAnswers';
+import { recordGenerationStart, recordGenerationComplete } from '../services/generationEvents';
 
 /**
  * The shared NVK brain endpoint — the same Worker CODEXA serves from, and
@@ -147,7 +148,7 @@ interface ExtendedLocalLLMContextType extends LocalLLMContextType {
   clearCache: () => Promise<number>;
   /** F7: bytes currently held in the WebLLM caches (0 when unmeasurable). */
   getModelCacheBytes: () => Promise<number>;
-  /** F6: one-time notice after keys were migrated off persistent storage. */
+  /** F6: one-time notice after legacy stored keys were purged (D9, 2026-11-27). */
   keyMigrationNotice: string | null;
 }
 
@@ -176,24 +177,16 @@ export const LocalLLMProvider: React.FC<{ children: ReactNode }> = ({ children }
   const [selectedModel, setSelectedModel] = useState<string>(() => {
     return localStorage.getItem('nvk_selected_model') || SELECTED_MODEL;
   });
-  // F6 (nav/UX fix spec, 2026-11-22): provider keys live in sessionStorage
-  // + memory only — never written to persistent disk storage. A one-time
-  // migration (below) moves any legacy localStorage keys here and deletes
-  // the old entries.
-  const [hfToken, setHfToken] = useState<string>(() => {
-    try { return sessionStorage.getItem('nvk_hf_token') || ''; } catch { return ''; }
-  });
-  const [apiKeys, setApiKeys] = useState<Record<string, string>>(() => {
-    try {
-      const saved = sessionStorage.getItem('nvk_api_keys');
-      return saved ? JSON.parse(saved) : {
-        openai: '', anthropic: '', mistral: '', nvidia: '', deepseek: '', openrouter: '', together: '', huggingface: ''
-      };
-    } catch(e) {
-      return {
-        openai: '', anthropic: '', mistral: '', nvidia: '', deepseek: '', openrouter: '', together: '', huggingface: ''
-      };
-    }
+  // D9 (matrix program, 2026-11-27 — item 7): provider keys are NEVER
+  // stored — not localStorage, not sessionStorage. The old F6 rule kept
+  // them in sessionStorage; the design (§1a row 8, spec D9) is stricter:
+  // keys ride the REQUEST BODY ONLY, are sent only as the upstream
+  // Authorization header, and are held in MEMORY ONLY for the session.
+  // A reload leaves no key behind — the user re-enters it. The mount
+  // effect below purges any legacy stored keys instead of migrating them.
+  const [hfToken, setHfToken] = useState<string>('');
+  const [apiKeys, setApiKeys] = useState<Record<string, string>>({
+    openai: '', anthropic: '', mistral: '', nvidia: '', deepseek: '', openrouter: '', together: '', huggingface: ''
   });
   // F5 (nav/UX fix spec): the default provider is local. A saved 'cloud_ai'
   // default migrates to 'local' — cloud_ai is not a real provider.
@@ -225,26 +218,22 @@ export const LocalLLMProvider: React.FC<{ children: ReactNode }> = ({ children }
 
   const [keyMigrationNotice, setKeyMigrationNotice] = useState<string | null>(null);
 
-  // F6 migration — declared BEFORE the persist effects so it runs first on
-  // mount: any legacy localStorage keys are copied into this session, the
-  // old disk entries are deleted, and the user gets a one-time notice.
-  // Keys are never silently kept on disk.
+  // D9 purge (matrix program, 2026-11-27 — item 7): on mount, DELETE any
+  // legacy provider keys from localStorage AND sessionStorage. They are
+  // NOT copied into memory — a stored key must never silently survive
+  // into a session. If any were found the user gets a one-time notice:
+  // re-enter the key to use a cloud provider. Keys are never silently
+  // kept anywhere after this runs.
   useEffect(() => {
     try {
-      const legacyToken = localStorage.getItem('nvk_hf_token');
-      const legacyKeys = localStorage.getItem('nvk_api_keys');
-      if (legacyToken || legacyKeys) {
-        if (legacyToken && !sessionStorage.getItem('nvk_hf_token')) {
-          sessionStorage.setItem('nvk_hf_token', legacyToken);
-          setHfToken(legacyToken);
-        }
-        if (legacyKeys && !sessionStorage.getItem('nvk_api_keys')) {
-          sessionStorage.setItem('nvk_api_keys', legacyKeys);
-          try { setApiKeys(JSON.parse(legacyKeys)); } catch { /* keep defaults */ }
-        }
+      const foundLocal = localStorage.getItem('nvk_hf_token') || localStorage.getItem('nvk_api_keys');
+      const foundSession = sessionStorage.getItem('nvk_hf_token') || sessionStorage.getItem('nvk_api_keys');
+      if (foundLocal || foundSession) {
         localStorage.removeItem('nvk_hf_token');
         localStorage.removeItem('nvk_api_keys');
-        setKeyMigrationNotice('Your provider keys were moved from persistent storage to this session only — they are no longer written to disk. Re-enter them next session if you use a cloud provider.');
+        sessionStorage.removeItem('nvk_hf_token');
+        sessionStorage.removeItem('nvk_api_keys');
+        setKeyMigrationNotice('Stored provider keys were removed — keys are now held in memory only for this session and never stored. Re-enter your key to use a cloud provider.');
       }
     } catch { /* storage unavailable — keys stay in memory only */ }
   }, []);
@@ -253,13 +242,8 @@ export const LocalLLMProvider: React.FC<{ children: ReactNode }> = ({ children }
     localStorage.setItem('nvk_selected_model', selectedModel);
   }, [selectedModel]);
 
-  useEffect(() => {
-    try { sessionStorage.setItem('nvk_hf_token', hfToken); } catch { /* session storage unavailable */ }
-  }, [hfToken]);
-
-  useEffect(() => {
-    try { sessionStorage.setItem('nvk_api_keys', JSON.stringify(apiKeys)); } catch { /* session storage unavailable */ }
-  }, [apiKeys]);
+  // D9: NO persist effects for hfToken / apiKeys — keys live in memory
+  // only for the session and are never written to any storage.
 
   useEffect(() => {
     localStorage.setItem('nvk_selected_provider', selectedProvider);
@@ -516,7 +500,7 @@ export const LocalLLMProvider: React.FC<{ children: ReactNode }> = ({ children }
   // turns, oldest first). It is included in all three paths instead of
   // sending [system, current prompt] only. Omitted history leaves the
   // prompt unchanged.
-  const generateText = useCallback(async (prompt: string, systemPrompt?: string, temperature: number = 0.6, maxTokens: number = 2048, history?: Array<{ role: 'user' | 'assistant'; content: string }>): Promise<string | null> => {
+  const generateTextInner = useCallback(async (prompt: string, systemPrompt?: string, temperature: number = 0.6, maxTokens: number = 2048, history?: Array<{ role: 'user' | 'assistant'; content: string }>): Promise<string | null> => {
     const boundedHistory = buildBoundedHistory(history);
     if (selectedProvider === 'ollama') {
       setIsGenerating(true);
@@ -668,6 +652,48 @@ export const LocalLLMProvider: React.FC<{ children: ReactNode }> = ({ children }
       return null;
     }
   }, [isCloudMode, selectedProvider, apiKeys, isModelLoaded, freeCloudEnabled]);
+
+  // Generation-events ring buffer (matrix program, 2026-11-27 — item 6):
+  // every generation — local, cloud proxy, free gateway, Ollama — records
+  // a real start/complete event into the last-20 buffer and onto the
+  // services bus, feeding the resonance visualizer + feed. The wrapper
+  // owns the bookkeeping so no return path can skip it. tokensPerSecond
+  // stays null: no path here measures per-token throughput, and an
+  // invented rate would be Capability Theater. A null result (no text
+  // produced) completes as success:false — an honest failed generation.
+  const generateText = useCallback(async (prompt: string, systemPrompt?: string, temperature: number = 0.6, maxTokens: number = 2048, history?: Array<{ role: 'user' | 'assistant'; content: string }>): Promise<string | null> => {
+    const hasProviderKey = selectedProvider !== 'local' && Boolean((apiKeys[selectedProvider] || '').trim());
+    const provider = selectedProvider === 'ollama'
+      ? 'ollama'
+      : hasProviderKey
+        ? 'cloud'
+        : !isModelLoaded && freeCloudEnabled
+          ? 'gateway'
+          : 'local';
+    let modelId: string | null = null;
+    try {
+      modelId = provider === 'local'
+        ? selectedModel
+        : provider === 'cloud'
+          ? (localStorage.getItem(`nvk_model_${selectedProvider}`) || null)
+          : null;
+    } catch { modelId = null; }
+    const gen = recordGenerationStart(provider, modelId);
+    const startedAt = Date.now();
+    try {
+      const result = await generateTextInner(prompt, systemPrompt, temperature, maxTokens, history);
+      recordGenerationComplete(gen.id, {
+        charsProduced: result ? result.length : 0,
+        startedAt,
+        tokensPerSecond: null,
+        success: result !== null,
+      });
+      return result;
+    } catch (err) {
+      recordGenerationComplete(gen.id, { charsProduced: 0, startedAt, tokensPerSecond: null, success: false });
+      throw err;
+    }
+  }, [generateTextInner, selectedProvider, apiKeys, isModelLoaded, freeCloudEnabled, selectedModel]);
 
   return (
     <LocalLLMContext.Provider value={{

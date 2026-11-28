@@ -10,7 +10,6 @@ import { CSS3DRenderer, CSS3DObject } from 'three/addons/renderers/CSS3DRenderer
 import { gsap } from 'gsap';
 import { CyberSynth, playHaptic } from '../lib/soundEffects';
 import { resolveAxiomPanelId, AXIOM_TAP_TOLERANCE_UNITS } from '../lib/axiomPanelMapping';
-import { decideWatchdogSample, WATCHDOG_WARMUP_MS } from '../lib/orbWatchdog';
 import type { PanelDefinition, NodeInfo, SubAgent, ThoughtGlyph, ClusterNode, NavigationInput, NVKOrbState } from '../types';
 import { OrbMode, ParticleBackgroundMode, PanelLayout } from '../types';
 import type { SystemStateContextType } from '../context/SystemContext';
@@ -380,20 +379,14 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
   const [consoleExpanded, setConsoleExpanded] = React.useState<boolean>(
     () => typeof window !== 'undefined' && Boolean((window as any).__nvkConsoleExpanded),
   );
-  // Silent-black watchdog refs (phone fix, 2026-11-27): the old probe
-  // was one-shot — a single 8x8 centre sample at frame 45. A drifting
-  // wireframe strand through that exact sample, or blackness arriving
-  // after frame 90, locked in "not black" forever. The watchdog samples
-  // continuously instead; see probeCanvasBlack + the animate() block.
-  const blackProbeFrameRef = useRef(0);
-  const blackProbeNextAtRef = useRef(45);
-  const blackProbeStreakRef = useRef(0);
-  const blackComposerDroppedRef = useRef(false);
-  const blackWatchdogDoneRef = useRef(false);
-  // Round-3 (2026-11-27): warm-up arming — black frames while shaders
-  // and the bloom composer compile must never count. Set when the stage
-  // (re)starts and on RETRY 3D; see lib/orbWatchdog.
-  const blackProbeArmedAtRef = useRef(0);
+  // Pixel-sampling watchdog RETIRED (2026-11-27, phone retest 14:00–
+  // 14:06 PT): the canvas visibly rendered on every fresh load while
+  // the sampler reported black — readPixels returns black on iOS
+  // WKWebView while the scene renders (preserveDrawingBuffer:false),
+  // so sampled pixels can never be the failure signal. The fallback
+  // now fires only on REAL failures (onShaderError, webglcontextlost,
+  // render throw) with the diagnosable reason kept. lib/orbWatchdog
+  // stays as a tested pure module but the stage no longer consults it.
 
   const onNodeHoverRef = useRef(onNodeHover);
   const onPanelNodeClickRef = useRef(onPanelNodeClick);
@@ -514,6 +507,63 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
     const dist = camera.position.distanceTo(controls.target);
     zoomTargetDistanceRef.current = THREE.MathUtils.clamp(dist * factor, 6, 40);
   }, []);
+
+  // Focus NVK — centre the orb. Extracted (2026-11-27) so the console
+  // header's Focus button can run the same routine while the HUD is
+  // hidden: the stage listens for 'nvk-focus-orb' (see the effect
+  // below). The HUD button below calls this too — one routine, two
+  // triggers.
+  const focusNvk = useCallback(() => {
+    const camera = cameraRef.current;
+    const controls = controlsRef.current;
+    if (!camera || !controls) return;
+    // Retest #15 (2026-11-23): Focus NVK tweened the camera to the orb
+    // but did NOT clear the follow lock, so the "Following: <panel>"
+    // follow pulled the camera straight back to the panel and the orb
+    // stayed out of frame. Clear the follow (like Reset Viewport does)
+    // so Focus NVK actually returns the camera to the orb.
+    // Retest #16 (2026-11-23): the follow lock DID clear (the pill
+    // disappeared) but the camera still did not return to the orb — the
+    // focused panel is a DOM overlay (PinnedPanel, z-1090) that covers
+    // the centre of the screen, so no camera move can reveal the orb
+    // while it is open. Focus NVK must also close the focused panel,
+    // so the orb is actually visible. The panel re-opens by clicking
+    // its node again.
+    const focusedId = focusedNodeIdRef.current;
+    focusedNodeIdRef.current = null;
+    setFollowedNodeId(null);
+    if (focusedId) onClosePanel(focusedId);
+    // Retest #17 (2026-11-24): kill any in-flight camera tween before
+    // starting this one. A stray tap tween used to outlive this 1.0s
+    // tween and drag the camera back to a panel node, leaving the orb
+    // far right of centre. Focus NVK now owns the camera for the full
+    // tween, like focusOnPanelNode does (isTransitioningRef, cleared on
+    // completion, so a user drag still takes over mid-tween).
+    gsap.killTweensOf(camera.position);
+    gsap.killTweensOf(controls.target);
+    isTransitioningRef.current = true;
+    gsap.to(camera.position, { x: 0, y: 0, z: 14, duration: 1, ease: 'power2.inOut' });
+    gsap.to(controls.target, { x: 0, y: 0, z: 0, duration: 1, ease: 'power2.inOut', onUpdate: () => controls.update(), onComplete: () => { isTransitioningRef.current = false; } });
+    // N7: camera only — Focus must never start the microphone.
+    // Phone fix (2026-11-27): the expanded mobile console sheet covers
+    // the orb at z-1095 — collapse it so Focus NVK actually reveals the
+    // orb. Desktop unaffected (IS_MOBILE gate); the console is a
+    // draggable panel there and must not collapse on focus.
+    if (IS_MOBILE) window.dispatchEvent(new CustomEvent('nvk-collapse-console'));
+  }, [onClosePanel]);
+
+  // Focus NVK from the console header (2026-11-27): while the console
+  // is expanded on phones the HUD hides, so its Focus button is
+  // unreachable — the console header carries a Focus button that
+  // dispatches 'nvk-focus-orb' and the stage runs the same routine
+  // (same window-event pattern as 'nvk-collapse-console'). This effect
+  // sits after focusNvk's definition — the deps array reads it at
+  // render time, so it cannot live above the declaration.
+  useEffect(() => {
+    const onFocusOrb = () => focusNvk();
+    window.addEventListener('nvk-focus-orb', onFocusOrb);
+    return () => window.removeEventListener('nvk-focus-orb', onFocusOrb);
+  }, [focusNvk]);
 
   const focusOnPanelNode = useCallback((nodeId: string) => {
     const currentCamera = cameraRef.current;
@@ -920,30 +970,23 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
         onRendererErrorRef.current?.(true);
     }, false);
 
-    const gl = renderer.getContext();
-
     // Round-3 (2026-11-27): a shader compile failure is a REAL failure —
-    // fall back immediately with the reason, instead of letting the
-    // watchdog guess from black frames later. The default three.js
-    // handler only logs to the console; this one also surfaces the
-    // fallback honestly. (This three version's bundled types do not
-    // declare onShaderError on WebGLDebug, so the assignment goes
-    // through the runtime shape.)
+    // fall back immediately with the reason. This is now the primary
+    // failure signal — pixel sampling is retired (see the refs note
+    // above), so a real failure must never depend on a probe. The
+    // default three.js handler only logs to the console; this one also
+    // surfaces the fallback honestly. (This three version's bundled
+    // types do not declare onShaderError on WebGLDebug, so the
+    // assignment goes through the runtime shape.)
     (renderer.debug as unknown as { onShaderError?: (gl: WebGLRenderingContext, program: WebGLProgram, glVertexShader: WebGLShader, glFragmentShader: WebGLShader) => void }).onShaderError = (glCtx, _program, glVertexShader, glFragmentShader) => {
         const vertexLog = glCtx.getShaderInfoLog(glVertexShader) || '';
         const fragmentLog = glCtx.getShaderInfoLog(glFragmentShader) || '';
         const reason = `Shader compile error${vertexLog || fragmentLog ? `: ${(vertexLog + ' ' + fragmentLog).trim().slice(0, 200)}` : ''}`;
         console.error('[NVK Orb] ' + reason);
-        blackWatchdogDoneRef.current = true;
         setBlackFallbackReason(reason);
         setBlackFallback(true);
     };
 
-    // Round-3 (2026-11-27): arm the watchdog warm-up — black frames
-    // while shaders and the bloom composer compile must never count.
-    // Re-armed on every (re)start of the stage and on RETRY 3D.
-    blackProbeArmedAtRef.current = performance.now() + WATCHDOG_WARMUP_MS;
-    
     const targetPixelRatio = Math.min(window.devicePixelRatio || 1, 2);
     renderer.setPixelRatio(targetPixelRatio);
     renderer.setSize(width, height);
@@ -1499,58 +1542,18 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
     const tempChildPos = new THREE.Vector3();
 
     let cumulativeTime = 0;
-    // Silent-black watchdog (mobile-first redesign, 2026-11-27; hardened
-    // phone fix, 2026-11-27). Phone diagnosis (2026-11-27, his iPhone):
-    // the stage is black while the render loop runs at 60 FPS — the
-    // bloom composer initializes fine but paints black every frame,
-    // throws nothing, and the old fallback (which only fires when
-    // render() THROWS) never runs. The first probe was one-shot: a
-    // single 8x8 centre sample at frame 45. A drifting wireframe strand
-    // through that exact sample, or blackness arriving after frame 90,
-    // locked in "not black" forever — the 12:34 PT phone retest still
-    // saw a black stage with no fallback shown. So the watchdog samples
-    // continuously, about once a second: 9 points (centre + a ring at
-    // 15% of the canvas size). The canvas counts as black only when at
-    // least 7 of 9 samples are black (max channel < 10), so one bright
-    // strand cannot veto the verdict. Two consecutive black samples
-    // with the composer active drop the composer; two more consecutive
-    // black samples surface the CSS orb fallback. Any non-black sample
-    // resets the streak. Round-3 (2026-11-27): the probe reads the
-    // just-rendered frame with gl.readPixels in the render task. The
-    // old drawImage readback returned black on iOS WKWebView even while
-    // the scene rendered (preserveDrawingBuffer:false) — the prime
-    // suspect for the iPhone RETRY loop — and the old probe had no
-    // warm-up, so transient black during shader/bloom compile tripped
-    // the fallback on first load (desktop too, 13:42 PT check). The
-    // decision itself lives in lib/orbWatchdog (pure, tested). The orb
-    // shader is NOT rewritten — no shader error evidence exists.
-    const probeCanvasBlack = (gl: WebGLRenderingContext): { black: boolean; ok: boolean } => {
-      try {
-        const w = gl.drawingBufferWidth;
-        const h = gl.drawingBufferHeight;
-        if (!w || !h) return { black: false, ok: false };
-        const dx = w * 0.15;
-        const dy = h * 0.15;
-        const points: Array<[number, number]> = [
-          [w / 2, h / 2],
-          [w / 2 - dx, h / 2 - dy], [w / 2, h / 2 - dy], [w / 2 + dx, h / 2 - dy],
-          [w / 2 - dx, h / 2], [w / 2 + dx, h / 2],
-          [w / 2 - dx, h / 2 + dy], [w / 2, h / 2 + dy], [w / 2 + dx, h / 2 + dy],
-        ];
-        const px = new Uint8Array(4);
-        let blackSamples = 0;
-        for (const [sx, sy] of points) {
-          // WebGL origin is bottom-left — flip y.
-          gl.readPixels(Math.floor(sx), h - Math.floor(sy), 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px);
-          const max = Math.max(px[0], px[1], px[2]);
-          if (max < 10) blackSamples += 1;
-        }
-        return { black: blackSamples >= 7, ok: true };
-      } catch {
-        return { black: false, ok: false };
-      }
-    };
-
+    // Pixel sampling RETIRED (2026-11-27, phone retest 14:00–14:06 PT):
+    // probeCanvasBlack used to read the just-rendered frame with
+    // gl.readPixels and fall back on sustained black. The phone retest
+    // proved the sampler wrong, not the scene: the lattice visibly
+    // rendered on every fresh load (animated wireframe, drifting
+    // camera) while the sampler reported black, and RETRY — which only
+    // hid the fallback overlay — brought the live scene back. On iOS
+    // WKWebView readPixels returns black while the scene renders
+    // (preserveDrawingBuffer:false), so no pixel verdict can ever be
+    // the failure signal. The fallback now fires only on real failures
+    // (onShaderError, webglcontextlost, render throw). The orb shader
+    // is NOT rewritten — no shader error evidence exists.
     const animate = () => {
         animationFrameIdRef.current = requestAnimationFrame(animate);
         (window as any).frameCount = ((window as any).frameCount || 0) + 1;
@@ -2581,42 +2584,16 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
             clampCamera({ clampTarget: focusedNodeIdRef.current === null });
         }
         try {
-            if (composer && !blackComposerDroppedRef.current) {
+            // No pixel sampling here: readPixels returns black on iOS
+            // WKWebView while the scene visibly renders, so sampled
+            // pixels must never decide the fallback (see the retirement
+            // note where probeCanvasBlack used to live). Real failures
+            // surface through onShaderError, webglcontextlost, and
+            // this try/catch.
+            if (composer) {
                 composer.render();
             } else {
                 renderer.render(scene, camera);
-            }
-            // Silent-black watchdog — the decision lives in
-            // lib/orbWatchdog (pure, tested). Runs about once a second
-            // for the life of the stage; two consecutive black samples
-            // after the warm-up drop the composer, two more show the
-            // CSS orb fallback. A bright sample resets the streak; an
-            // inconclusive readback never counts.
-            blackProbeFrameRef.current += 1;
-            if (!blackWatchdogDoneRef.current && blackProbeFrameRef.current >= blackProbeNextAtRef.current) {
-                blackProbeNextAtRef.current = blackProbeFrameRef.current + 60;
-                const probe = probeCanvasBlack(gl);
-                const decision = decideWatchdogSample({
-                    nowMs: performance.now(),
-                    armedAtMs: blackProbeArmedAtRef.current,
-                    isBlack: probe.black,
-                    readbackOk: probe.ok,
-                    state: {
-                        streak: blackProbeStreakRef.current,
-                        composerDropped: blackComposerDroppedRef.current,
-                        done: blackWatchdogDoneRef.current,
-                    },
-                });
-                blackProbeStreakRef.current = decision.next.streak;
-                blackComposerDroppedRef.current = decision.next.composerDropped;
-                if (decision.action === 'drop-composer') {
-                    console.warn('[NVK Orb] Canvas is black with the bloom composer active — rendering direct without bloom.');
-                } else if (decision.action === 'fallback') {
-                    blackWatchdogDoneRef.current = true;
-                    console.warn('[NVK Orb] ' + (decision.reason ?? 'Canvas is still black without the composer — showing the CSS orb fallback.'));
-                    if (decision.reason) setBlackFallbackReason(decision.reason);
-                    setBlackFallback(true);
-                }
             }
         } catch (rErr) {
             renderer.render(scene, camera);
@@ -3565,15 +3542,13 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
           )}
           <button
             onClick={() => {
-              // RETRY: re-enable the composer and restart the watchdog —
-              // including a fresh warm-up, so the bloom pass settling
-              // after re-enable cannot trip the fallback again.
-              blackComposerDroppedRef.current = false;
-              blackProbeStreakRef.current = 0;
-              blackProbeFrameRef.current = 0;
-              blackProbeNextAtRef.current = 60;
-              blackProbeArmedAtRef.current = performance.now() + WATCHDOG_WARMUP_MS;
-              blackWatchdogDoneRef.current = false;
+              // RETRY: hide the fallback and reveal the live canvas
+              // underneath. No re-initialization happens here on
+              // purpose — the stage was never re-created on RETRY (the
+              // phone retest proved the scene renders while the retired
+              // sampler reported black), so RETRY only uncovers it. A
+              // real failure (shader error, context loss) re-fires its
+              // own hook if it is still present.
               setBlackFallbackReason(null);
               setBlackFallback(false);
             }}
@@ -3597,7 +3572,11 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
           Round-3 (2026-11-27): the HUD column is tall enough to cover
           the expanded console's header and chips, so while the console
           is expanded on phones the HUD hides entirely — the console's
-          own "−" button is the way back. */}
+          own "−" button is the way back.
+          Round-3 fix (2026-11-27): hiding the HUD also hid Focus NVK,
+          the only focus control — so the console header now carries its
+          own Focus button, which dispatches 'nvk-focus-orb' and runs
+          the same routine as the HUD button below. */}
       <div className={`absolute flex flex-col gap-2 select-none pointer-events-auto ${IS_MOBILE ? (consoleExpanded ? 'hidden' : 'z-[1100] left-3 top-16') : 'z-[500] bottom-24 right-4'}`}>
         <button
           onClick={(e) => {
@@ -3628,45 +3607,9 @@ export const CodexOrbSystem: React.FC<CodexOrbSystemProps> = ({
         <button
           onClick={(e) => {
             e.stopPropagation();
-            if (cameraRef.current && controlsRef.current) {
-              // Retest #15 (2026-11-23): Focus NVK tweened the camera
-              // to the orb but did NOT clear the follow lock, so the
-              // "Following: <panel>" follow pulled the camera straight
-              // back to the panel and the orb stayed out of frame.
-              // Clear the follow (like Reset Viewport does) so Focus
-              // NVK actually returns the camera to the orb.
-              // Retest #16 (2026-11-23): the follow lock DID clear (the
-              // pill disappeared) but the camera still did not return to
-              // the orb — the focused panel is a DOM overlay (PinnedPanel,
-              // z-1090) that covers the centre of the screen, so no camera
-              // move can reveal the orb while it is open. Focus NVK must
-              // also close the focused panel, so the orb is actually
-              // visible. The panel re-opens by clicking its node again.
-              const focusedId = focusedNodeIdRef.current;
-              focusedNodeIdRef.current = null;
-              setFollowedNodeId(null);
-              if (focusedId) onClosePanel(focusedId);
-              // Retest #17 (2026-11-24): kill any in-flight camera tween
-              // before starting this one. A stray tap tween (see the
-              // canvas-only gate on the window tap handlers) used to
-              // outlive this 1.0s tween and drag the camera back to a
-              // panel node, leaving the orb far right of centre. Focus
-              // NVK now owns the camera for the full tween, like
-              // focusOnPanelNode does (isTransitioningRef, cleared on
-              // completion, so a user drag still takes over mid-tween).
-              gsap.killTweensOf(cameraRef.current.position);
-              gsap.killTweensOf(controlsRef.current.target);
-              isTransitioningRef.current = true;
-              gsap.to(cameraRef.current.position, { x: 0, y: 0, z: 14, duration: 1, ease: 'power2.inOut' });
-              gsap.to(controlsRef.current.target, { x: 0, y: 0, z: 0, duration: 1, ease: 'power2.inOut', onUpdate: () => controlsRef.current?.update(), onComplete: () => { isTransitioningRef.current = false; } });
-              // N7: camera only — Focus must never start the microphone.
-              // Phone fix (2026-11-27): the expanded mobile console sheet
-              // covers the orb at z-1095 — collapse it so Focus NVK
-              // actually reveals the orb. Desktop unaffected (IS_MOBILE
-              // gate); the console is a draggable panel there and must
-              // not collapse on focus.
-              if (IS_MOBILE) window.dispatchEvent(new CustomEvent('nvk-collapse-console'));
-            }
+            // One routine, two triggers — focusNvk above (also run from
+            // the console header's Focus button via 'nvk-focus-orb').
+            focusNvk();
           }}
           className="w-10 h-10 rounded-xl bg-slate-950/85 border border-emerald-500/40 hover:border-emerald-400 text-emerald-400 flex items-center justify-center backdrop-blur-md transition-all shadow-[0_0_20px_rgba(16,185,129,0.3)] active:scale-95"
           title="Focus NVK"

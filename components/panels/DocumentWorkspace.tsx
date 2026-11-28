@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
-import { 
-  FileText, Presentation, Download, Copy, Check, Sparkles, Plus, 
-  ChevronLeft, ChevronRight, Edit3, Eye, Layers, ShieldCheck, Share2 
+import {
+  FileText, Presentation, Download, Copy, Check, Sparkles, Plus,
+  ChevronLeft, ChevronRight, Edit3, Eye, Layers, ShieldCheck, Share2
 } from 'lucide-react';
+import { documentStore, downloadDocument, type StoredDocument } from '../../services/DocumentStore';
 
 interface Slide {
   title: string;
@@ -27,58 +28,93 @@ export const DocumentWorkspace: React.FC<DocumentWorkspaceProps> = ({
   const [currentSlideIndex, setCurrentSlideIndex] = useState(0);
   const [copied, setCopied] = useState(false);
   const [viewMode, setViewMode] = useState<'preview' | 'edit'>('preview');
+  // Persistence (matrix item 5, 2026-11-27): the document this panel
+  // shows is stored in IndexedDB via DocumentStore, so it survives a
+  // reload; the Download button exports the real content as Markdown.
+  // docId is null until the document has been saved once.
+  const [docId, setDocId] = useState<string | null>(null);
+  const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const [loadNote, setLoadNote] = useState<string | null>(null);
 
+  // A new document starts BLANK — from real input, never from the old
+  // fixed template (five invented slides with fabricated metrics and a
+  // canned "paradigm shift" memo). initialData still wins when the
+  // caller supplies real content.
   const [slides, setSlides] = useState<Slide[]>(() => {
     if (initialData?.slides && Array.isArray(initialData.slides)) {
       return initialData.slides;
     }
-    return [
-      {
-        title: 'Executive Problem Matrix',
-        subtitle: 'Fragmented AI Chatbots vs Modern Workflows',
-        point: 'Current AI systems are static chatbot sidebars disconnected from 3D computing environments, failing to turn natural words into real visible workspace actions.',
-        metrics: [{ label: 'Productivity Loss', value: '42%' }, { label: 'Context Switching', value: '6.4x/hr' }]
-      },
-      {
-        title: 'The Solution: NVK 3D OS',
-        subtitle: 'The Orb is NVK. The Space is the Workspace.',
-        point: 'A spatial operating environment where multimodal conversation directly spawns tools, orchestrates autonomous sub-agents, and manipulates real 3D data.',
-        metrics: [{ label: 'Spatial Latency', value: '<12ms' }, { label: 'Autonomous Throughput', value: '99.8%' }]
-      },
-      {
-        title: 'Dual Sovereign Compute Architecture',
-        subtitle: 'Offline WebGPU Local Brain + Cloud cloud_ai Live',
-        point: 'Zero-cloud offline execution on on-device WebGPU for private operations, seamlessly scaling to cloud multimodal cloud_ai Live when internet is active.',
-        metrics: [{ label: 'Local VRAM Footprint', value: '1.2 GB' }, { label: 'Tokens / Sec (GPU)', value: '48 t/s' }]
-      },
-      {
-        title: 'Market Horizon & Unit Economics',
-        subtitle: 'Enterprise AI & Spatial Computing TAM',
-        point: 'Capturing the $140B enterprise transition toward sovereign AI agents, automated workflow orchestration, and immersive spatial analytics.',
-        metrics: [{ label: 'TAM', value: '$140B' }, { label: 'Target Y3 ARR', value: '$48M' }]
-      },
-      {
-        title: 'Milestones & Strategic Deployment',
-        subtitle: 'From Living Neural Core to Global Standard',
-        point: 'Phase 1: 3D OS Core & WebGPU. Phase 2: Autonomous Fleet & Marketplace. Phase 3: Global Sovereign Compute Lattice.',
-        metrics: [{ label: 'Active Clusters', value: '100k+' }, { label: 'Agent Fleet Scale', value: '1M+ nodes' }]
-      }
-    ];
+    return [{ title: '', subtitle: '', point: '' }];
   });
 
-  const [docContent, setDocContent] = useState<string>(`# NVK Global — Executive Strategic Brief
+  const [docContent, setDocContent] = useState<string>(() =>
+    typeof initialData?.content === 'string' ? initialData.content : ''
+  );
 
-## 1. Executive Summary
-NVK 3D OS represents a paradigm shift in human-computer symbiosis. Rather than placing a conversational bot beside a legacy flat desktop, **NVK itself is the interface**.
+  // On mount, reload a previously saved document with this title, if
+  // one exists — the document persists across reloads.
+  useEffect(() => {
+    let cancelled = false;
+    documentStore.getDocumentByTitle(initialTitle).then((stored) => {
+      if (cancelled || !stored) return;
+      setDocId(stored.id);
+      setLoadNote(`Loaded saved document from ${new Date(stored.updatedAt).toLocaleString()}.`);
+      if (stored.type === 'pitch_deck' && stored.slides && stored.slides.length > 0) {
+        setSlides(stored.slides);
+        setDocType('pitch_deck');
+      } else {
+        setDocContent(stored.content);
+        setDocType('document');
+      }
+      setCurrentSlideIndex(0);
+    }).catch(() => {
+      if (!cancelled) setLoadNote(null);
+    });
+    return () => { cancelled = true; };
+  }, [initialTitle]);
 
-## 2. Core Operational Pillars
-* **The Orb is NVK**: Real-time holographic visualizer reflecting system cognitive states (Idle, Listening, Thinking, Acting, Discovery).
-* **Conversation as the Command Layer**: Natural intent translates immediately into 3D workspaces, research nodes, and persistent workflows.
-* **Dual-Engine Compute**: Complete privacy via local WebGPU execution with zero cloud egress, paired with cloud_ai Cloud Live intelligence.
+  const buildStoredDoc = (): Omit<StoredDocument, 'id' | 'createdAt' | 'updatedAt'> => ({
+    title: initialTitle,
+    type: docType,
+    content: docType === 'document' ? docContent : '',
+    slides: docType === 'pitch_deck' ? slides : undefined,
+  });
 
-## 3. Commercial Execution
-Targeting commercial enterprises seeking sovereign, zero-data-leakage AI workstations and spatial analytical command centers.
-`);
+  const handleSave = async () => {
+    setSaveState('saving');
+    try {
+      const data = buildStoredDoc();
+      if (docId) {
+        await documentStore.updateDocument(docId, data);
+      } else {
+        const created = await documentStore.createDocument(data);
+        setDocId(created.id);
+      }
+      setSaveState('saved');
+      setLoadNote(null);
+      setTimeout(() => setSaveState((s) => (s === 'saved' ? 'idle' : s)), 2000);
+    } catch {
+      setSaveState('error');
+    }
+  };
+
+  const handleDownload = async () => {
+    try {
+      const doc: StoredDocument = docId
+        ? (await documentStore.getDocument(docId)) ?? {
+            id: docId, ...buildStoredDoc(), createdAt: Date.now(), updatedAt: Date.now(),
+          }
+        : {
+            id: `doc-unsaved-${Date.now()}`,
+            ...buildStoredDoc(),
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+          };
+      await downloadDocument(doc);
+    } catch {
+      setSaveState('error');
+    }
+  };
 
   const currentSlide = slides[currentSlideIndex] || slides[0];
 
@@ -92,12 +128,9 @@ Targeting commercial enterprises seeking sovereign, zero-data-leakage AI worksta
   };
 
   const handleAddSlide = () => {
-    const newSlide: Slide = {
-      title: `New Strategic Node ${slides.length + 1}`,
-      subtitle: 'Generated via NVK Spatial Intelligence',
-      point: 'Enter your custom bullet points, analysis, and strategic metrics here.',
-      metrics: [{ label: 'Confidence', value: '98%' }, { label: 'Status', value: 'Ready' }]
-    };
+    // A new slide starts blank — real input only, no canned subtitle
+    // or fabricated "98% confidence" metric.
+    const newSlide: Slide = { title: '', subtitle: '', point: '' };
     setSlides(prev => [...prev, newSlide]);
     setCurrentSlideIndex(slides.length);
   };
@@ -158,8 +191,32 @@ Targeting commercial enterprises seeking sovereign, zero-data-leakage AI worksta
             {copied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
             {copied ? 'Copied' : 'Copy'}
           </button>
+
+          <button
+            onClick={handleSave}
+            disabled={saveState === 'saving'}
+            className="px-2.5 py-1 rounded-lg bg-cyan-950/60 border border-cyan-500/40 text-cyan-300 hover:bg-cyan-900/60 text-[10px] uppercase flex items-center gap-1 transition-all disabled:opacity-50"
+            title="Save this document locally — it persists across reloads"
+          >
+            {saveState === 'saved' ? <Check className="w-3 h-3 text-emerald-400" /> : <ShieldCheck className="w-3 h-3" />}
+            {saveState === 'saving' ? 'Saving…' : saveState === 'saved' ? 'Saved' : saveState === 'error' ? 'Save failed' : 'Save'}
+          </button>
+
+          <button
+            onClick={handleDownload}
+            className="px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-700 hover:border-cyan-500/40 text-slate-300 hover:text-cyan-400 text-[10px] uppercase flex items-center gap-1 transition-all"
+            title="Download this document as a Markdown file"
+          >
+            <Download className="w-3 h-3" />
+            Download
+          </button>
         </div>
       </div>
+      {loadNote && (
+        <div className="px-4 py-1 bg-emerald-950/40 border-b border-emerald-500/20 text-[10px] text-emerald-300 font-mono">
+          {loadNote}
+        </div>
+      )}
 
       {/* Main Body */}
       <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
@@ -190,7 +247,9 @@ Targeting commercial enterprises seeking sovereign, zero-data-leakage AI worksta
 
                 {viewMode === 'preview' ? (
                   <>
-                    <h2 className="text-xl font-bold text-slate-100 tracking-tight mt-1">{currentSlide.title}</h2>
+                    <h2 className="text-xl font-bold text-slate-100 tracking-tight mt-1">
+                      {currentSlide.title || 'Untitled slide — switch to Edit and write the real slide.'}
+                    </h2>
                     <h4 className="text-xs text-cyan-300 font-mono mb-4">{currentSlide.subtitle}</h4>
                     <p className="text-xs text-slate-300 leading-relaxed max-w-xl font-sans">{currentSlide.point}</p>
                   </>
@@ -199,6 +258,7 @@ Targeting commercial enterprises seeking sovereign, zero-data-leakage AI worksta
                     <input 
                       type="text" 
                       value={currentSlide.title} 
+                      placeholder="Slide title — write your own"
                       onChange={(e) => {
                         const val = e.target.value;
                         setSlides(prev => prev.map((s, i) => i === currentSlideIndex ? { ...s, title: val } : s));
@@ -208,6 +268,7 @@ Targeting commercial enterprises seeking sovereign, zero-data-leakage AI worksta
                     <input 
                       type="text" 
                       value={currentSlide.subtitle} 
+                      placeholder="Subtitle"
                       onChange={(e) => {
                         const val = e.target.value;
                         setSlides(prev => prev.map((s, i) => i === currentSlideIndex ? { ...s, subtitle: val } : s));
@@ -217,6 +278,7 @@ Targeting commercial enterprises seeking sovereign, zero-data-leakage AI worksta
                     <textarea 
                       rows={3}
                       value={currentSlide.point} 
+                      placeholder="Your point — write the real content here"
                       onChange={(e) => {
                         const val = e.target.value;
                         setSlides(prev => prev.map((s, i) => i === currentSlideIndex ? { ...s, point: val } : s));
@@ -288,10 +350,12 @@ Targeting commercial enterprises seeking sovereign, zero-data-leakage AI worksta
             {viewMode === 'preview' ? (
               <div className="p-4 bg-slate-900/60 border border-cyan-500/20 rounded-xl space-y-4 text-xs font-sans text-slate-300 leading-relaxed">
                 <div className="text-cyan-400 font-mono font-bold text-sm uppercase tracking-wider border-b border-slate-800 pb-2">
-                  Executive Briefing & Strategic Siting
+                  {initialTitle}
                 </div>
                 <div className="whitespace-pre-wrap font-mono text-[11px] leading-relaxed text-slate-200">
-                  {docContent}
+                  {docContent.trim().length > 0
+                    ? docContent
+                    : 'No content yet — switch to Edit and write the real document, then Save it.'}
                 </div>
               </div>
             ) : (
@@ -299,6 +363,7 @@ Targeting commercial enterprises seeking sovereign, zero-data-leakage AI worksta
                 value={docContent}
                 onChange={(e) => setDocContent(e.target.value)}
                 rows={12}
+                placeholder="Write the real document here — then Save it. It persists across reloads and can be downloaded as Markdown."
                 className="w-full h-full bg-slate-950 border border-cyan-500/30 rounded-xl p-4 text-xs font-mono text-cyan-200 resize-none focus:outline-none focus:border-cyan-400"
               />
             )}

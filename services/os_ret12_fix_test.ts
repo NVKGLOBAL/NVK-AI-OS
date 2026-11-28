@@ -3,11 +3,12 @@
  * on build index-6P4l32iw.js, plus the no-model honesty contract.
  *
  * Pure-module test — no server, no DOM, no model. (The search check runs
- * the real web.search capability, which fails honestly in node because
- * web.fetch calls the relative /api/proxy URL — exactly the static-deploy
- * failure — and the test asserts the honest contract, not a specific
- * outcome: real results with real titles/urls, or an honest unavailable
- * message. Never silence, never a fabricated price.)
+ * the real web.search capability, which now searches client-side via
+ * CORS-enabled public APIs — in node with network it may return real
+ * results, without network it fails honestly; the test asserts the
+ * honest contract, not a specific outcome: real results with real
+ * titles/urls, or an honest unavailable message. Never silence, never
+ * a fabricated price.)
  *
  * Failure 1 — "turn the Flower of Life green/blue/red" did nothing live:
  * the dispatcher + bus were fine (verified here with the exact typed

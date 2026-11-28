@@ -1,15 +1,18 @@
 {
-  "matrix_version": "2.1.0",
+  "matrix_version": "2.2.0",
   "categories": {
     "intelligence": [
       { "id": "calculation.math", "name": "Local Calculation", "available": true },
-      { "id": "reasoning.analysis", "name": "Deep Reasoning", "available": true }
+      { "id": "reasoning.analysis", "name": "Deep Reasoning", "available": true },
+      { "id": "capability.discovery", "name": "Capability Discovery", "available": true }
     ],
     "web": [
-      { "id": "web.search", "name": "Web Exploration & Fetch", "available": true }
+      { "id": "web.search", "name": "Web Exploration & Fetch", "available": true },
+      { "id": "web.fetch", "name": "Connected Web Access", "available": true }
     ],
     "creation": [
       { "id": "documents.create", "name": "Document & Pitch Deck Artifacts", "available": true },
+      { "id": "software.generate", "name": "Software Generation", "available": true },
       { "id": "image.generation", "name": "Image Generation Engine", "available": false, "reason": "Not connected" }
     ],
     "application": [
@@ -18,6 +21,16 @@
     "communication": [
       { "id": "email.send", "name": "Email Provider", "available": false, "reason": "Not connected" },
       { "id": "messaging.send", "name": "Direct Messaging", "available": false, "reason": "Not connected" }
+    ],
+    "filesystem": [
+      { "id": "filesystem.read", "name": "Read Local File", "available": true },
+      { "id": "filesystem.write", "name": "Write Local File", "available": true }
+    ],
+    "terminal": [
+      { "id": "terminal.execute", "name": "Execute Shell Command", "available": true }
+    ],
+    "workflow": [
+      { "id": "system.diagnostics", "name": "System Diagnostics", "available": true }
     ]
   }
 }

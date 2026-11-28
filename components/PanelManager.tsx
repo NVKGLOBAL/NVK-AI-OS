@@ -104,12 +104,15 @@ export const PanelManager: React.FC<PanelManagerProps> = ({
     >
       <AnimatePresence>
         {isOpen && (
+          // Round-3 fix (2026-11-27): this overlay panel is OPAQUE
+          // (bg-slate-950, solid inner blocks) like the console — the
+          // old bg-slate-950/90 let console text bleed through it.
           <motion.div
             initial={{ opacity: 0, y: 15, scale: 0.95 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 15, scale: 0.95 }}
             transition={{ type: 'spring', stiffness: 400, damping: 25 }}
-            className={`pointer-events-auto bg-slate-950/90 backdrop-blur-xl border border-slate-800/80 p-3.5 rounded-2xl shadow-[0_15px_35px_rgba(0,0,0,0.8)] flex flex-col gap-3 min-w-[320px] max-w-[90vw] ${isMobile ? 'max-h-[calc(100dvh-160px)] overflow-y-auto' : ''}`}
+            className={`pointer-events-auto bg-slate-950 border border-slate-800/80 p-3.5 rounded-2xl shadow-[0_15px_35px_rgba(0,0,0,0.8)] flex flex-col gap-3 min-w-[320px] max-w-[90vw] ${isMobile ? 'max-h-[calc(100dvh-160px)] overflow-y-auto' : ''}`}
           >
             {/* Header / Global Actions */}
             <div className="flex items-center justify-between border-b border-slate-800/60 pb-2">
@@ -132,7 +135,7 @@ export const PanelManager: React.FC<PanelManagerProps> = ({
                   onTilePanels('grid');
                 }}
                 disabled={pinnedPanelIds.length === 0}
-                className="flex flex-col items-center justify-center p-2 rounded-lg bg-slate-900/60 border border-slate-800/80 hover:border-cyan-500/40 text-slate-400 hover:text-cyan-400 disabled:opacity-40 disabled:hover:text-slate-400 disabled:hover:border-slate-800/80 transition-all group"
+                className="flex flex-col items-center justify-center p-2 rounded-lg bg-slate-900 border border-slate-800/80 hover:border-cyan-500/40 text-slate-400 hover:text-cyan-400 disabled:opacity-40 disabled:hover:text-slate-400 disabled:hover:border-slate-800/80 transition-all group"
                 title="Tile all open panels in a balanced bento grid"
               >
                 <i className="ri-layout-grid-line text-sm mb-1 group-hover:scale-110 transition-transform"></i>
@@ -145,7 +148,7 @@ export const PanelManager: React.FC<PanelManagerProps> = ({
                   onTilePanels('cols');
                 }}
                 disabled={pinnedPanelIds.length === 0}
-                className="flex flex-col items-center justify-center p-2 rounded-lg bg-slate-900/60 border border-slate-800/80 hover:border-purple-500/40 text-slate-400 hover:text-purple-400 disabled:opacity-40 disabled:hover:text-slate-400 disabled:hover:border-slate-800/80 transition-all group"
+                className="flex flex-col items-center justify-center p-2 rounded-lg bg-slate-900 border border-slate-800/80 hover:border-purple-500/40 text-slate-400 hover:text-purple-400 disabled:opacity-40 disabled:hover:text-slate-400 disabled:hover:border-slate-800/80 transition-all group"
                 title="Tile panels side-by-side"
               >
                 <i className="ri-layout-column-line text-sm mb-1 group-hover:scale-110 transition-transform"></i>
@@ -158,7 +161,7 @@ export const PanelManager: React.FC<PanelManagerProps> = ({
                   onTilePanels('rows');
                 }}
                 disabled={pinnedPanelIds.length === 0}
-                className="flex flex-col items-center justify-center p-2 rounded-lg bg-slate-900/60 border border-slate-800/80 hover:border-emerald-500/40 text-slate-400 hover:text-emerald-400 disabled:opacity-40 disabled:hover:text-slate-400 disabled:hover:border-slate-800/80 transition-all group"
+                className="flex flex-col items-center justify-center p-2 rounded-lg bg-slate-900 border border-slate-800/80 hover:border-emerald-500/40 text-slate-400 hover:text-emerald-400 disabled:opacity-40 disabled:hover:text-slate-400 disabled:hover:border-slate-800/80 transition-all group"
                 title="Tile panels vertically stacked"
               >
                 <i className="ri-layout-row-line text-sm mb-1 group-hover:scale-110 transition-transform"></i>
@@ -174,7 +177,7 @@ export const PanelManager: React.FC<PanelManagerProps> = ({
                   onMinimizeAll();
                 }}
                 disabled={pinnedPanelIds.length === 0}
-                className="flex-1 py-1.5 px-2 bg-slate-900/40 border border-slate-800 hover:border-slate-700 hover:text-slate-300 text-slate-500 rounded text-[9px] font-mono uppercase tracking-wider transition-all disabled:opacity-40"
+                className="flex-1 py-1.5 px-2 bg-slate-900 border border-slate-800 hover:border-slate-700 hover:text-slate-300 text-slate-500 rounded text-[9px] font-mono uppercase tracking-wider transition-all disabled:opacity-40"
               >
                 Minimize All
               </button>
@@ -184,7 +187,7 @@ export const PanelManager: React.FC<PanelManagerProps> = ({
                   onRestoreAll();
                 }}
                 disabled={pinnedPanelIds.length === 0}
-                className="flex-1 py-1.5 px-2 bg-slate-900/40 border border-slate-800 hover:border-slate-700 hover:text-slate-300 text-slate-500 rounded text-[9px] font-mono uppercase tracking-wider transition-all disabled:opacity-40"
+                className="flex-1 py-1.5 px-2 bg-slate-900 border border-slate-800 hover:border-slate-700 hover:text-slate-300 text-slate-500 rounded text-[9px] font-mono uppercase tracking-wider transition-all disabled:opacity-40"
               >
                 Restore All
               </button>
@@ -201,7 +204,7 @@ export const PanelManager: React.FC<PanelManagerProps> = ({
             </div>
 
             {/* Lattice Nodes / Active Window List */}
-            <div className="flex flex-col gap-1 max-h-[160px] overflow-y-auto custom-scrollbar border border-slate-800/40 rounded-lg p-1 bg-slate-950/50">
+            <div className="flex flex-col gap-1 max-h-[160px] overflow-y-auto custom-scrollbar border border-slate-800/40 rounded-lg p-1 bg-slate-950">
               {activePanels.length === 0 ? (
                 <div className="text-center py-4 text-[9px] font-mono text-slate-600 uppercase tracking-widest">
                   No Active Lattice Nodes

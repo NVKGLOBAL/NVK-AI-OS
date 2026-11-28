@@ -102,11 +102,13 @@ import { SubAgentConstellation } from './components/panels/SubAgentConstellation
 import { NVKCommandLayer } from './components/spatial/NVKCommandLayer';
 import { useOsPanelBus, registerOsPanelBridge, setOsOpenPanelIds, isOsPanelDead, DEAD_PANEL_REASONS, getFlowerAccentHue } from './lib/stores/osPanelBusStore';
 import { mapRuntimeStateToOrbState, mapServicesEventToOrbState } from './lib/orbStateMapping';
+import { attachWorkspaceState } from './lib/workspaceState';
 import type { NVKOrbState, NVKWorkflow, NVKActivityStep, ProcessedNVKIntent, WorkspaceMode, SubAgent } from './types';
 import { eventBus } from './services/EventBus';
 import { nvkEventBus } from './src/nvk/events/NVKEventBus';
 import { OsRelayClient } from './services/relayAdapter';
 import { nvkRuntime } from './src/nvk/runtime/NVKRuntime';
+import { attachRuntimeObserver } from './src/nvk/runtime/RuntimeObserver';
 import { loadRelayToken, saveRelayToken, clearRelayToken, buildRelayStatus, RELAY_DESKTOP_ID } from './services/relaySettings';
 
 import { SystemStateProvider, type SystemStateContextType } from './context/SystemContext';
@@ -704,7 +706,7 @@ export const App: React.FC = () => {
 
   const [isOrbModeSelectorOpen, setIsOrbModeSelectorOpen] = useState(false);
   const [isSynthesizing, setIsSynthesizing] = useState(false);
-  const { generateText, isModelLoaded, selectedModel } = useLocalLLM();
+  const { generateText, isModelLoaded, selectedModel, loadProgress } = useLocalLLM();
 
   const spawnAgent = (name: string, task: string, panelId?: string) => {
     // Legacy agent spawning replaced by node creation in cluster
@@ -2052,6 +2054,22 @@ const mockShatterpointData = {
     }, 2000);
     return () => window.clearInterval(id);
   }, [relayRunning]);
+
+  // Matrix program (item 6): the runtime also subscribes to the services bus,
+  // and the workspace exposes a readable snapshot (see direction) built from
+  // the same event stream the UI renders.
+  useEffect(() => attachRuntimeObserver(), []);
+  useEffect(() => attachWorkspaceState({
+    getClusters: () => clusters,
+    getOpenPanelIds: () => activePanelIdList,
+    getPinnedPanelIds: () => activeCluster.pinnedPanelIds,
+    getOrbState: () => nvkOrbState,
+    getModelState: () => ({
+      loadedModel: isModelLoaded ? selectedModel : null,
+      isLoaded: isModelLoaded, loadProgress, loadStatus, cacheState: 'unknown',
+    }),
+  }), [clusters, activePanelIdList, activeCluster, nvkOrbState,
+    isModelLoaded, selectedModel, loadProgress, loadStatus]);
 
   const handleRelayTokenSave = useCallback((token: string, remember: boolean) => {
     saveRelayToken(token, remember);

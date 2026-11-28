@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { TreeOfThoughtReasoner, SelfReflectiveAgent, ContinualLearningSystem } from '../../lib/reasoning/ReasoningCore';
+import { setReasoningLLMCaller } from '../../lib/reasoning/reasoningService';
 import { useLocalLLM, formatBytes } from '../../context/LocalLLMContext';
 import { Button } from '../ui/Button';
 import { Textarea } from '../ui/Textarea';
@@ -36,6 +37,13 @@ const AdvancedReasoningPanel: React.FC<AdvancedReasoningPanelProps> = ({  width,
   const reasoner = useMemo(() => new TreeOfThoughtReasoner(generateText), [generateText]);
   const reflector = useMemo(() => new SelfReflectiveAgent(generateText), [generateText]);
   const learner = useMemo(() => new ContinualLearningSystem(generateText), [generateText]);
+
+  // Matrix program (item 1): hand the panel's live model caller to the
+  // reasoning service so reasoning.analysis can execute in the app.
+  useEffect(() => {
+    setReasoningLLMCaller(generateText);
+    return () => setReasoningLLMCaller(null);
+  }, [generateText]);
 
   const handleProcess = async () => {
     if (!input.trim() || isProcessing) return;

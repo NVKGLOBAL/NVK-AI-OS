@@ -29,27 +29,16 @@ export const AuthGateway: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [status, setStatus] = useState<'idle' | 'authorizing' | 'success'>('idle');
 
-  // Load initially cached credentials
+  // D9 (matrix program, 2026-11-27 — item 7): keys are NEVER stored —
+  // not localStorage, not sessionStorage. This popup holds the entered
+  // key in component memory only and hands it to the opener via
+  // postMessage, where it lands in the in-memory LocalLLMContext. A
+  // reload leaves no key behind. No cached credentials are read here.
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const initialProvider = params.get('provider');
     if (initialProvider && ALL_PROVIDERS.some(p => p.id === initialProvider)) {
       setSelectedId(initialProvider);
-    }
-
-    try {
-      const saved = localStorage.getItem('nvk_api_keys');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        setSavedKeys(parsed);
-        // Autofill current selected token if exists
-        const currentSelected = initialProvider || 'openrouter';
-        if (parsed[currentSelected]) {
-          setToken(parsed[currentSelected]);
-        }
-      }
-    } catch (e) {
-      console.error('Failed reading saved API keys:', e);
     }
   }, []);
 
@@ -71,10 +60,11 @@ export const AuthGateway: React.FC = () => {
 
     setTimeout(() => {
       try {
+        // D9: memory only — the key lives in this window's state and is
+        // handed to the opener via postMessage below. Nothing is written
+        // to localStorage/sessionStorage. The opener stores it in the
+        // in-memory LocalLLMContext; a reload leaves no key behind.
         const updatedKeys = { ...savedKeys, [selectedId]: token.trim() };
-        localStorage.setItem('nvk_api_keys', JSON.stringify(updatedKeys));
-        localStorage.setItem('nvk_selected_provider', selectedId);
-        localStorage.setItem('nvk_is_cloud_mode', 'true');
         setSavedKeys(updatedKeys);
 
         setStatus('success');
@@ -97,16 +87,18 @@ export const AuthGateway: React.FC = () => {
         console.error(err);
         setIsSubmitting(false);
         setStatus('idle');
-        alert('Credentials integration failed. Please verify browser storage access permissions.');
+        alert('Credentials integration failed. The key is held in memory only — try again.');
       }
     }, 1200);
   };
 
   const handleDisconnect = (id: string) => {
     try {
+      // D9: memory only — forgetting the key means dropping it from this
+      // window's state (and telling the opener to do the same). There is
+      // no stored copy to delete.
       const updatedKeys = { ...savedKeys };
       delete updatedKeys[id];
-      localStorage.setItem('nvk_api_keys', JSON.stringify(updatedKeys));
       setSavedKeys(updatedKeys);
       if (selectedId === id) {
         setToken('');
@@ -229,10 +221,9 @@ export const AuthGateway: React.FC = () => {
             <button
               onClick={() => {
                 if (confirm('Are you sure you want to decouple and revoke all API keys from this workspace?')) {
-                  localStorage.removeItem('nvk_api_keys');
                   setSavedKeys({});
                   setToken('');
-                  alert('All provider cache pipelines cleared successfully.');
+                  alert('All provider keys cleared from memory for this session.');
                 }
               }}
               className="text-rose-500 hover:text-rose-400 transition-colors uppercase font-bold"
@@ -315,7 +306,7 @@ export const AuthGateway: React.FC = () => {
                     </div>
                   </div>
                   <p className="text-[9px] text-slate-500 leading-relaxed font-mono uppercase">
-                    🗝️ All credential layers are stored strictly in client sandbox cache storage and never touch third-party intermediate proxies.
+                    🗝️ Keys are held in memory only for this session — never stored in this browser. Re-enter your key next session to use a cloud provider.
                   </p>
                 </div>
 
@@ -370,7 +361,7 @@ export const AuthGateway: React.FC = () => {
               <div className="space-y-1">
                 <h3 className="font-serif text-base text-white font-semibold">Integrations Configured</h3>
                 <p className="text-[10px] text-slate-500 font-mono leading-relaxed max-w-xs mx-auto">
-                  Secure local keystore updated. Active {currentProvider.id} model endpoints are now ready inside your 3D or 2D workspaces.
+                  Key held in memory for this session only — never stored. Active {currentProvider.id} model endpoints are now ready inside your 3D or 2D workspaces.
                 </p>
               </div>
             </div>

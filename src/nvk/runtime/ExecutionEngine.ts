@@ -1,7 +1,6 @@
 import { TaskGraph } from '../planning/TaskGraph';
 import { capabilityRegistry } from '../capabilities/CapabilityRegistry';
 import { nvkEventBus } from '../events/NVKEventBus';
-import { evidenceStore } from '../evidence/EvidenceStore';
 import { sovereignLedger, SovereignLedgerEntry } from '../../../services/SovereignLedger';
 import type { NVKEvidence } from '../../../types';
 
@@ -145,22 +144,26 @@ export class ExecutionEngine {
           ...e,
           // Record the grant timestamp on confirmed executions, so the
           // ledger entry carries when the user actually granted.
+          // The taskId is stamped here too, so the EvidenceStore adapter
+          // (a thin read over this ledger) can find this run's evidence
+          // again via getEvidenceForTask — the retired unhashed Map used
+          // to hold it, and the ledger is now the only store (item 8).
           metadata: {
             ...(e.metadata || {}),
+            taskId: graph.taskId,
             ...(confirmedByUser && cap.requiresConfirmation
               ? { grantedAt: options.confirmedAt ?? Date.now() }
               : {})
           }
         }));
-        if (execResult && execResult.evidence) {
-          execResult.evidence.forEach((e: any) => evidenceStore.addEvidence(graph.taskId, e));
-        }
 
-        // A4 (2026-11-22): runtime evidence also goes to the hashed
-        // SovereignLedger. The in-memory EvidenceStore has no hashing or
-        // persistence, so it cannot serve as the audit trail. The returned
-        // entry's hash is attached to each evidence item's metadata so the
-        // UI can show a short hash the user can match against the ledger.
+        // A4 (2026-11-22) + item 8 (2026-11-27): runtime evidence goes
+        // to the hashed SovereignLedger ONLY. The old in-memory
+        // EvidenceStore Map is retired — EvidenceStore.ts is now a thin
+        // read adapter over this ledger, so there is one evidence store.
+        // The returned entry's hash is attached to each evidence item's
+        // metadata so the UI can show a short hash the user can match
+        // against the ledger.
         const entry = await sovereignLedger.append({
           capabilityId: node.capability,
           authorization,
@@ -209,10 +212,10 @@ export class ExecutionEngine {
       }
     }
     
-    // Return the NVKEvidence the capabilities actually produced — not the
-    // in-memory store's contents, which are typed as the store's Evidence
-    // (source/claim) while holding NVKEvidence-shaped objects. The store
-    // keeps its per-task record above; the return value is the real evidence.
+    // Return the NVKEvidence the capabilities actually produced — the
+    // same items the ledger entry above holds (with the ledger hash
+    // stamped in metadata). The EvidenceStore adapter reads them back
+    // from the ledger by taskId; there is no second store anymore.
     return { result: finalResult, artifacts: [], evidence: allEvidence, ledgerEntries };
   }
   

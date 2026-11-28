@@ -219,8 +219,9 @@ export default function NVKVoiceOrchestratorPanel() {
 
     // Ret12 fix: math and search need no model — answer them here instead
     // of sending them to generateText, which returns null with no model
-    // loaded (and the runtime's web.search cannot run on the static
-    // deploy). A general question still falls through to generateText,
+    // loaded. Search runs client-side (CORS search APIs, no server
+    // needed), so it works on the static deploy. A general question
+    // still falls through to generateText,
     // whose null return already produces the honest "No local model
     // loaded" reply below.
     if (isSearchQuestion(userText)) {

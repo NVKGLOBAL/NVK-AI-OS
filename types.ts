@@ -1863,5 +1863,15 @@ export type NVKEvent =
   | { type: 'FILE_CREATED', path: string }
   | { type: 'TASK_VERIFIED', taskId: string }
   | { type: 'TASK_COMPLETED', taskId: string }
-  | { type: 'TASK_FAILED', taskId: string, error: string };
+  | { type: 'TASK_FAILED', taskId: string, error: string }
+  // Generation events (matrix program, 2026-11-27 — item 6): real model
+  // generation start/progress/complete, fed by LocalLLMContext.generateText
+  // across all paths (local, cloud proxy, free gateway, Ollama). The
+  // generation-events ring buffer (services/generationEvents.ts, Agent
+  // v0.1.4 pattern) records them; the resonance visualizer + feed read the
+  // buffer, never a timer. tokensPerSecond is null when the path cannot
+  // measure it — never fabricated.
+  | { type: 'GENERATION_STARTED', generationId: string, provider: string, model: string | null }
+  | { type: 'GENERATION_PROGRESS', generationId: string, charsProduced: number, elapsedMs: number }
+  | { type: 'GENERATION_COMPLETED', generationId: string, provider: string, model: string | null, elapsedMs: number, charsProduced: number, tokensPerSecond: number | null, success: boolean };
 
