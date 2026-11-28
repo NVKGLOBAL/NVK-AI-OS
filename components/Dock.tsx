@@ -22,6 +22,26 @@ export const Dock: React.FC<DockProps> = ({
   // sheet. Top-right, below the header, so the orb's centre is never
   // covered by default chrome. The full dock renders only on ≥sm.
   const isMobile = useIsMobile();
+  // Fix round (2026-11-27): this useMemo used to sit BELOW the
+  // `if (isMobile) return` above, so the component ran TWO hooks on
+  // desktop and ONE on mobile. Any crossing of the 768px breakpoint
+  // mid-session (window resize, viewport settling) changed the hook
+  // count between renders and React threw Minified error #300 (fewer
+  // hooks: desktop → mobile) or #310 (more hooks: mobile → desktop),
+  // each crashing the app into the recovery console — the two
+  // spontaneous crashes in the 2026-11-27 17:12 PT desktop check.
+  // Hooks must run unconditionally, before any early return; the memo
+  // is cheap and simply unused on the mobile branch.
+  const items = React.useMemo(() => {
+    const list = [];
+    if (onOpenSearch) {
+      list.push({ id: 'launcher', type: 'launcher', name: 'App Library', icon: 'ri-apps-2-fill' });
+    }
+    apps.forEach(app => {
+      list.push({ id: app.id, type: 'app', name: app.name, icon: app.icon, data: app });
+    });
+    return list;
+  }, [apps, onOpenSearch]);
   if (isMobile) {
     return (
       <div
@@ -45,16 +65,6 @@ export const Dock: React.FC<DockProps> = ({
   // top edge — making App Library, Codex Explorer, Nexus Terminal and
   // Pricing pointer-unreachable. Flat row, same strip, same S5
   // narrow-screen horizontal scroll.)
-  const items = React.useMemo(() => {
-    const list = [];
-    if (onOpenSearch) {
-      list.push({ id: 'launcher', type: 'launcher', name: 'App Library', icon: 'ri-apps-2-fill' });
-    }
-    apps.forEach(app => {
-      list.push({ id: app.id, type: 'app', name: app.name, icon: app.icon, data: app });
-    });
-    return list;
-  }, [apps, onOpenSearch]);
 
   return (
     <footer className="dock-container fixed left-0 right-0 flex justify-center items-end z-[1100] pointer-events-none" style={{ bottom: 'calc(3rem + env(safe-area-inset-bottom, 0px))' }}>

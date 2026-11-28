@@ -76,3 +76,36 @@ export function latestLiveEventLine(events: Array<{ time: string; text: string }
 export function shouldAutofocusInput(isCoarsePointer: boolean): boolean {
   return !isCoarsePointer;
 }
+
+export interface ConsolePosition {
+  x: number;
+  y: number;
+}
+
+/**
+ * Clamp the floating console position inside the viewport (fix round,
+ * 2026-11-27 — desktop check 17:12–17:22 PT: after a Desk → Universe /
+ * Split switch the console header rendered clipped above the viewport,
+ * "Reset to Top-Left" unreachable). The floating top comes from the
+ * persisted `nvk_command_layer_pos` value, which was applied verbatim —
+ * any stale, negative, or out-of-range value saved by an older drag
+ * (or a drag on a differently-sized viewport) put the card's top above
+ * the screen, and no code path ever re-checked it. The drag handler
+ * already clamps new drags to the same bounds; this is that clamp
+ * applied to the STORED value on load and whenever the console returns
+ * to floating mode, so the header can never render off-screen.
+ * Non-finite or missing values fall back to the top-left default.
+ */
+export function clampConsolePosition(
+  pos: { x: number; y: number },
+  viewport: { width: number; height: number }
+): ConsolePosition {
+  const x = pos && Number.isFinite(pos.x) ? pos.x : 24;
+  const y = pos && Number.isFinite(pos.y) ? pos.y : 24;
+  const maxX = Math.max(10, viewport.width - 320);
+  const maxY = Math.max(10, viewport.height - 100);
+  return {
+    x: Math.min(Math.max(10, x), maxX),
+    y: Math.min(Math.max(10, y), maxY),
+  };
+}

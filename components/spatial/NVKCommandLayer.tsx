@@ -27,7 +27,7 @@ import { resolveTerminalOrbState } from '../../lib/orbStateMapping';
 import { answerCatalogQuestion } from '../../lib/catalogLookup';
 import { NVK_PRODUCT_FACTS } from '../../lib/nvkProductFacts';
 import { liveEventText, runtimeEventText } from '../../services/liveFeedFormat';
-import { latestLiveEventLine, shouldAutofocusInput } from '../../lib/mobileWorkspace';
+import { latestLiveEventLine, shouldAutofocusInput, clampConsolePosition } from '../../lib/mobileWorkspace';
 import { tryAnswerMath, isSearchQuestion, answerSearchQuestion, needsNoModelReply, NO_MODEL_REPLY, GATEWAY_OFFLINE_REPLY } from '../../services/osNoModelAnswers';
 import { intentEngine } from '../../src/nvk/intent/IntentEngine';
 
@@ -92,7 +92,12 @@ export const NVKCommandLayer: React.FC<NVKCommandLayerProps> = ({
     if (typeof window !== 'undefined') {
       try {
         const saved = localStorage.getItem('nvk_command_layer_pos');
-        if (saved) return JSON.parse(saved);
+        // Fix round (2026-11-27): the stored value used to be applied
+        // verbatim — a stale/negative value put the card's top above
+        // the viewport after a layout switch, header unreachable. It is
+        // clamped against the current viewport on load (see
+        // clampConsolePosition in lib/mobileWorkspace).
+        if (saved) return clampConsolePosition(JSON.parse(saved), { width: window.innerWidth, height: window.innerHeight });
       } catch (e) {}
       if (window.innerWidth < 768) {
         return { x: 12, y: 56 };
@@ -179,9 +184,12 @@ export const NVKCommandLayer: React.FC<NVKCommandLayerProps> = ({
     if (!isDraggingRef.current) return;
     const deltaX = e.clientX - dragStartRef.current.startX;
     const deltaY = e.clientY - dragStartRef.current.startY;
-    const newX = Math.max(10, Math.min(window.innerWidth - 320, dragStartRef.current.posX + deltaX));
-    const newY = Math.max(10, Math.min(window.innerHeight - 100, dragStartRef.current.posY + deltaY));
-    setPosition({ x: newX, y: newY });
+    // Same clamp as the stored-value path (clampConsolePosition) — one
+    // rule for every position the console can take.
+    setPosition(clampConsolePosition(
+      { x: dragStartRef.current.posX + deltaX, y: dragStartRef.current.posY + deltaY },
+      { width: window.innerWidth, height: window.innerHeight }
+    ));
   };
 
   const handlePointerUp = (e: React.PointerEvent) => {
@@ -260,8 +268,35 @@ export const NVKCommandLayer: React.FC<NVKCommandLayerProps> = ({
   // draggable; the persisted floating position is kept for the 3D modes.
   const isDeskMode = !isMobile && (workspaceMode === 'grid' || workspaceMode === '2d');
   useEffect(() => {
-    if (isDeskMode) setIsMinimized(true);
+    if (isDeskMode) {
+      setIsMinimized(true);
+      return;
+    }
+    // Fix round (2026-11-27): returning to a floating mode (Desk →
+    // Universe/Split) re-clamps the stored position against the CURRENT
+    // viewport, so a stale value can never leave the header above the
+    // screen. Returns the previous object when already in bounds, so
+    // this never forces a re-render on its own.
+    setPosition((prev) => {
+      const clamped = clampConsolePosition(prev, { width: window.innerWidth, height: window.innerHeight });
+      return clamped.x === prev.x && clamped.y === prev.y ? prev : clamped;
+    });
   }, [isDeskMode]);
+
+  // Fix round (2026-11-27): same re-clamp when the viewport itself
+  // shrinks while floating — a resize must never push the header
+  // off-screen either. Docked/mobile modes skip it (no floating top).
+  useEffect(() => {
+    if (isDeskMode || isMobile) return;
+    const onResize = () => {
+      setPosition((prev) => {
+        const clamped = clampConsolePosition(prev, { width: window.innerWidth, height: window.innerHeight });
+        return clamped.x === prev.x && clamped.y === prev.y ? prev : clamped;
+      });
+    };
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, [isDeskMode, isMobile]);
 
   // Round-3 (2026-11-27): broadcast the expanded state so the 3D HUD
   // can hide while the console is expanded on phones (same window-event
